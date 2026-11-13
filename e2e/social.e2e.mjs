@@ -36,7 +36,14 @@ try {
   });
 
   await step('в фокусе шутки не проходят ни через интерфейс, ни через API', async () => {
+    // хост запускает фокус, когда все участники в сети нажали «Я готов»
+    // (у Ани открыта панель «Друзья» — она закрывает кнопки таймера, поэтому сначала возвращаемся к таймеру)
+    await anya.page.getByTestId('open-social').click();
+    for (const u of [lotti, anya, borya]) await u.page.getByRole('button', { name: 'Я готов' }).click();
+    await until(async () => lotti.page.getByRole('button', { name: 'Начать фокус' }).isEnabled(), { msg: '«Начать фокус» не активировалась после готовности всех' });
     await lotti.page.getByRole('button', { name: 'Начать фокус' }).click();
+    await anya.page.getByTestId('open-social').click();
+    await social(anya).waitFor();
     await until(async () => (await roomPhase()) === 'focus', { msg: 'фокус не начался' });
     const r = await api(env, borya, 'POST', `/api/rooms/${roomId}/social/prank`, { targetUserId: anya.id, type: 'fog' });
     assert(r.status === 409, `сервер пропустил шутку в фокусе: ${r.status}`);
