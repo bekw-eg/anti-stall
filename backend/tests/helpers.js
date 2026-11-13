@@ -24,9 +24,9 @@ export async function boot({ env = {}, config = {}, clock = new FakeClock(), dbP
 
   const world = {
     app, clock, url, call, cfg,
-    /** Регистрирует игрока и возвращает хелпер с его токеном. */
-    async user(name) {
-      const { status, body } = await call('POST', '/api/users', { name });
+    /** Регистрирует игрока и возвращает хелпер с его токеном. sandbox:true — песочный аккаунт для демо-комнат. */
+    async user(name, { sandbox = false } = {}) {
+      const { status, body } = await call('POST', '/api/users', sandbox ? { name, sandbox: true } : { name });
       if (status !== 201) throw new Error('register failed ' + JSON.stringify(body));
       const token = body.token;
       const u = {
@@ -93,10 +93,11 @@ export function tmpDbPath() {
   return join(mkdtempSync(join(tmpdir(), 'tomato-')), 'test.db');
 }
 
-/** Комната с хостом и участниками, все присоединились. */
+/** Комната с хостом и участниками, все присоединились. Демо-комнату (settings.demo) играют песочные аккаунты. */
 export async function lobby(world, names = ['Лотти', 'Аня', 'Боря'], settings = {}) {
   const users = [];
-  for (const n of names) users.push(await world.user(n));
+  const sandbox = settings.demo === true;
+  for (const n of names) users.push(await world.user(n, { sandbox }));
   const [host, ...rest] = users;
   const created = await host.post('/api/rooms', { name: 'Боталка', focusMinutes: 25, breakMinutes: 5, ...settings });
   if (created.status !== 201) throw new Error('create room: ' + JSON.stringify(created.body));

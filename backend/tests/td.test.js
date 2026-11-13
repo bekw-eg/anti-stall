@@ -421,6 +421,24 @@ describe('Tower Defense: командный режим Team A / Team B', () => {
     } finally { await w.close(); }
   });
 
+  test('награда за дуэль подчиняется суточному потолку игровых наград (как раунды)', async () => {
+    const w = await boot({ config: { economy: { td: { dailyRewardedRounds: 0 } } } });
+    try {
+      const L = await onBreak(w, ['Лотти', 'Аня', 'Боря'], { teamMode: true }); // A: Лотти, Боря; B: Аня
+      const [lotti, anya, boris] = L.users;
+      fund(w, lotti, 100); fund(w, boris, 100);
+      await build(L, lotti, 's1', 'arrow'); await build(L, boris, 's3', 'arrow');
+      await post(L, lotti, 'start', { stageId: 'camp' });
+      await post(L, anya, 'start', { stageId: 'camp' });
+      await solid(w, L);
+      assert.equal((await td(L, lotti)).duel.winner, 'A', 'дуэль решена');
+      for (const u of [lotti, boris]) {
+        assert.equal((await kinds(u, 'td_round')).length, 0);
+        assert.equal((await kinds(u, 'td_duel')).length, 0, `${u.name}: потолок исчерпан — бонуса за дуэль нет`);
+      }
+    } finally { await w.close(); }
+  });
+
   test('этапы открываются по узлам своей команды; ничья без наград при двух поражениях', async () => {
     const w = await boot();
     try {

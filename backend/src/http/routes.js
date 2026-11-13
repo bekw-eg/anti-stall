@@ -15,7 +15,7 @@ export function buildRoutes({ config, users, rooms, game, social, td, voice, clo
     demoMode: config.demoMode,
     pomodoro: { focusMinutes: config.limits.focusMinutes, breakMinutes: config.limits.breakMinutes, defaults: { focusMinutes: 25, breakMinutes: 5 } },
     economy: { ...config.economy, levelFormula: 'xp(level) = 50 * level * (level - 1)', xpForLevel: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(xpForLevel) },
-    social: { help: HELP_TYPES, prank: PRANK_TYPES, boost: config.social.boost, shield: config.social.shield, prankRules: { cooldownMs: config.social.prank.cooldownMs, maxPerBreak: config.social.prank.maxPerBreak } },
+    social: { help: HELP_TYPES, prank: PRANK_TYPES, boost: config.social.boost, shield: config.social.shield, prankRules: { cooldownMs: config.social.prank.cooldownMs, demoCooldownMs: config.social.prank.demoCooldownMs, maxPerBreak: config.social.prank.maxPerBreak } },
     presence: { onlineWindowMs: config.onlineWindowMs, graceMs: config.graceMs, broadcastTickMs: config.broadcastTickMs },
     upgrades: Object.values(UPGRADES).map((u) => ({ ...u, costs: Array.from({ length: u.maxLevel }, (_, i) => upgradeCost(u, i)) })),
     achievements: Object.values(ACHIEVEMENTS).map(({ condition, ...a }) => a),

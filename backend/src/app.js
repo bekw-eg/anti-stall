@@ -5,6 +5,7 @@ import { Db } from './db.js';
 import { AppError } from './errors.js';
 import { buildRoutes } from './http/routes.js';
 import { readJson } from './http/router.js';
+import { createStaticHandler } from './http/static.js';
 import { createGame } from './services/game.js';
 import { createRoomsService } from './services/rooms.js';
 import { createSocialService } from './services/social.js';
@@ -12,6 +13,9 @@ import { createTd } from './services/td.js';
 import { createUsersService } from './services/users.js';
 import { Hub } from './ws/hub.js';
 import { VoiceRooms } from './ws/voice.js';
+
+/** Пути API и WebSocket никогда не перехватываются статикой. */
+const isApiPath = (p) => p === '/api' || p.startsWith('/api/') || p === '/ws' || p.startsWith('/ws/');
 
 /**
  * Фабрика приложения. clock и config подменяются в тестах (управляемые часы вместо системного времени).
@@ -39,10 +43,16 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
     res.end(JSON.stringify(body));
   };
 
+  // Единый образ: собранный фронтенд отдаётся тем же процессом (только если задан TOMATO_STATIC_DIR)
+  const serveStatic = config.staticDir ? createStaticHandler(config.staticDir) : null;
+
   const server = http.createServer(async (req, res) => {
     try {
       if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
       const url = new URL(req.url, 'http://localhost');
+      if (serveStatic && (req.method === 'GET' || req.method === 'HEAD') && !isApiPath(url.pathname)) {
+        return await serveStatic(req, res, url.pathname);
+      }
       const { route, params } = router.match(req.method, url.pathname);
       let user = null;
       if (route.auth) {

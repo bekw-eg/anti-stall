@@ -96,8 +96,9 @@ export function createSocialService(ctx, game, rooms) {
         throw E.conflict('TARGET_FOCUSING', 'Получатель сейчас занимается — пакости ему не отправляются');
       }
       const last = db.get("SELECT created_at t FROM social_actions WHERE sender_id = ? AND kind = 'prank' ORDER BY id DESC LIMIT 1", user.id);
-      if (last && t - last.t < cfg.prank.cooldownMs) {
-        throw E.tooMany('PRANK_COOLDOWN', 'Слишком часто', { retryAfterMs: cfg.prank.cooldownMs - (t - last.t) });
+      const cooldownMs = room.demo ? cfg.prank.demoCooldownMs : cfg.prank.cooldownMs; // короткий кулдаун — только в демо-комнатах
+      if (last && t - last.t < cooldownMs) {
+        throw E.tooMany('PRANK_COOLDOWN', 'Слишком часто', { retryAfterMs: cooldownMs - (t - last.t) });
       }
       if (sentThisCycle(room, user.id, 'prank') >= cfg.prank.maxPerBreak) throw E.tooMany('PRANK_BREAK_LIMIT', 'Лимит пакостей за перерыв исчерпан');
       if (sentThisCycle(room, user.id, 'prank', type, target.id) > 0) throw E.conflict('ALREADY_SENT', 'Этот эффект вы уже отправляли этому игроку в этот перерыв');

@@ -1,12 +1,14 @@
 /**
  * Сквозная демонстрация для жюри на РЕАЛЬНЫХ часах и реальном сервере.
- *   1) TOMATO_DEMO=1 npm start          (сервер с ускоренными комнатами)
+ *   1) npm run start:demo                (сервер с ускоренными комнатами; = node src/server.js --demo)
  *   2) npm run demo                      (этот скрипт)
- * Переменные: API=http://localhost:8787  FOCUS=25  BREAK=15
+ * Игроки — песочные аккаунты (sandbox): только они могут играть в демо-комнатах, и их прогресс
+ * не существует на сервере без демо-режима.
+ * Переменные: API=http://localhost:8787 (или --api URL)  FOCUS=25  BREAK=15
  */
 import WebSocket from 'ws';
+import { API, requireDemoServer } from './lib/client.mjs';
 
-const API = process.env.API || 'http://localhost:8787';
 const FOCUS = Number(process.env.FOCUS || 25);
 const BREAK = Number(process.env.BREAK || 15);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -18,7 +20,8 @@ async function call(method, path, body, token) {
   return { status: res.status, body: await res.json() };
 }
 async function player(name) {
-  const { body } = await call('POST', '/api/users', { name });
+  const { status, body } = await call('POST', '/api/users', { name, sandbox: true });
+  if (status !== 201) { log(body); process.exit(1); }
   const p = { name, id: body.user.id, token: body.token, events: [] };
   p.get = (path) => call('GET', path, undefined, p.token);
   p.post = (path, b = {}) => call('POST', path, b, p.token);
@@ -31,6 +34,7 @@ async function player(name) {
 }
 const expect = (cond, msg) => { log(`${cond ? '  ✔' : '  ✘ ПРОВАЛ:'} ${msg}`); if (!cond) process.exitCode = 1; };
 
+await requireDemoServer();
 const lotti = await player('Лотти');
 const anya = await player('Аня');
 const boris = await player('Боря');
@@ -39,7 +43,7 @@ const beat = setInterval(() => all.forEach((p) => p.post('/api/heartbeat')), 500
 
 h('1. Комната и участники');
 const created = await lotti.post('/api/rooms', { name: 'Боталка к экзамену', demo: true, focusSeconds: FOCUS, breakSeconds: BREAK });
-if (created.status !== 201) { log(created.body); log('Запустите сервер с TOMATO_DEMO=1'); process.exit(1); }
+if (created.status !== 201) { log(created.body); log('Запустите сервер: npm run start:demo'); process.exit(1); }
 const room = created.body.room;
 const R = (p = '') => `/api/rooms/${room.id}${p}`;
 for (const p of [anya, boris]) await p.post('/api/rooms/join', { code: room.code });
@@ -88,6 +92,9 @@ const refused = await boris.post(R('/social/prank'), { targetUserId: anya.id, ty
 expect(refused.body.error?.code === 'PRANKS_DISABLED', 'пакость Ане отклонена: получатель их отключил');
 
 h('4. Защита от читов');
+const regular = (await call('POST', '/api/users', { name: 'Обычный' })).body;
+const intruder = await call('POST', '/api/rooms/join', { code: room.code }, regular.token);
+expect(intruder.body.error?.code === 'DEMO_SANDBOX_ONLY', 'обычный аккаунт в демо-комнату не попадает (ускоренные награды — только песочнице)');
 const hack = await call('PATCH', '/api/users/me', { xp: 99999, coins: 99999 }, boris.token);
 expect(hack.body.xp < 1000, 'подмена xp/coins через профиль не сработала');
 const fake = await boris.post(R('/complete'), {});

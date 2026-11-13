@@ -164,6 +164,16 @@ export function createTd(ctx, game) {
   const PARTICIPATION = "kind IN ('start','build','upgrade')";
   const participantsOf = (roomId, team, cycleId) => db.all(`SELECT DISTINCT user_id FROM td_actions WHERE room_id = ? AND team_key = ? AND cycle_id = ? AND ${PARTICIPATION}`, roomId, team, cycleId).map((r) => r.user_id);
 
+  /**
+   * Суточный потолок игровых наград (анти-накрутка): отдельно для раундов (td_round) и для дуэлей (td_duel),
+   * значение одно и то же. Повышенный потолок — только в демо-комнатах (room.demo).
+   */
+  function underDailyCap(room, userId, kind) {
+    const cap = room.demo ? cfg.demoDailyRewardedRounds : cfg.dailyRewardedRounds;
+    const today = db.get('SELECT COUNT(*) c FROM reward_transactions WHERE user_id = ? AND kind = ? AND created_at > ?', userId, kind, clock.now() - DAY).c;
+    return today < cap;
+  }
+
   /** Награда за победу: только тем, кто участвовал в раунде (старт / постройка / улучшение), один раз на игрока. */
   function rewardRound(row, room, result) {
     const stage = stageDef(row.stage_id);
@@ -172,10 +182,8 @@ export function createTd(ctx, game) {
     const quality = 0.5 + 0.5 * (result.hpLeft / result.hpMax); // чем целее база, тем больше награда
     const mult = quality * (first ? cfg.firstClearMultiplier : 1);
     const reward = { xp: Math.round(stage.reward.xp * mult), coins: Math.round(stage.reward.coins * mult), firstClear: first };
-    const t = clock.now();
     for (const uid of participants) {
-      const today = db.get("SELECT COUNT(*) c FROM reward_transactions WHERE user_id = ? AND kind = 'td_round' AND created_at > ?", uid, t - DAY).c;
-      if (today >= cfg.dailyRewardedRounds) continue; // суточный потолок наград за игру
+      if (!underDailyCap(room, uid, 'td_round')) continue; // суточный потолок наград за игру
       game.grant(uid, `td:round:${row.id}:${uid}`, 'td_round', reward, { roomId: room.id, stageId: row.stage_id, team: row.team_key, firstClear: first });
       game.checkAchievements(uid);
     }
@@ -197,6 +205,8 @@ export function createTd(ctx, game) {
     const winners = winner === 'draw' ? (a > 0 ? ['A', 'B'] : []) : [winner];
     for (const team of winners) {
       for (const uid of participantsOf(room.id, team, row.cycle_id)) {
+        // тот же суточный потолок, что и у раундов: иначе дуэли (достаточно нажать «старт») фармятся без лимита
+        if (!underDailyCap(room, uid, 'td_duel')) continue;
         game.grant(uid, `td:duel:${room.id}:${row.cycle_id}:${uid}`, 'td_duel', cfg.duelReward, { roomId: room.id, team });
       }
     }

@@ -86,4 +86,28 @@ describe('помощь и пакости', () => {
     assert.equal((await rich.post(L.path('/social/help'), { targetUserId: L.host.id, type: 'shield' })).body.error.code, 'INSUFFICIENT_FUNDS');
     assert.equal((await rich.progress()).coins, 0);
   });
+
+  test('дневной лимит помощи: после helpDailyLimit действий за сутки — HELP_DAILY_LIMIT, через сутки снова можно', async () => {
+    const w2 = await boot({ config: { social: { helpDailyLimit: 2 } } });
+    try {
+      const L = await lobby(w2, ['Хост', 'Аня', 'Боря', 'Вика']);
+      const [host, ...friends] = L.users;
+      await runFocus(w2, L, L.users);
+      for (const f of friends.slice(0, 2)) assert.equal((await host.post(L.path('/social/help'), { targetUserId: f.id, type: 'boost' })).status, 201);
+      const r = await host.post(L.path('/social/help'), { targetUserId: friends[2].id, type: 'boost' });
+      assert.equal(r.status, 429);
+      assert.equal(r.body.error.code, 'HELP_DAILY_LIMIT');
+      // лимит суточный, а не на перерыв: следующий перерыв в те же сутки тоже закрыт
+      await w2.advance(5 * 60_000, L.users);
+      await runFocus(w2, L, L.users);
+      assert.equal((await host.post(L.path('/social/help'), { targetUserId: friends[2].id, type: 'boost' })).body.error.code, 'HELP_DAILY_LIMIT');
+      // через сутки лимит обновляется
+      w2.clock.advance(24 * 3600_000);
+      await host.post('/api/heartbeat');
+      await w2.advance(1000, L.users);
+      assert.equal((await host.get(L.path())).body.room.phase, 'waiting');
+      await runFocus(w2, L, L.users);
+      assert.equal((await host.post(L.path('/social/help'), { targetUserId: friends[2].id, type: 'boost' })).status, 201);
+    } finally { await w2.close(); }
+  });
 });

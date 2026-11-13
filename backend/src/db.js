@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS users (
   last_seen_at INTEGER NOT NULL,
   xp INTEGER NOT NULL DEFAULT 0 CHECK (xp >= 0),
   coins INTEGER NOT NULL DEFAULT 0 CHECK (coins >= 0),
-  prank_enabled INTEGER NOT NULL DEFAULT 1
+  prank_enabled INTEGER NOT NULL DEFAULT 1,
+  -- песочный (демо) аккаунт: только демо-комнаты, без демо-режима сервера не авторизуется
+  sandbox INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS user_upgrades (
@@ -230,6 +232,9 @@ export class Db {
     // v3: статус готовности участника комнаты (is_ready)
     const memberCols = this.sql.prepare('PRAGMA table_info(room_members)').all().map((c) => c.name);
     if (!memberCols.includes('is_ready')) this.sql.exec('ALTER TABLE room_members ADD COLUMN is_ready INTEGER NOT NULL DEFAULT 0');
+    // v4: песочные аккаунты демо-режима (users.sandbox); все существующие пользователи — обычные
+    const userCols = this.sql.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+    if (!userCols.includes('sandbox')) this.sql.exec('ALTER TABLE users ADD COLUMN sandbox INTEGER NOT NULL DEFAULT 0');
     this.sql.prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version', ?)").run(String(SCHEMA_VERSION));
   }
 

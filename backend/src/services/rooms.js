@@ -40,6 +40,17 @@ export function createRoomsService(ctx, game, users, td) {
   }
   const activeSessionOf = (userId) => db.get("SELECT * FROM focus_sessions WHERE user_id = ? AND status = 'active'", userId);
 
+  /**
+   * Песочница демо-режима: демо-комнаты (ускоренное время) — только для песочных аккаунтов,
+   * а песочные аккаунты — только в демо-комнатах. Так ускоренные сессии не дают прогресс обычным игрокам.
+   */
+  const isSandbox = (user) => Boolean(user.sandbox ?? db.get('SELECT sandbox FROM users WHERE id = ?', user.id)?.sandbox);
+  function requireSandboxMatch(demo, user) {
+    const sandbox = isSandbox(user);
+    if (sandbox && !demo) throw E.forbidden('SANDBOX_DEMO_ONLY', 'Песочный (демо) аккаунт может играть только в демо-комнатах');
+    if (!sandbox && demo) throw E.forbidden('DEMO_SANDBOX_ONLY', 'Демо-комнаты доступны только песочным (демо) аккаунтам');
+  }
+
   function parseSettings(body, existing) {
     const demo = existing ? Boolean(existing.demo) : body.demo === true;
     if (body.demo !== undefined && typeof body.demo !== 'boolean') throw E.badRequest('INVALID_FIELD', 'Поле demo должно быть boolean', { field: 'demo' });
@@ -67,6 +78,7 @@ export function createRoomsService(ctx, game, users, td) {
     const b = reqObject(body);
     const name = b.name === undefined ? `Комната ${user.name}` : reqString(b.name, 'name', { min: 1, max: L.roomNameMax });
     const s = parseSettings(b);
+    requireSandboxMatch(Boolean(s.demo), user);
     if (b.teamMode !== undefined && typeof b.teamMode !== 'boolean') throw E.badRequest('INVALID_FIELD', 'Поле teamMode должно быть boolean', { field: 'teamMode' });
     const mode = b.teamMode === true ? 'teams' : 'shared';
     return db.tx(() => {
@@ -92,6 +104,7 @@ export function createRoomsService(ctx, game, users, td) {
     return db.tx(() => {
       const room = findRoom(idOrCode);
       if (room.phase === 'completed') throw E.conflict('ROOM_CLOSED', 'Комната закрыта');
+      requireSandboxMatch(Boolean(room.demo), user); // и для повторного входа, и для уже числящихся участников
       const existing = db.get('SELECT * FROM room_members WHERE room_id = ? AND user_id = ?', room.id, user.id);
       if (existing && !existing.left_at) return snapshot(room.id, user.id); // идемпотентно
       const count = db.get('SELECT COUNT(*) c FROM room_members WHERE room_id = ? AND left_at IS NULL', room.id).c;
@@ -153,6 +166,12 @@ export function createRoomsService(ctx, game, users, td) {
       const room = findRoom(idOrCode);
       requireHost(room, user);
       requirePhase(room, 'waiting');
+      // Тип комнаты фиксируется при создании: превратить обычную комнату в демо (и обратно) нельзя
+      if (b.demo !== undefined) {
+        if (typeof b.demo !== 'boolean') throw E.badRequest('INVALID_FIELD', 'Поле demo должно быть boolean', { field: 'demo' });
+        requireSandboxMatch(b.demo, user);
+        if (b.demo !== Boolean(room.demo)) throw E.badRequest('INVALID_FIELD', 'Тип комнаты (demo) нельзя менять после создания', { field: 'demo' });
+      }
       const s = parseSettings(b, room);
       db.run('UPDATE rooms SET focus_sec = ?, break_sec = ? WHERE id = ?', s.focusSec, s.breakSec, room.id);
       if (b.name !== undefined) db.run('UPDATE rooms SET name = ? WHERE id = ?', reqString(b.name, 'name', { min: 1, max: L.roomNameMax }), room.id);
@@ -235,6 +254,9 @@ export function createRoomsService(ctx, game, users, td) {
       const room = findRoom(idOrCode);
       requireHost(room, user);
       requirePhase(room, 'waiting');
+      // Демо-комната из старой БД на сервере без демо-режима не запускается; хост-«чужак» (старые данные) — тоже
+      if (room.demo && !config.demoMode) throw E.forbidden('DEMO_DISABLED', 'Демо-режим выключен на сервере');
+      requireSandboxMatch(Boolean(room.demo), user);
       if (activeSessionOf(user.id)) throw E.conflict('ALREADY_FOCUSING', 'У вас уже идёт фокус-сессия в другой комнате');
 
       const t = clock.now();
@@ -242,7 +264,7 @@ export function createRoomsService(ctx, game, users, td) {
       const cycleNo = room.cycle_no + 1;
       const endsAt = t + room.focus_sec * 1000;
       const members = db.all(
-        `SELECT m.user_id, m.task_title, u.last_seen_at FROM room_members m JOIN users u ON u.id = m.user_id
+        `SELECT m.user_id, m.task_title, u.last_seen_at, u.sandbox FROM room_members m JOIN users u ON u.id = m.user_id
          WHERE m.room_id = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.rowid`, room.id,
       );
       db.run("UPDATE rooms SET phase = 'focus', cycle_id = ?, cycle_no = ?, phase_started_at = ?, phase_ends_at = ? WHERE id = ?", cycleId, cycleNo, t, endsAt, room.id);
@@ -251,6 +273,7 @@ export function createRoomsService(ctx, game, users, td) {
       const participants = [];
       const skipped = [];
       for (const m of members) {
+        if (Boolean(m.sandbox) !== Boolean(room.demo)) { skipped.push({ userId: m.user_id, reason: 'sandbox_mismatch' }); continue; } // только старые данные
         if (m.user_id !== user.id && t - m.last_seen_at > config.graceMs) { skipped.push({ userId: m.user_id, reason: 'offline' }); continue; }
         if (activeSessionOf(m.user_id)) { skipped.push({ userId: m.user_id, reason: 'busy_elsewhere' }); continue; }
         const id = randomUUID();

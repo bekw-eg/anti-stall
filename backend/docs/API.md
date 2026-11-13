@@ -9,6 +9,10 @@
 любые `userId`/`senderId` в теле запроса — только цель действия и никогда не «кто действует».
 Для WebSocket: первым сообщением `{"type":"auth","token":"…"}` (токен не попадает в URL/логи).
 
+**Песочные аккаунты** (`{"name","sandbox":true}`) создаются только на сервере в демо-режиме (иначе `403 DEMO_DISABLED`),
+играют только в демо-комнатах, а без демо-режима их токен не авторизуется (`401`, по WS — закрытие 4401).
+Подробности — [DEMO_MODE.md](DEMO_MODE.md).
+
 ## Ошибки
 
 ```json
@@ -19,7 +23,7 @@
 |---|---|
 | 400 | `INVALID_JSON`, `INVALID_BODY`, `INVALID_FIELD`, `INVALID_SLOT`, `UNKNOWN_TOWER`, `SELF_TARGET`, `UNKNOWN_HELP_TYPE`, `UNKNOWN_PRANK_TYPE`, `INVALID_AMOUNT` |
 | 401 | `UNAUTHORIZED` |
-| 403 | `NOT_A_MEMBER`, `NOT_HOST`, `DEMO_DISABLED`, `UPGRADE_LOCKED`, `STAGE_LOCKED` |
+| 403 | `NOT_A_MEMBER`, `NOT_HOST`, `DEMO_DISABLED`, `SANDBOX_DEMO_ONLY` (песочный аккаунт → обычная комната), `DEMO_SANDBOX_ONLY` (обычный аккаунт → демо-комната), `UPGRADE_LOCKED`, `STAGE_LOCKED` |
 | 404 | `NOT_FOUND`, `ROOM_NOT_FOUND`, `NO_ACTIVE_SESSION`, `SESSION_NOT_FOUND`, `TARGET_NOT_IN_ROOM`, `UPGRADE_NOT_FOUND`, `STAGE_NOT_FOUND`, `NO_TOWER` |
 | 405/413 | `METHOD_NOT_ALLOWED`, `BODY_TOO_LARGE` |
 | 409 | `WRONG_PHASE`, `ALREADY_FOCUSING`, `FOCUS_ACTIVE`, `SESSION_ACTIVE`, `ROOM_CLOSED`, `ROOM_FULL`, `TOO_MANY_ROOMS`, `INSUFFICIENT_FUNDS`, `STALE_LEVEL`, `MAX_LEVEL`, `DUPLICATE_OPERATION`, `ALREADY_SENT`, `EFFECT_ACTIVE`, `PRANKS_DISABLED`, `PRANKS_DISABLED_SELF`, `TARGET_FOCUSING`, `NOT_TEAM_MODE`, `NOT_TEAMMATE`, `SLOT_TAKEN`, `ROUND_EXISTS`, `TOO_LATE` |
@@ -34,14 +38,14 @@
 | Метод | Путь | Описание |
 |---|---|---|
 | GET 🔓 | `/api/health` | `{status, serverTime, demoMode}` |
-| GET 🔓 | `/api/config` | Экономика, лимиты, каталог улучшений/достижений, Road Map, правила присутствия |
+| GET 🔓 | `/api/config` | Экономика (вкл. `demoDailyRewardedSessions`, `td.demoDailyRewardedRounds` — только для демо-комнат), лимиты, `social.prankRules{cooldownMs, demoCooldownMs, maxPerBreak}`, каталог улучшений/достижений, Road Map, правила присутствия |
 | POST | `/api/heartbeat` | Подтверждает присутствие, возвращает `serverTime` |
 
 ### Пользователь
 | Метод | Путь | Описание |
 |---|---|---|
-| POST 🔓 | `/api/users` | Регистрация: `{name}` → 201 `{user, token}` |
-| GET | `/api/users/me` | Профиль: `id,name,level,xp,coins,prankEnabled,activeSession,rooms[]` |
+| POST 🔓 | `/api/users` | Регистрация: `{name, sandbox?}` → 201 `{user, token}`. `sandbox` — boolean (`400 INVALID_FIELD`); `true` только в демо-режиме (`403 DEMO_DISABLED`) |
+| GET | `/api/users/me` | Профиль: `id,name,level,xp,coins,prankEnabled,sandbox,activeSession,rooms[]` |
 | PATCH | `/api/users/me` | `{name?, prankEnabled?}` (остальные поля игнорируются); комнатам игрока уходит свежий `room_state` |
 | GET | `/api/users/me/progress` | XP, уровень, монеты, улучшения, достижения, эффекты, статистика (`stats.focusSeconds`, `stats.interruptedSessions`) |
 | GET | `/api/users/me/stats?tz` | Статистика занятий: `sessions{completed, rewarded, interrupted, focusSeconds, averageSeconds, todayFocusSeconds, todaySessions}`, уровень/XP, `bestStreakDays`, `social{helpsSent, pranksSent, helpsReceived, pranksReceived}`, `achievements{unlocked,total}`, `daily[7]{dayStart, focusSeconds, sessions}`. `tz` — смещение пояса клиента в минутах (−840…840), только чтобы резать сутки. Время концентрации — только завершённые сессии, по серверным меткам |
@@ -54,15 +58,16 @@
 ### Комнаты
 | Метод | Путь | Кто | Описание |
 |---|---|---|---|
-| POST | `/api/rooms` | любой | `{name?, focusMinutes?, breakMinutes?, teamMode?}` (`teamMode:true` — Team A против Team B) (демо: `demo:true, focusSeconds, breakSeconds`) → 201 снимок |
-| POST | `/api/rooms/join` | любой | `{code}` |
+| POST | `/api/rooms` | любой | `{name?, focusMinutes?, breakMinutes?, teamMode?}` (`teamMode:true` — Team A против Team B) (демо: `demo:true, focusSeconds, breakSeconds` — только песочный аккаунт) → 201 снимок. Песочный аккаунт без `demo:true` → `403 SANDBOX_DEMO_ONLY`, обычный с `demo:true` → `403 DEMO_SANDBOX_ONLY` |
+| POST | `/api/rooms/join` | любой | `{code}`; тип аккаунта должен совпадать с типом комнаты (`SANDBOX_DEMO_ONLY` / `DEMO_SANDBOX_ONLY`) |
 | GET | `/api/rooms/:id` | участник | Снимок состояния (:id — id или код) |
-| POST | `/api/rooms/:id/join` | любой | Идемпотентно |
+| POST | `/api/rooms/:id/join` | любой | Идемпотентно; та же проверка песочницы |
 | POST | `/api/rooms/:id/leave` | участник | Досрочно завершает вашу сессию; хост передаётся |
-| PATCH | `/api/rooms/:id/settings` | host, `waiting` | `{focusMinutes?, breakMinutes?, name?}` |
+| PATCH | `/api/rooms/:id/settings` | host, `waiting` | `{focusMinutes?, breakMinutes?, name?}` (демо-комната: `focusSeconds?, breakSeconds?`). Тип комнаты не меняется: `demo` ≠ типу аккаунта → `403 DEMO_SANDBOX_ONLY`/`SANDBOX_DEMO_ONLY` |
 | POST | `/api/rooms/:id/team` | участник, `waiting`, режим Team A/B | `{team:"A"|"B"}` — сменить команду до старта цикла |
+| POST | `/api/rooms/:id/ready` | участник, `waiting|break` | `{ready: boolean}` (иначе `400 INVALID_FIELD`) — статус готовности; в снимке `members[].isReady` и `me.isReady`, комнате — `player_ready_changed {userId, isReady}`. Сбрасывается при старте фокуса, входе и выходе из комнаты |
 | POST | `/api/rooms/:id/task` | участник, не в сессии | `{title}` — личная учебная задача |
-| POST | `/api/rooms/:id/start` | host, `waiting` | Запуск Focus. Ответ содержит `start.participants` и `start.skipped[]` (`offline`, `busy_elsewhere`) |
+| POST | `/api/rooms/:id/start` | host, `waiting` | Запуск Focus. Ответ содержит `start.participants` и `start.skipped[]` (`offline`, `busy_elsewhere`, `sandbox_mismatch` — только старые данные). Демо-комната без демо-режима → `403 DEMO_DISABLED` |
 | POST | `/api/rooms/:id/session/abort` | участник, `focus` | Досрочно завершить **свою** сессию (без награды) |
 | POST | `/api/rooms/:id/session/result` | участник | `{result:"done"|"partial"|"not_done", note?, sessionId?}` — только история |
 | POST | `/api/rooms/:id/skip-break` | host, `break` | Досрочно к `waiting` |
@@ -132,8 +137,8 @@
 **учёба важнее игры**; башни команды сохраняются между перерывами. База: 100 HP + 25 за уровень «Крепких стен», урон башен ×(1 + 0.1 за
 уровень «Усиленных башен», максимум ×2). Победа — база уцелела и убита хотя бы половина врагов; награда
 (`xp`/`coins` этапа × (0.5…1 по целости базы), ×1.5 за первое прохождение) выдаётся один раз только участникам раунда
-(старт / постройка / улучшение; одного «захода» в игру мало), суточный потолок 8 наград. В режиме A/B команды играют параллельно; если обе сыграли один этап,
-сервер объявляет победителя дуэли (по исходу и остатку HP) и выдаёт ему бонус. Клиент не может назначить победителя, изменить HP или баланс.
+(старт / постройка / улучшение; одного «захода» в игру мало), суточный потолок 8 наград (в демо-комнатах — 500). В режиме A/B команды играют параллельно; если обе сыграли один этап,
+сервер объявляет победителя дуэли (по исходу и остатку HP) и выдаёт ему бонус — с тем же суточным потолком (8, в демо-комнатах 500; считается отдельно от раундов). Клиент не может назначить победителя, изменить HP или баланс.
 
 ### Снимок комнаты (`room_state`, ответ `GET /api/rooms/:id`)
 
@@ -141,12 +146,12 @@
 {
   "room": { "id","code","name","hostId","phase":"waiting|focus|break|completed","cycleId","cycleNo","demo",
             "settings":{"focusSec","breakSec"},"phaseStartedAt","phaseEndsAt","serverTime","remainingMs" },
-  "members": [{ "userId","name","role","level","team","task",
+  "members": [{ "userId","name","role","level","team","isReady","task",
                 "status":"waiting|focusing|finished|aborted|abandoned|spectating|resting",
                 "connection":"online|reconnecting|offline","prankEnabled","contribution",
                 "session":{"id","status","rewarded"}|null }],
   "challenge": { /* Road Map: points, goal, completed, positionNodeId, nodes[], edges[], contributions[] */ },
-  "me": { "userId","isHost","status","task","session","level","xp","coins","effects[]",
+  "me": { "userId","isMember","isHost","team","isReady","status","task","session","level","xp","coins","prankEnabled","effects[]",
           "allowedActions": ["set_task","start_focus","abort_session","help","prank","buy_upgrade",…] }
 }
 ```
@@ -184,6 +189,7 @@
 | `team_changed` | `{userId, team}` |
 | `player_status_changed` | `{userId, status, reason}` или `{userId, connection}` |
 | `task_updated`, `settings_changed` | `{userId, task}`, `{focusSec, breakSec}` |
+| `player_ready_changed` | `{userId, isReady}` |
 | `timer_started` | `{cycleId, cycleNo, phase, phaseStartedAt, phaseEndsAt, serverTime, participants[], skipped[]}` |
 | `timer_tick` | раз в секунду: `{phase, cycleId, phaseEndsAt, remainingMs, serverTime}` — только для сверки часов |
 | `phase_changed` | `{from, to, cycleId, phaseStartedAt, phaseEndsAt, completed?, rewarded?}` |
@@ -212,6 +218,10 @@
 | `reward_granted` | `{kind:"focus_session|achievement|team_node|team_challenge", key, xp, coins, balance, level, levelUp}` |
 | `balance_changed` | `{kind, coins, balance}` — траты (покупка, «Щит») |
 | `achievement_unlocked` | `{id, title, description, reward}` |
+
+Статика: если задан `TOMATO_STATIC_DIR`, тот же процесс отдаёт собранный фронтенд на `GET/HEAD` путей вне `/api` и `/ws`
+(SPA-fallback на `index.html` для путей без расширения, `Cache-Control: immutable` для `/assets/*`, `no-cache` для `index.html`,
+выход за пределы папки невозможен). Без переменной не-API пути отвечают JSON `404 NOT_FOUND`, как раньше.
 
 Серверные проверки: авторизация по токену, членство в комнате, фаза, лимиты, идемпотентность — для каждого действия
 (см. таблицу ошибок выше). События доставляются только после успешного COMMIT.

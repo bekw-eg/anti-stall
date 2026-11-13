@@ -4,15 +4,24 @@ import { fileURLToPath } from 'node:url';
  * Вся настраиваемая логика проекта. Экономика, лимиты и тайминги живут здесь,
  * а не в коде бизнес-правил — клиент никогда не присылает эти значения.
  */
-export function loadConfig(env = process.env, overrides = {}) {
-  const demoMode = env.TOMATO_DEMO === '1';
+export function loadConfig(env = process.env, overrides = {}, argv = []) {
+  // Флаг `--demo` в командной строке равносилен TOMATO_DEMO=1 (в Windows cmd `VAR=1 node …` не работает)
+  const demoMode = env.TOMATO_DEMO === '1' || argv.includes('--demo');
   const cfg = {
     port: Number(env.PORT || 8787),
     host: env.HOST || '0.0.0.0',
-    dbPath: env.TOMATO_DB || fileURLToPath(new URL('../data/tomato.db', import.meta.url)), // pathname ломался на Windows ("/C:/…")
+    // Демо-сервер по умолчанию пишет в отдельный файл: песочный прогресс не смешивается с настоящей БД.
+    // fileURLToPath, а не pathname: pathname ломался на Windows ("/C:/…")
+    dbPath: env.TOMATO_DB || fileURLToPath(new URL(demoMode ? '../data/tomato-demo.db' : '../data/tomato.db', import.meta.url)),
     corsOrigin: env.TOMATO_CORS_ORIGIN || '*',
+    /** Папка собранного фронтенда (единый образ): сервер отдаёт её на путях вне /api и /ws. Без переменной — только API. */
+    staticDir: env.TOMATO_STATIC_DIR || null,
 
-    /** Демо-режим для жюри: только по явному флагу сервера, см. docs/DEMO_MODE.md */
+    /**
+     * Демо-режим для жюри: только по явному флагу сервера, см. docs/DEMO_MODE.md.
+     * Ускоренные комнаты доступны только песочным аккаунтам (users.sandbox), а их токены
+     * без демо-режима не авторизуются. Повышенные потолки ниже действуют только в демо-комнатах.
+     */
     demoMode,
 
     // Присутствие: пользователь «жив», пока присылает heartbeat / ping / любой авторизованный запрос.
@@ -43,9 +52,14 @@ export function loadConfig(env = process.env, overrides = {}) {
       teamPointsPerSession: 1,
       minRewardFactor: 0.4, // награда масштабируется длиной сессии, чтобы не фармить короткие
       maxRewardFactor: 2,
-      dailyRewardedSessions: demoMode ? 500 : 16, // потолок наград за сутки (анти-накрутка)
+      dailyRewardedSessions: 16, // потолок наград за сутки (анти-накрутка) — для обычных комнат, в т.ч. на демо-сервере
+      demoDailyRewardedSessions: 500, // только для демо-комнат (room.demo): за показ проходят десятки 25-секундных циклов
       challengeReward: { xp: 150, coins: 60 },
-      td: { dailyRewardedRounds: demoMode ? 500 : 8, duelReward: { xp: 15, coins: 10 }, firstClearMultiplier: 1.5, minRemainingSec: 6 },
+      td: {
+        dailyRewardedRounds: 8,
+        demoDailyRewardedRounds: 500, // только для демо-комнат
+        duelReward: { xp: 15, coins: 10 }, firstClearMultiplier: 1.5, minRemainingSec: 6,
+      },
       nodeReward: { xp: 25, coins: 10 }, // за каждый промежуточный этап карты, один раз на участника с вкладом
     },
 
@@ -70,7 +84,8 @@ export function loadConfig(env = process.env, overrides = {}) {
       boost: { xpBonusPct: 25, ttlMs: 24 * 3600_000 },
       shield: { cost: 10, ttlMs: 3600_000 },
       prank: {
-        cooldownMs: demoMode ? 1_000 : 20_000,
+        cooldownMs: 20_000,
+        demoCooldownMs: 1_000, // только для демо-комнат: перерыв там длится секунды
         maxPerBreak: 3,
         types: { fog: { durationMs: 15_000 }, sticker: { durationMs: 10_000 } },
       },

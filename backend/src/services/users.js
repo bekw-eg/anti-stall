@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { E } from '../errors.js';
 import { reqBool, reqObject, reqString } from '../validate.js';
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex');
@@ -8,22 +9,31 @@ export function createUsersService(ctx, game) {
 
   const publicUser = (row) => ({ id: row.id, name: row.name, level: game.levelInfo(row.xp).level });
 
-  /** Регистрация. Токен выдаётся один раз и хранится только в виде хеша. */
+  /**
+   * Регистрация. Токен выдаётся один раз и хранится только в виде хеша.
+   * sandbox:true — песочный аккаунт для демо-комнат; создаётся только на сервере в демо-режиме.
+   */
   function create(body) {
     const b = reqObject(body);
     const name = reqString(b.name, 'name', { min: 1, max: config.limits.userNameMax });
+    const sandbox = b.sandbox === undefined ? false : reqBool(b.sandbox, 'sandbox');
+    if (sandbox && !config.demoMode) throw E.forbidden('DEMO_DISABLED', 'Демо-режим выключен на сервере');
     const token = randomBytes(32).toString('base64url');
     const id = randomUUID();
     const t = clock.now();
-    db.run('INSERT INTO users(id, name, token_hash, created_at, last_seen_at) VALUES (?,?,?,?,?)', id, name, hashToken(token), t, t);
+    db.run('INSERT INTO users(id, name, token_hash, created_at, last_seen_at, sandbox) VALUES (?,?,?,?,?,?)', id, name, hashToken(token), t, t, sandbox ? 1 : 0);
     return { user: me(id), token };
   }
 
-  /** Токен → пользователь. Каждый авторизованный запрос обновляет присутствие (heartbeat). */
+  /**
+   * Токен → пользователь. Каждый авторизованный запрос обновляет присутствие (heartbeat).
+   * Песочный аккаунт без демо-режима сервера не существует: его токен не авторизуется (REST 401, WS 4401).
+   */
   function authenticate(token) {
     if (typeof token !== 'string' || token.length < 20 || token.length > 100) return null;
     const row = db.get('SELECT * FROM users WHERE token_hash = ?', hashToken(token));
     if (!row) return null;
+    if (row.sandbox && !config.demoMode) return null;
     touch(row.id);
     return db.get('SELECT * FROM users WHERE id = ?', row.id);
   }
@@ -41,7 +51,7 @@ export function createUsersService(ctx, game) {
     );
     return {
       id: row.id, name: row.name, ...game.levelInfo(row.xp), coins: row.coins,
-      prankEnabled: Boolean(row.prank_enabled), createdAt: row.created_at,
+      prankEnabled: Boolean(row.prank_enabled), sandbox: Boolean(row.sandbox), createdAt: row.created_at,
       activeSession: activeSession ?? null, rooms,
     };
   }

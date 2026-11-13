@@ -27,8 +27,11 @@ describe('демо-режим для жюри', () => {
       assert.equal((await L.rest[0].progress()).xp, 0);
       // та же защита от прерванных/покинутых сессий и те же границы
       assert.equal((await L.host.post('/api/rooms', { demo: true, focusSeconds: 1 })).body.error.code, 'INVALID_FIELD');
-      // обычная комната в демо-режиме остаётся обычной: минуты в границах 10–120
-      assert.equal((await L.host.post('/api/rooms', { focusMinutes: 1 })).body.error.code, 'INVALID_FIELD');
+      // обычная комната в демо-режиме остаётся обычной: минуты в границах 10–120 (и только для обычных аккаунтов)
+      const regular = await w.user('Обычный');
+      assert.equal((await regular.post('/api/rooms', { focusMinutes: 1 })).body.error.code, 'INVALID_FIELD');
+      assert.equal((await L.host.post('/api/rooms', { focusMinutes: 25 })).body.error.code, 'SANDBOX_DEMO_ONLY');
+      assert.equal((await regular.post('/api/rooms', { demo: true, focusSeconds: 25 })).body.error.code, 'DEMO_SANDBOX_ONLY');
       // тот же лимит наград в демо ограничен отдельным потолком, а завершение — только сервером
       assert.equal((await L.host.post(L.path('/complete'), {})).status, 404);
     } finally { await w.close(); }

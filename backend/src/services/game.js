@@ -77,7 +77,8 @@ export function createGame(ctx) {
       'SELECT COUNT(*) c FROM focus_sessions WHERE user_id = ? AND rewarded = 1 AND ended_at > ?',
       session.user_id, endAt - DAY,
     ).c;
-    const capped = rewardedToday >= eco.dailyRewardedSessions;
+    // Повышенный потолок — только для демо-комнат; обычные комнаты (и на демо-сервере) живут по правилам production
+    const capped = rewardedToday >= (room.demo ? eco.demoDailyRewardedSessions : eco.dailyRewardedSessions);
 
     let boostPct = 0;
     let granted = false;
