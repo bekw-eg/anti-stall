@@ -1,0 +1,213 @@
+import { DatabaseSync } from 'node:sqlite';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+const SCHEMA_VERSION = 1;
+
+const SCHEMA = `
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  xp INTEGER NOT NULL DEFAULT 0 CHECK (xp >= 0),
+  coins INTEGER NOT NULL DEFAULT 0 CHECK (coins >= 0),
+  prank_enabled INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS user_upgrades (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  upgrade_id TEXT NOT NULL,
+  level INTEGER NOT NULL CHECK (level >= 0),
+  PRIMARY KEY (user_id, upgrade_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_achievements (
+  user_id TEXT NOT NULL REFERENCES users(id),
+  achievement_id TEXT NOT NULL,
+  unlocked_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, achievement_id)
+);
+
+-- Журнал начислений/трат. UNIQUE(user_id, key) = идемпотентность: один ключ — одна операция.
+CREATE TABLE IF NOT EXISTS reward_transactions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  key TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  xp INTEGER NOT NULL DEFAULT 0,
+  coins INTEGER NOT NULL DEFAULT 0,
+  meta TEXT,
+  created_at INTEGER NOT NULL,
+  UNIQUE (user_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS rooms (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  host_id TEXT NOT NULL REFERENCES users(id),
+  phase TEXT NOT NULL CHECK (phase IN ('waiting','focus','break','completed')),
+  cycle_id TEXT,
+  cycle_no INTEGER NOT NULL DEFAULT 0,
+  focus_sec INTEGER NOT NULL,
+  break_sec INTEGER NOT NULL,
+  demo INTEGER NOT NULL DEFAULT 0,
+  phase_started_at INTEGER NOT NULL,
+  phase_ends_at INTEGER,
+  created_at INTEGER NOT NULL,
+  closed_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS room_members (
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  role TEXT NOT NULL DEFAULT 'member',
+  team_key TEXT NOT NULL DEFAULT 'shared',
+  task_title TEXT,
+  joined_at INTEGER NOT NULL,
+  left_at INTEGER,
+  PRIMARY KEY (room_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS focus_sessions (
+  id TEXT PRIMARY KEY,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  cycle_id TEXT NOT NULL,
+  cycle_no INTEGER NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  task_title TEXT,
+  started_at INTEGER NOT NULL,
+  scheduled_end_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  duration_sec INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active','completed','aborted','abandoned')),
+  end_reason TEXT,
+  result TEXT,
+  result_note TEXT,
+  rewarded INTEGER NOT NULL DEFAULT 0,
+  xp_awarded INTEGER NOT NULL DEFAULT 0,
+  coins_awarded INTEGER NOT NULL DEFAULT 0,
+  demo INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (room_id, cycle_id, user_id)
+);
+-- Атомарная защита от мульти-сессий: у пользователя не может быть двух активных сессий.
+CREATE UNIQUE INDEX IF NOT EXISTS one_active_session_per_user ON focus_sessions(user_id) WHERE status = 'active';
+CREATE INDEX IF NOT EXISTS sessions_by_user ON focus_sessions(user_id, started_at);
+
+-- team_key: 'shared' в MVP; 'A'/'B' зарезервированы под командные соревнования.
+CREATE TABLE IF NOT EXISTS team_progress (
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  team_key TEXT NOT NULL,
+  points INTEGER NOT NULL DEFAULT 0,
+  completed_at INTEGER,
+  PRIMARY KEY (room_id, team_key)
+);
+CREATE TABLE IF NOT EXISTS team_contributions (
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  team_key TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  points INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (room_id, team_key, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_effects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL CHECK (kind IN ('boost','shield')),
+  source_user_id TEXT NOT NULL,
+  room_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  consumed_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS social_actions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  cycle_id TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('help','prank')),
+  type TEXT NOT NULL,
+  sender_id TEXT NOT NULL REFERENCES users(id),
+  target_id TEXT NOT NULL REFERENCES users(id),
+  status TEXT NOT NULL CHECK (status IN ('applied','blocked')),
+  cost_coins INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  effect_ends_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS social_by_sender ON social_actions(sender_id, created_at);
+`;
+
+/**
+ * Тонкая обёртка над node:sqlite. Все операции синхронны, поэтому внутри одного процесса
+ * обработчики не перемежаются; транзакции и UNIQUE-индексы дополнительно защищают инварианты.
+ * События (push в WebSocket) откладываются до COMMIT и отбрасываются при ROLLBACK.
+ */
+export class Db {
+  constructor(path) {
+    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
+    this.sql = new DatabaseSync(path);
+    this.sql.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;');
+    this.depth = 0;
+    this.pending = [];
+    this.sink = null;
+    this.stmts = new Map();
+    this.migrate();
+  }
+
+  migrate() {
+    // Только аддитивные миграции: существующие таблицы и данные не удаляются.
+    this.sql.exec(SCHEMA);
+    this.sql.prepare("INSERT OR IGNORE INTO meta(key,value) VALUES('schema_version', ?)").run(String(SCHEMA_VERSION));
+  }
+
+  stmt(sql) {
+    let s = this.stmts.get(sql);
+    if (!s) this.stmts.set(sql, (s = this.sql.prepare(sql)));
+    return s;
+  }
+  get(sql, ...p) { return this.stmt(sql).get(...p); }
+  all(sql, ...p) { return this.stmt(sql).all(...p); }
+  run(sql, ...p) { return this.stmt(sql).run(...p); }
+
+  /** Событие для WebSocket: уходит после успешного COMMIT внешней транзакции. */
+  emit(event) {
+    if (this.depth > 0) this.pending.push(event);
+    else this.sink?.([event]);
+  }
+
+  tx(fn) {
+    const outer = this.depth === 0;
+    const sp = `sp${this.depth}`;
+    const mark = this.pending.length;
+    this.sql.exec(outer ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${sp}`);
+    this.depth++;
+    try {
+      const result = fn();
+      this.depth--;
+      if (outer) {
+        this.sql.exec('COMMIT');
+        const events = this.pending;
+        this.pending = [];
+        if (events.length) this.sink?.(events);
+      } else {
+        this.sql.exec(`RELEASE ${sp}`);
+      }
+      return result;
+    } catch (err) {
+      this.depth--;
+      this.pending.length = outer ? 0 : mark;
+      try {
+        this.sql.exec(outer ? 'ROLLBACK' : `ROLLBACK TO ${sp}; RELEASE ${sp}`);
+      } catch { /* транзакция уже закрыта */ }
+      throw err;
+    }
+  }
+
+  close() {
+    this.sql.close();
+  }
+}
