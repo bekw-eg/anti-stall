@@ -51,7 +51,7 @@ describe('WebSocket', () => {
 
     await w.advance(20 * 60_000 + 1000, L.users); // фаза Focus завершается, пока клиент оффлайн
     const xp = (await L.host.progress()).xp;
-    assert.equal(xp, 100);
+    assert.equal(xp, 125); // 100 + 25 за этап карты
 
     a = w.ws(L.host.token);
     await a.connect();

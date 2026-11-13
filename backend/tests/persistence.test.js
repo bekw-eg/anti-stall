@@ -59,8 +59,8 @@ describe('перезапуск backend', () => {
     assert.equal(room0.remainingMs, 15 * 60_000 - 20_000);
     await w.advance(15 * 60_000, alive);
     const p = (await w.call('GET', '/api/users/me/progress', undefined, tokens[0])).body;
-    assert.equal(p.xp, 100);
-    assert.equal((await w.call('GET', '/api/users/me/progress', undefined, tokens[1])).body.xp, 100);
+    assert.equal(p.xp, 125); // 100 за сессию + 25 за этап карты «Лес знаний» (2 очка команды)
+    assert.equal((await w.call('GET', '/api/users/me/progress', undefined, tokens[1])).body.xp, 125);
     await w.close();
   });
 });

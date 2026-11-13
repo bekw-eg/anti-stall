@@ -44,6 +44,11 @@ export function createSocialService(ctx, game, rooms) {
     return db.tx(() => {
       const { room, type, target } = resolve(user, roomKey, body);
       if (!HELP_TYPES.includes(type)) throw E.badRequest('UNKNOWN_HELP_TYPE', 'Неизвестный тип помощи', { allowed: HELP_TYPES });
+      if (room.mode === 'teams') {
+        const mine = db.get('SELECT team_key FROM room_members WHERE room_id = ? AND user_id = ?', room.id, user.id)?.team_key;
+        const theirs = db.get('SELECT team_key FROM room_members WHERE room_id = ? AND user_id = ?', room.id, target.id)?.team_key;
+        if (mine !== theirs) throw E.conflict('NOT_TEAMMATE', 'Помогать можно только игрокам своей команды');
+      }
       const t = clock.now();
       const today = db.get("SELECT COUNT(*) c FROM social_actions WHERE sender_id = ? AND kind = 'help' AND created_at > ?", user.id, t - DAY).c;
       if (today >= cfg.helpDailyLimit) throw E.tooMany('HELP_DAILY_LIMIT', 'Дневной лимит помощи исчерпан');

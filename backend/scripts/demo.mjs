@@ -92,8 +92,8 @@ const hack = await call('PATCH', '/api/users/me', { xp: 99999, coins: 99999 }, b
 expect(hack.body.xp < 1000, 'подмена xp/coins через профиль не сработала');
 const fake = await boris.post(R('/complete'), {});
 expect(fake.status === 404, '«завершить сессию» с клиента — такого маршрута нет');
-const noMoney = await call('POST', '/api/users/me/upgrades/tower_power/purchase', {}, boris.token);
-expect(noMoney.status >= 400, `покупка без денег/уровня: ${noMoney.body.error?.code}`);
+const noMoney = await call('POST', '/api/users/me/upgrades/team_aura/purchase', {}, boris.token);
+expect(noMoney.status >= 400, `покупка улучшения, закрытого по уровню: ${noMoney.body.error?.code}`);
 const par = await Promise.all(Array.from({ length: 6 }, () => boris.post('/api/users/me/upgrades/base_walls/purchase', { expectedLevel: 0 })));
 expect(par.filter((r) => r.status === 200).length <= 1, 'параллельные покупки: прошла не более одной');
 const early = await lotti.post(R('/start'));

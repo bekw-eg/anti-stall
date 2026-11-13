@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -106,6 +106,14 @@ CREATE TABLE IF NOT EXISTS team_progress (
   completed_at INTEGER,
   PRIMARY KEY (room_id, team_key)
 );
+-- Пройденные этапы карты: фиксируются сервером при пересечении порога очков (PRIMARY KEY = один раз).
+CREATE TABLE IF NOT EXISTS team_nodes (
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  team_key TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  reached_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, team_key, node_id)
+);
 CREATE TABLE IF NOT EXISTS team_contributions (
   room_id TEXT NOT NULL REFERENCES rooms(id),
   team_key TEXT NOT NULL,
@@ -161,7 +169,10 @@ export class Db {
   migrate() {
     // Только аддитивные миграции: существующие таблицы и данные не удаляются.
     this.sql.exec(SCHEMA);
-    this.sql.prepare("INSERT OR IGNORE INTO meta(key,value) VALUES('schema_version', ?)").run(String(SCHEMA_VERSION));
+    // v2: командный режим комнаты ('shared' — одна общая команда, 'teams' — Team A против Team B)
+    const cols = this.sql.prepare('PRAGMA table_info(rooms)').all().map((c) => c.name);
+    if (!cols.includes('mode')) this.sql.exec("ALTER TABLE rooms ADD COLUMN mode TEXT NOT NULL DEFAULT 'shared'");
+    this.sql.prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version', ?)").run(String(SCHEMA_VERSION));
   }
 
   stmt(sql) {

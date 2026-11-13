@@ -67,6 +67,8 @@ export function createRoomsService(ctx, game, users) {
     const b = reqObject(body);
     const name = b.name === undefined ? `Комната ${user.name}` : reqString(b.name, 'name', { min: 1, max: L.roomNameMax });
     const s = parseSettings(b);
+    if (b.teamMode !== undefined && typeof b.teamMode !== 'boolean') throw E.badRequest('INVALID_FIELD', 'Поле teamMode должно быть boolean', { field: 'teamMode' });
+    const mode = b.teamMode === true ? 'teams' : 'shared';
     return db.tx(() => {
       const joined = db.get('SELECT COUNT(*) c FROM room_members m JOIN rooms r ON r.id = m.room_id WHERE m.user_id = ? AND m.left_at IS NULL AND r.phase != ?', user.id, 'completed').c;
       if (joined >= L.maxRoomsPerUser) throw E.conflict('TOO_MANY_ROOMS', 'Слишком много активных комнат');
@@ -77,11 +79,11 @@ export function createRoomsService(ctx, game, users) {
       } while (db.get('SELECT 1 x FROM rooms WHERE code = ?', code));
       const t = clock.now();
       db.run(
-        `INSERT INTO rooms(id, code, name, host_id, phase, focus_sec, break_sec, demo, phase_started_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-        id, code, name, user.id, 'waiting', s.focusSec, s.breakSec, s.demo, t, t,
+        `INSERT INTO rooms(id, code, name, host_id, phase, focus_sec, break_sec, demo, mode, phase_started_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        id, code, name, user.id, 'waiting', s.focusSec, s.breakSec, s.demo, mode, t, t,
       );
-      db.run('INSERT INTO room_members(room_id, user_id, role, joined_at) VALUES (?,?,?,?)', id, user.id, 'host', t);
-      db.run('INSERT INTO team_progress(room_id, team_key) VALUES (?,?)', id, 'shared');
+      db.run('INSERT INTO room_members(room_id, user_id, role, team_key, joined_at) VALUES (?,?,?,?,?)', id, user.id, 'host', mode === 'teams' ? 'A' : 'shared', t);
+      for (const key of mode === 'teams' ? ['A', 'B'] : ['shared']) db.run('INSERT INTO team_progress(room_id, team_key) VALUES (?,?)', id, key);
       return snapshot(id, user.id);
     });
   }
@@ -95,8 +97,14 @@ export function createRoomsService(ctx, game, users) {
       const count = db.get('SELECT COUNT(*) c FROM room_members WHERE room_id = ? AND left_at IS NULL', room.id).c;
       if (count >= L.maxMembers) throw E.conflict('ROOM_FULL', 'В комнате нет мест');
       const t = clock.now();
-      if (existing) db.run('UPDATE room_members SET left_at = NULL, joined_at = ? WHERE room_id = ? AND user_id = ?', t, room.id, user.id);
-      else db.run('INSERT INTO room_members(room_id, user_id, joined_at) VALUES (?,?,?)', room.id, user.id, t);
+      // Командный режим: новичок попадает в команду с меньшим числом игроков (при равенстве — A); вернувшийся — в свою
+      let team = 'shared';
+      if (room.mode === 'teams') {
+        const n = (k) => db.get("SELECT COUNT(*) c FROM room_members WHERE room_id = ? AND team_key = ? AND left_at IS NULL", room.id, k).c;
+        team = existing && (existing.team_key === 'A' || existing.team_key === 'B') ? existing.team_key : n('A') <= n('B') ? 'A' : 'B';
+      }
+      if (existing) db.run('UPDATE room_members SET left_at = NULL, joined_at = ?, team_key = ? WHERE room_id = ? AND user_id = ?', t, team, room.id, user.id);
+      else db.run('INSERT INTO room_members(room_id, user_id, team_key, joined_at) VALUES (?,?,?,?)', room.id, user.id, team, t);
       db.emit({ scope: 'room', roomId: room.id, type: 'player_joined', data: { user: users.publicUser(user) } });
       db.emit(stateEvent(room.id));
       return snapshot(room.id, user.id);
@@ -148,6 +156,22 @@ export function createRoomsService(ctx, game, users) {
       db.run('UPDATE rooms SET focus_sec = ?, break_sec = ? WHERE id = ?', s.focusSec, s.breakSec, room.id);
       if (b.name !== undefined) db.run('UPDATE rooms SET name = ? WHERE id = ?', reqString(b.name, 'name', { min: 1, max: L.roomNameMax }), room.id);
       db.emit({ scope: 'room', roomId: room.id, type: 'settings_changed', data: { focusSec: s.focusSec, breakSec: s.breakSec } });
+      db.emit(stateEvent(room.id));
+      return snapshot(room.id, user.id);
+    });
+  }
+
+  /** Смена команды (только в режиме Team A/B и только до старта цикла). */
+  function setTeam(user, idOrCode, body) {
+    const b = reqObject(body);
+    if (b.team !== 'A' && b.team !== 'B') throw E.badRequest('INVALID_FIELD', 'team: A | B', { field: 'team' });
+    return db.tx(() => {
+      const room = findRoom(idOrCode);
+      requireMember(room, user);
+      if (room.mode !== 'teams') throw E.conflict('NOT_TEAM_MODE', 'Комната не в командном режиме');
+      requirePhase(room, 'waiting');
+      db.run('UPDATE room_members SET team_key = ? WHERE room_id = ? AND user_id = ?', b.team, room.id, user.id);
+      db.emit({ scope: 'room', roomId: room.id, type: 'team_changed', data: { userId: user.id, team: b.team } });
       db.emit(stateEvent(room.id));
       return snapshot(room.id, user.id);
     });
@@ -360,20 +384,20 @@ export function createRoomsService(ctx, game, users) {
     const out = {
       room: {
         id: room.id, code: room.code, name: room.name, hostId: room.host_id, phase: room.phase,
-        cycleId: room.cycle_id, cycleNo: room.cycle_no, demo: Boolean(room.demo),
+        cycleId: room.cycle_id, cycleNo: room.cycle_no, demo: Boolean(room.demo), mode: room.mode,
         settings: { focusSec: room.focus_sec, breakSec: room.break_sec },
         phaseStartedAt: room.phase_started_at, phaseEndsAt: room.phase_ends_at,
         serverTime: t, remainingMs: room.phase_ends_at ? Math.max(0, room.phase_ends_at - t) : null,
       },
       members,
-      challenge: game.roadmapView(room.id),
+      challenge: game.roadmapView(room.id, viewerId),
     };
     if (viewerId) {
       const mine = members.find((m) => m.userId === viewerId);
       const u = db.get('SELECT * FROM users WHERE id = ?', viewerId);
       const isHost = room.host_id === viewerId;
       out.me = {
-        userId: viewerId, isMember: Boolean(mine), isHost, status: mine?.status ?? null, task: mine?.task ?? null,
+        userId: viewerId, isMember: Boolean(mine), isHost, team: mine?.team ?? null, status: mine?.status ?? null, task: mine?.task ?? null,
         session: mine?.session ?? null, ...game.levelInfo(u.xp), coins: u.coins, prankEnabled: Boolean(u.prank_enabled),
         effects: game.effects(viewerId),
         allowedActions: mine ? allowedActions(room, isHost, mine) : [],
@@ -386,6 +410,7 @@ export function createRoomsService(ctx, game, users) {
   function allowedActions(room, isHost, mine) {
     const a = ['set_task', 'leave_room', 'view_roadmap', 'heartbeat'];
     if (room.phase === 'waiting') {
+      if (room.mode === 'teams') a.push('set_team');
       if (isHost) a.push('start_focus', 'update_settings', 'close_room');
     } else if (room.phase === 'focus') {
       if (mine.status === 'focusing') a.push('abort_session');
@@ -400,7 +425,7 @@ export function createRoomsService(ctx, game, users) {
 
   return {
     findRoom, requireMember, requirePhase, memberRow, loadRoom,
-    create, join, leave, close, updateSettings, setTask, recordResult,
+    create, join, leave, close, updateSettings, setTask, setTeam, recordResult,
     startFocus, abortSession, skipBreak, advance, runningRoomIds, recoverAfterRestart,
     snapshot, connectionState,
   };

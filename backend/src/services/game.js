@@ -107,70 +107,142 @@ export function createGame(ctx) {
     return ROADMAP.nodes[ROADMAP.nodes.length - 1].requiredPoints;
   }
 
-  /** Добавляет очки команде за награждённые сессии. Если цель достигнута — выдаёт командную награду один раз. */
+  const teamName = (key) => (key === 'shared' ? 'Команда' : `Команда ${key}`);
+  const teamKeysOf = (room) => (room.mode === 'teams' ? ['A', 'B'] : ['shared']);
+
+  /**
+   * Добавляет очки командам за награждённые сессии (каждая сессия — очко команде её игрока).
+   * Для каждой команды сервер сам фиксирует пройденные этапы и выдаёт награды один раз.
+   * В режиме 'teams' побеждает команда, первой набравшая цель (при одновременном финише — у кого больше очков,
+   * при равенстве — ничья: награду получают обе).
+   */
   function addTeamPoints(room, userIds) {
     if (!userIds.length) return null;
-    const team = 'shared';
     const t = clock.now();
-    db.run('INSERT OR IGNORE INTO team_progress(room_id, team_key) VALUES (?,?)', room.id, team);
-    const before = db.get('SELECT * FROM team_progress WHERE room_id = ? AND team_key = ?', room.id, team);
+    const teamOf = new Map(db.all('SELECT user_id, team_key FROM room_members WHERE room_id = ?', room.id).map((r) => [r.user_id, r.team_key]));
+    const byTeam = new Map();
     for (const uid of userIds) {
-      db.run(
-        `INSERT INTO team_contributions(room_id, team_key, user_id, points) VALUES (?,?,?,?)
-         ON CONFLICT(room_id, team_key, user_id) DO UPDATE SET points = points + excluded.points`,
-        room.id, team, uid, eco.teamPointsPerSession,
-      );
+      const key = room.mode === 'teams' ? (teamOf.get(uid) === 'B' ? 'B' : 'A') : 'shared';
+      if (!byTeam.has(key)) byTeam.set(key, []);
+      byTeam.get(key).push(uid);
     }
-    const added = userIds.length * eco.teamPointsPerSession;
-    db.run('UPDATE team_progress SET points = points + ? WHERE room_id = ? AND team_key = ?', added, room.id, team);
-    const after = db.get('SELECT * FROM team_progress WHERE room_id = ? AND team_key = ?', room.id, team);
+    const lastIdx = ROADMAP.nodes.length - 1;
+    const touched = [];
+    const everyContributor = new Set();
 
-    let justCompleted = false;
-    if (after.points >= goalPoints() && !after.completed_at) {
-      db.run('UPDATE team_progress SET completed_at = ? WHERE room_id = ? AND team_key = ? AND completed_at IS NULL', t, room.id, team);
-      justCompleted = true;
-      const contributors = db.all('SELECT user_id FROM team_contributions WHERE room_id = ? AND team_key = ? AND points > 0', room.id, team);
-      for (const c of contributors) {
-        grant(c.user_id, `challenge:${room.id}:${team}`, 'team_challenge', eco.challengeReward, { roomId: room.id, challenge: ROADMAP.id });
+    for (const [team, ids] of byTeam) {
+      db.run('INSERT OR IGNORE INTO team_progress(room_id, team_key) VALUES (?,?)', room.id, team);
+      const before = db.get('SELECT * FROM team_progress WHERE room_id = ? AND team_key = ?', room.id, team);
+      for (const uid of ids) {
+        db.run(
+          `INSERT INTO team_contributions(room_id, team_key, user_id, points) VALUES (?,?,?,?)
+           ON CONFLICT(room_id, team_key, user_id) DO UPDATE SET points = points + excluded.points`,
+          room.id, team, uid, eco.teamPointsPerSession,
+        );
       }
-      db.emit({ scope: 'room', roomId: room.id, type: 'challenge_completed', data: { roadmapId: ROADMAP.id, reward: eco.challengeReward, contributors: contributors.map((c) => c.user_id) } });
+      db.run('UPDATE team_progress SET points = points + ? WHERE room_id = ? AND team_key = ?', ids.length * eco.teamPointsPerSession, room.id, team);
+      const after = db.get('SELECT * FROM team_progress WHERE room_id = ? AND team_key = ?', room.id, team);
+      const contributorIds = () => db.all('SELECT user_id FROM team_contributions WHERE room_id = ? AND team_key = ? AND points > 0', room.id, team).map((c) => c.user_id);
+
+      // Этапы карты: сервер сам фиксирует пересечение порога; награда за этап — один раз на участника с вкладом
+      for (const node of ROADMAP.nodes.filter((n, i) => i > 0 && before.points < n.requiredPoints && after.points >= n.requiredPoints)) {
+        const ins = db.run('INSERT OR IGNORE INTO team_nodes(room_id, team_key, node_id, reached_at) VALUES (?,?,?,?)', room.id, team, node.id, t);
+        if (ins.changes === 0) continue;
+        const isFinal = ROADMAP.nodes.indexOf(node) === lastIdx;
+        if (!isFinal) {
+          for (const uid of contributorIds()) grant(uid, `node:${room.id}:${team}:${node.id}`, 'team_node', eco.nodeReward, { roomId: room.id, nodeId: node.id, team });
+        }
+        db.emit({ scope: 'room', roomId: room.id, type: 'node_reached', data: { team, nodeId: node.id, title: node.title, points: after.points, reward: isFinal ? null : eco.nodeReward } });
+      }
+      touched.push({ team, before, after, contributorIds });
+      contributorIds().forEach((u) => everyContributor.add(u));
     }
-    for (const uid of userIds) checkAchievements(uid);
-    if (justCompleted) {
-      for (const c of db.all('SELECT user_id FROM team_contributions WHERE room_id = ? AND points > 0', room.id)) checkAchievements(c.user_id);
+
+    // Победа: награда победителям один раз. В режиме 'teams' победа первой набравшей цель команды закрывает гонку.
+    const decided = db.get('SELECT 1 x FROM team_progress WHERE room_id = ? AND completed_at IS NOT NULL', room.id);
+    let winners = [];
+    if (!decided) {
+      const finished = touched.filter((x) => x.after.points >= goalPoints());
+      if (finished.length) {
+        const best = Math.max(...finished.map((x) => x.after.points));
+        winners = finished.filter((x) => x.after.points === best);
+        for (const w of winners) {
+          db.run('UPDATE team_progress SET completed_at = ? WHERE room_id = ? AND team_key = ? AND completed_at IS NULL', t, room.id, w.team);
+          const contributors = w.contributorIds();
+          for (const uid of contributors) grant(uid, `challenge:${room.id}:${w.team}`, 'team_challenge', eco.challengeReward, { roomId: room.id, challenge: ROADMAP.id, team: w.team });
+          db.emit({ scope: 'room', roomId: room.id, type: 'challenge_completed', data: { team: w.team, draw: winners.length > 1, roadmapId: ROADMAP.id, reward: eco.challengeReward, contributors } });
+        }
+      }
     }
-    db.emit({ scope: 'room', roomId: room.id, type: 'roadmap_updated', data: { pointsBefore: before.points, ...roadmapView(room.id) } });
-    return { justCompleted };
+    for (const uid of everyContributor) checkAchievements(uid);
+    db.emit({ scope: 'room', roomId: room.id, type: 'roadmap_updated', data: { ...roadmapView(room.id), pointsBefore: touched[0]?.before.points ?? 0 } });
+    return { justCompleted: winners.length > 0 };
   }
 
-  function roadmapView(roomId, teamKey = 'shared') {
-    const prog = db.get('SELECT * FROM team_progress WHERE room_id = ? AND team_key = ?', roomId, teamKey) || { points: 0, completed_at: null };
+  /**
+   * Состояние карты. В режиме 'teams' верхний уровень описывает команду зрителя (primaryTeam),
+   * а `teams` содержит обе команды — на одной карте у каждой свой маркер.
+   */
+  function roadmapView(roomId, viewerId = null) {
+    const room = db.get('SELECT mode FROM rooms WHERE id = ?', roomId) ?? { mode: 'shared' };
+    const keys = teamKeysOf(room);
+    const viewerTeam = viewerId ? db.get('SELECT team_key FROM room_members WHERE room_id = ? AND user_id = ? AND left_at IS NULL', roomId, viewerId)?.team_key : null;
+    const teamKey = room.mode === 'teams' ? (keys.includes(viewerTeam) ? viewerTeam : 'A') : 'shared';
     const goal = goalPoints();
-    let reachedIdx = 0;
-    ROADMAP.nodes.forEach((n, i) => { if (prog.points >= n.requiredPoints) reachedIdx = i; });
-    const nextIdx = Math.min(reachedIdx + 1, ROADMAP.nodes.length - 1);
-    const nodes = ROADMAP.nodes.map((n, i) => ({
-      ...n,
-      status: i <= reachedIdx ? (i === reachedIdx && !prog.completed_at ? 'current' : 'completed') : i === nextIdx ? 'next' : 'locked',
-      challenge: n.type === 'start' ? null : { kind: 'team_focus_points', required: n.requiredPoints },
-    }));
+    const lastIdx = ROADMAP.nodes.length - 1;
+
+    const rows = new Map(keys.map((k) => [k, db.get('SELECT * FROM team_progress WHERE room_id = ? AND team_key = ?', roomId, k) || { points: 0, completed_at: null }]));
+    const posIdx = (points) => { let r = 0; ROADMAP.nodes.forEach((n, i) => { if (points >= n.requiredPoints) r = i; }); return r; };
+    const winnersList = keys.filter((k) => rows.get(k).completed_at);
+    const winner = winnersList.length === 0 ? null : winnersList.length === 1 ? winnersList[0] : 'draw';
+
+    const prog = rows.get(teamKey);
+    const reachedAt = new Map(db.all('SELECT node_id, reached_at FROM team_nodes WHERE room_id = ? AND team_key = ?', roomId, teamKey).map((r) => [r.node_id, r.reached_at]));
+    const reachedIdx = posIdx(prog.points);
+    const nextIdx = Math.min(reachedIdx + 1, lastIdx);
+    const done = Boolean(prog.completed_at);
+    const nodes = ROADMAP.nodes.map((n, i) => {
+      const prev = ROADMAP.nodes[Math.max(0, i - 1)];
+      const span = Math.max(1, n.requiredPoints - prev.requiredPoints);
+      return {
+        ...n,
+        status: i <= reachedIdx ? (i === reachedIdx && !done && prog.points < goal ? 'current' : 'completed') : i === nextIdx ? 'next' : 'locked',
+        challenge: n.type === 'start' ? null : { kind: 'team_focus_points', required: n.requiredPoints },
+        reachedAt: i === 0 ? null : reachedAt.get(n.id) ?? null,
+        reward: n.type === 'start' ? null : i === lastIdx ? eco.challengeReward : eco.nodeReward,
+        progress: i === 0 ? 1 : Math.min(1, Math.max(0, (prog.points - prev.requiredPoints) / span)),
+      };
+    });
+    const from = ROADMAP.nodes[reachedIdx];
+    const to = ROADMAP.nodes[nextIdx];
+    const finished = prog.points >= goal;
     const contributions = db.all(
-      `SELECT c.user_id AS userId, u.name, c.points FROM team_contributions c JOIN users u ON u.id = c.user_id
-       WHERE c.room_id = ? AND c.team_key = ? ORDER BY c.points DESC, u.name`, roomId, teamKey,
+      `SELECT c.user_id AS userId, u.name, c.points, c.team_key AS team FROM team_contributions c JOIN users u ON u.id = c.user_id
+       WHERE c.room_id = ? ORDER BY c.points DESC, u.name`, roomId,
     );
     return {
       roadmapId: ROADMAP.id,
       title: ROADMAP.title,
+      mode: room.mode,
       teamKey,
       points: prog.points,
       goal,
-      completed: Boolean(prog.completed_at),
+      completed: done,
+      finished,
       completedAt: prog.completed_at,
+      winner,
       reward: eco.challengeReward,
-      positionNodeId: ROADMAP.nodes[reachedIdx].id,
+      positionNodeId: from.id,
+      // Следующий этап и доля пути до него: клиент рисует, но не вычисляет
+      next: finished || from.id === to.id ? null : { nodeId: to.id, title: to.title, pointsNeeded: to.requiredPoints - prog.points },
+      segment: finished || from.id === to.id ? null : { from: from.id, to: to.id, progress: Math.min(1, Math.max(0, (prog.points - from.requiredPoints) / (to.requiredPoints - from.requiredPoints))) },
+      teams: keys.map((k) => ({
+        key: k, name: teamName(k), points: rows.get(k).points, positionNodeId: ROADMAP.nodes[posIdx(rows.get(k).points)].id,
+        finished: rows.get(k).points >= goal, completed: Boolean(rows.get(k).completed_at),
+      })),
       nodes,
       edges: ROADMAP.edges,
-      contributions,
+      contributions: room.mode === 'teams' ? contributions : contributions.map(({ team, ...c }) => c), // eslint-disable-line no-unused-vars
     };
   }
 

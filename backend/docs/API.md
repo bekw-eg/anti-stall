@@ -22,7 +22,7 @@
 | 403 | `NOT_A_MEMBER`, `NOT_HOST`, `DEMO_DISABLED`, `UPGRADE_LOCKED` |
 | 404 | `NOT_FOUND`, `ROOM_NOT_FOUND`, `NO_ACTIVE_SESSION`, `SESSION_NOT_FOUND`, `TARGET_NOT_IN_ROOM`, `UPGRADE_NOT_FOUND` |
 | 405/413 | `METHOD_NOT_ALLOWED`, `BODY_TOO_LARGE` |
-| 409 | `WRONG_PHASE`, `ALREADY_FOCUSING`, `FOCUS_ACTIVE`, `SESSION_ACTIVE`, `ROOM_CLOSED`, `ROOM_FULL`, `TOO_MANY_ROOMS`, `INSUFFICIENT_FUNDS`, `STALE_LEVEL`, `MAX_LEVEL`, `DUPLICATE_OPERATION`, `ALREADY_SENT`, `EFFECT_ACTIVE`, `PRANKS_DISABLED`, `PRANKS_DISABLED_SELF`, `TARGET_FOCUSING` |
+| 409 | `WRONG_PHASE`, `ALREADY_FOCUSING`, `FOCUS_ACTIVE`, `SESSION_ACTIVE`, `ROOM_CLOSED`, `ROOM_FULL`, `TOO_MANY_ROOMS`, `INSUFFICIENT_FUNDS`, `STALE_LEVEL`, `MAX_LEVEL`, `DUPLICATE_OPERATION`, `ALREADY_SENT`, `EFFECT_ACTIVE`, `PRANKS_DISABLED`, `PRANKS_DISABLED_SELF`, `TARGET_FOCUSING`, `NOT_TEAM_MODE`, `NOT_TEAMMATE` |
 | 429 | `PRANK_COOLDOWN` (`details.retryAfterMs`), `PRANK_BREAK_LIMIT`, `HELP_DAILY_LIMIT` |
 | 500 | `INTERNAL` |
 
@@ -53,12 +53,13 @@
 ### Комнаты
 | Метод | Путь | Кто | Описание |
 |---|---|---|---|
-| POST | `/api/rooms` | любой | `{name?, focusMinutes?, breakMinutes?}` (демо: `demo:true, focusSeconds, breakSeconds`) → 201 снимок |
+| POST | `/api/rooms` | любой | `{name?, focusMinutes?, breakMinutes?, teamMode?}` (`teamMode:true` — Team A против Team B) (демо: `demo:true, focusSeconds, breakSeconds`) → 201 снимок |
 | POST | `/api/rooms/join` | любой | `{code}` |
 | GET | `/api/rooms/:id` | участник | Снимок состояния (:id — id или код) |
 | POST | `/api/rooms/:id/join` | любой | Идемпотентно |
 | POST | `/api/rooms/:id/leave` | участник | Досрочно завершает вашу сессию; хост передаётся |
 | PATCH | `/api/rooms/:id/settings` | host, `waiting` | `{focusMinutes?, breakMinutes?, name?}` |
+| POST | `/api/rooms/:id/team` | участник, `waiting`, режим Team A/B | `{team:"A"|"B"}` — сменить команду до старта цикла |
 | POST | `/api/rooms/:id/task` | участник, не в сессии | `{title}` — личная учебная задача |
 | POST | `/api/rooms/:id/start` | host, `waiting` | Запуск Focus. Ответ содержит `start.participants` и `start.skipped[]` (`offline`, `busy_elsewhere`) |
 | POST | `/api/rooms/:id/session/abort` | участник, `focus` | Досрочно завершить **свою** сессию (без награды) |
@@ -71,6 +72,32 @@
 | GET | `/api/rooms/:id/social` | участник | Последние 30 соц-действий |
 | POST | `/api/rooms/:id/social/help` | участник, `break` | `{targetUserId, type:"boost"|"shield"}` |
 | POST | `/api/rooms/:id/social/prank` | участник, `break` | `{targetUserId, type:"fog"|"sticker"}` |
+
+### Road Map (`GET /api/rooms/:id/roadmap`, `snapshot.challenge`, событие `roadmap_updated`)
+Всё считает сервер; клиент только рисует.
+```jsonc
+{ "roadmapId","title","mode":"shared|teams","teamKey":"shared|A|B","points","goal",
+  "completed": /* эта команда победила */, "finished": /* дошла до цели */, "winner": null|"A"|"B"|"draw", "completedAt","reward":{"xp","coins"},
+  "positionNodeId": "forest",                       // где команда сейчас
+  "next":    { "nodeId","title","pointsNeeded" } | null,   // следующий этап
+  "segment": { "from","to","progress": 0..1 } | null,      // доля пути до следующего узла
+  "teams":   [{ "key","name","points","positionNodeId","finished","completed" }],  // shared: одна; teams: A и B на одной карте
+  "nodes":   [{ "id","title","x","y","type","requiredPoints","status":"completed|current|next|locked",
+                "reachedAt": ms|null, "reward": {"xp","coins"}|null, "progress": 0..1 }],
+  "edges":   [["camp","forest"], …],
+  "contributions": [{ "userId","name","points", "team" /* только в режиме teams */ }] }
+// В режиме teams верхний уровень (points, nodes[].status, next, segment…) — для команды зрителя, `teams[]` — для обеих.
+```
+Правила: очко команде даёт каждая **награждённая** фокус-сессия; когда очки пересекают порог узла, сервер фиксирует
+`reachedAt` (таблица `team_nodes`), выдаёт участникам с вкладом этапную награду (+25 XP, +10 монет, ключ
+`node:<room>:<team>:<node>` — один раз) и шлёт `node_reached`. Финальный узел вместо этапной даёт командную награду.
+Клиент не может ни добавить очки, ни сменить позицию: таких маршрутов нет.
+
+**Командный режим (`teamMode:true`).** Игроки автоматически делятся на A и B (новичок — в команду с меньшим числом игроков),
+до старта цикла команду можно сменить. Очко получает команда игрока, чья сессия завершилась с наградой; этапы и их награды
+считаются по каждой команде отдельно. Побеждает команда, первой набравшая цель (при одновременном финише — у кого больше очков,
+при равенстве — ничья): командную награду получают только победители и только один раз. Помощь — только своей команде,
+пакости можно слать и сопернику.
 
 ### Снимок комнаты (`room_state`, ответ `GET /api/rooms/:id`)
 
@@ -112,13 +139,15 @@
 | `room_state` | полный снимок (персонализированный) — после каждого значимого изменения |
 | `player_joined` / `player_left` | `{user}` / `{userId}` |
 | `host_changed` | `{hostId}` |
+| `team_changed` | `{userId, team}` |
 | `player_status_changed` | `{userId, status, reason}` или `{userId, connection}` |
 | `task_updated`, `settings_changed` | `{userId, task}`, `{focusSec, breakSec}` |
 | `timer_started` | `{cycleId, cycleNo, phase, phaseStartedAt, phaseEndsAt, serverTime, participants[], skipped[]}` |
 | `timer_tick` | раз в секунду: `{phase, cycleId, phaseEndsAt, remainingMs, serverTime}` — только для сверки часов |
 | `phase_changed` | `{from, to, cycleId, phaseStartedAt, phaseEndsAt, completed?, rewarded?}` |
 | `roadmap_updated` | Road Map целиком (+ `pointsBefore`) |
-| `challenge_completed` | `{roadmapId, reward, contributors[]}` |
+| `node_reached` | `{team, nodeId, title, points, reward}` — сервер засчитал этап карты (`reward` — этапная награда, `null` у финального узла) |
+| `challenge_completed` | `{team, draw, roadmapId, reward, contributors[]}` — команда-победитель (при ничьей приходит по событию на каждую, `draw:true`) |
 | `help_applied` | `{actionId, type, from, to, cost, xpBonusPct?, expiresAt, at}` |
 | `prank_applied` | `{actionId, type, from, to, blocked, effectEndsAt, at}` |
 
@@ -127,7 +156,7 @@
 | type | data |
 |---|---|
 | `session_completed` | `{sessionId, roomId, status:"completed|aborted|abandoned", rewarded, xp, coins, capped?, boostPct?, reason?}` |
-| `reward_granted` | `{kind:"focus_session|achievement|team_challenge", key, xp, coins, balance, level, levelUp}` |
+| `reward_granted` | `{kind:"focus_session|achievement|team_node|team_challenge", key, xp, coins, balance, level, levelUp}` |
 | `balance_changed` | `{kind, coins, balance}` — траты (покупка, «Щит») |
 | `achievement_unlocked` | `{id, title, description, reward}` |
 
