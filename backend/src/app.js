@@ -11,6 +11,7 @@ import { createSocialService } from './services/social.js';
 import { createTd } from './services/td.js';
 import { createUsersService } from './services/users.js';
 import { Hub } from './ws/hub.js';
+import { VoiceRooms } from './ws/voice.js';
 
 /**
  * Фабрика приложения. clock и config подменяются в тестах (управляемые часы вместо системного времени).
@@ -24,7 +25,8 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
   const rooms = createRoomsService(ctx, game, users, td);
   td.setRooms(rooms);
   const social = createSocialService(ctx, game, rooms);
-  const router = buildRoutes({ config, users, rooms, game, social, td, db, clock });
+  const voice = new VoiceRooms({ config, clock, nameOf: (id) => db.get('SELECT name FROM users WHERE id = ?', id)?.name });
+  const router = buildRoutes({ config, users, rooms, game, social, td, voice, db, clock });
 
   const cors = {
     'Access-Control-Allow-Origin': config.corsOrigin,
@@ -62,7 +64,7 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
     }
   });
 
-  const hub = new Hub({ server, users, rooms, config, clock });
+  const hub = new Hub({ server, users, rooms, voice, config, clock });
   db.sink = (events) => hub.dispatch(events);
 
   rooms.recoverAfterRestart();
@@ -97,7 +99,7 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
 
   let timer = null;
   return {
-    config, clock, db, server, hub, services: { game, users, rooms, social, td }, tick,
+    config, clock, db, server, hub, services: { game, users, rooms, social, td, voice }, tick,
     startScheduler() {
       timer = setInterval(tick, config.tickMs);
       timer.unref?.();

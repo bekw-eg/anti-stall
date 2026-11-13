@@ -50,6 +50,12 @@ export function createUsersService(ctx, game) {
     const b = reqObject(body);
     if (b.name !== undefined) db.run('UPDATE users SET name = ? WHERE id = ?', reqString(b.name, 'name', { min: 1, max: config.limits.userNameMax }), userId);
     if (b.prankEnabled !== undefined) db.run('UPDATE users SET prank_enabled = ? WHERE id = ?', reqBool(b.prankEnabled, 'prankEnabled') ? 1 : 0, userId);
+    // имя и «получать шутки» видны всей комнате: остальные сразу получают свежий снимок
+    if (b.name !== undefined || b.prankEnabled !== undefined) {
+      for (const r of db.all('SELECT room_id FROM room_members WHERE user_id = ? AND left_at IS NULL', userId)) {
+        db.emit({ scope: 'room_state', roomId: r.room_id });
+      }
+    }
     return me(userId);
   }
 
