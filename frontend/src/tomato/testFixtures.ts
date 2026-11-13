@@ -37,3 +37,42 @@ export function makeRoad(points: number, over: Partial<Roadmap> = {}): Roadmap {
     edges: [["camp", "forest"], ["forest", "bridge"], ["bridge", "fortress"]], contributions: [], ...over,
   };
 }
+
+// ---------------------------------------------------------------------------- Tower Defense
+import type { TdRound, TdView } from "@/api/tomato";
+
+export const TD_SLOTS = [
+  { id: "s1", x: 2.5, y: 2.5 }, { id: "s2", x: 2.5, y: 0.5 }, { id: "s3", x: 5.5, y: 2.5 }, { id: "s4", x: 3.5, y: 3.5 },
+];
+
+export function makeTdRound(over: Partial<TdRound> = {}): TdRound {
+  return {
+    id: "r1", team: "shared", stageId: "camp", status: "running", current: true, startedAt: 0, endsAt: 300_000, finishedAt: null, speed: 1,
+    t: 10, wave: 1, waves: 2, spawned: 3, total: 7, hp: 100, hpMax: 100, kills: 1, leaked: 0, enemies: [], result: null, ...over,
+  };
+}
+
+export function makeTd(over: Partial<TdView> = {}): TdView {
+  return {
+    enabled: true, phase: "break", mode: "shared", team: "shared", breakEndsAt: 300_000, serverTime: 0,
+    map: { cols: 12, rows: 7, path: [[0.5, 1.5], [4.5, 1.5], [4.5, 4.5], [8.5, 4.5], [8.5, 2.5], [11.5, 2.5]], slots: TD_SLOTS, pathLength: 16 },
+    towerTypes: [
+      { id: "arrow", title: "Лучник", description: "Быстрые одиночные выстрелы", cost: 15, range: 2.6, damage: 12, cooldown: 0.6, upgradeCosts: [12, 18] },
+      { id: "cannon", title: "Пушка", description: "Урон по площади", cost: 30, range: 2.2, damage: 30, cooldown: 1.6, splash: 1, upgradeCosts: [24, 36] },
+      { id: "frost", title: "Мороз", description: "Замедляет врага", cost: 20, range: 2.4, damage: 3, cooldown: 0.9, upgradeCosts: [16, 24] },
+    ],
+    enemyTypes: [{ id: "runner", title: "Бегун", hp: 36, speed: 1.4, damage: 4 }],
+    maxLevel: 3,
+    stages: [
+      { id: "camp", title: "Тренировочный рубеж", node: "camp", nodeTitle: "Лагерь", unlocked: true, reward: { xp: 8, coins: 6 }, waves: 2, enemies: 7, wins: 0, bestHpLeft: null },
+      { id: "forest", title: "Оборона Леса знаний", node: "forest", nodeTitle: "Лес знаний", unlocked: true, reward: { xp: 20, coins: 12 }, waves: 3, enemies: 19, wins: 1, bestHpLeft: 90 },
+      { id: "bridge", title: "Оборона Моста дедлайнов", node: "bridge", nodeTitle: "Мост дедлайнов", unlocked: false, reward: { xp: 30, coins: 18 }, waves: 3, enemies: 17, wins: 0, bestHpLeft: null },
+    ],
+    defaultStageId: "forest",
+    base: { hpMax: 100, damageMult: 1, wallLevels: 0, powerLevels: 0 },
+    towers: [{ slot: "s3", type: "arrow", level: 1, ownerId: "u2", ownerName: "Аня" }],
+    round: null, rival: null, duel: null,
+    me: { userId: "me", coins: 40, participated: false },
+    ...over,
+  };
+}

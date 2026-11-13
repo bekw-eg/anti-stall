@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { Map as MapIcon, Settings, Timer } from "lucide-react";
+import { Map as MapIcon, Settings, Swords, Timer } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { ConnectionBanner, Toasts } from "./Chrome";
 import { SPRING, FIELD_DARK, FIELD_LIGHT } from "./motion";
@@ -9,12 +9,14 @@ import { RoadMap } from "./RoadMap";
 import { RoadmapBackdrop } from "./RoadmapBackdrop";
 import { SettingsContent } from "./SettingsContent";
 import { TimerBlock } from "./TimerBlock";
+import { TowerDefense } from "./TowerDefense";
 import { useMediaQuery } from "./useMedia";
 import { useTomato } from "./useTomato";
 import { VoiceBar } from "./VoiceBar";
 import { Welcome } from "./Welcome";
 
 const MAP_KEY = "tomato2.mapOpen";
+const GAME_KEY = "tomato2.gameOpen";
 const LIGHT_VARS = { "--fg": "#111111", "--muted": "rgba(17,17,17,.55)", "--card": "rgba(255,255,255,.55)", "--line": "rgba(17,17,17,.16)", "--field": "#d9d9d9" };
 const DARK_VARS = { "--fg": "#ffffff", "--muted": "rgba(255,255,255,.62)", "--card": "rgba(255,255,255,.1)", "--line": "rgba(255,255,255,.2)", "--field": "#1d1d1f" };
 
@@ -31,6 +33,10 @@ export default function TomatoApp() {
   const [open, setOpen] = useState(false); // панель настроек
   const [mapOpen, setMapOpen] = useState(() => { try { return sessionStorage.getItem(MAP_KEY) === "1"; } catch { return false; } }); // Road Map (открывается отдельным действием)
   useEffect(() => { try { sessionStorage.setItem(MAP_KEY, mapOpen ? "1" : "0"); } catch { /* ignore */ } }, [mapOpen]);
+  const [gameOpen, setGameOpen] = useState(() => { try { return sessionStorage.getItem(GAME_KEY) === "1"; } catch { return false; } }); // Tower Defense (только на перерыве)
+  useEffect(() => { try { sessionStorage.setItem(GAME_KEY, gameOpen ? "1" : "0"); } catch { /* ignore */ } }, [gameOpen]);
+  const toggleMap = () => { setMapOpen((v) => !v); setGameOpen(false); };
+  const toggleGame = () => { setGameOpen((v) => !v); setMapOpen(false); };
   const [work, setWork] = useState(25);
   const [rest, setRest] = useState(5);
   const [demo, setDemo] = useState(false);
@@ -65,8 +71,15 @@ export default function TomatoApp() {
     prevRoom.current = id;
   }, [room]);
 
-  const showMap = inRoom && mapOpen && !open;
-  const mode = open ? "settings" : showMap ? "map" : "room";
+  const onBreak = inRoom && room!.phase === "break";
+  const showGame = onBreak && gameOpen && !open; // игра существует только на перерыве
+  const showMap = inRoom && mapOpen && !open && !showGame;
+  const mode = open ? "settings" : showMap || showGame ? "map" : "room";
+  const phase = room?.phase;
+  useEffect(() => { if (inRoom && phase !== "break") setGameOpen(false); }, [inRoom, phase]); // новый перерыв — игра не открывается сама
+  const { loadTd } = t;
+  useEffect(() => { if (showGame) loadTd(); }, [showGame, loadTd]);
+
   const dark = inRoom && room!.phase === "break" && !open;
   const vars = { ...(dark ? DARK_VARS : LIGHT_VARS), "--timer": open ? "#111111" : "var(--fg)" } as React.CSSProperties;
   const previewSeconds = demo ? 25 : work * 60;
@@ -103,7 +116,7 @@ export default function TomatoApp() {
 
               {/* Заглушка под Road Map / мини-игру: размытая карта из реальных данных */}
               <AnimatePresence>
-                {inRoom && !open && !mapOpen && (
+                {inRoom && !open && !showMap && !showGame && (
                   <motion.div key="roadmap" className="absolute inset-0" style={{ color: "var(--fg)" }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.8 }}>
                     <RoadmapBackdrop road={t.snapshot!.challenge} />
                   </motion.div>
@@ -120,7 +133,12 @@ export default function TomatoApp() {
                     </div>
                     <ParticipantsRow t={t} className="order-last w-full flex-nowrap justify-start overflow-x-auto pb-1 lg:order-none lg:w-auto lg:flex-wrap lg:justify-center lg:overflow-visible lg:pb-0" />
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => setMapOpen((v) => !v)} aria-pressed={mapOpen} className="flex items-center gap-2 rounded-full bg-[var(--card)] px-4 py-2 text-sm font-medium transition-colors hover:bg-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current" aria-label={mapOpen ? "Вернуться к таймеру" : "Открыть Road Map"}>
+                      {onBreak && (
+                        <button type="button" onClick={toggleGame} aria-pressed={gameOpen} className="flex items-center gap-2 rounded-full bg-[var(--card)] px-4 py-2 text-sm font-medium transition-colors hover:bg-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current" aria-label={gameOpen ? "Закрыть игру" : "Открыть игру"}>
+                          {gameOpen ? <Timer size={16} /> : <Swords size={16} />} <span className="hidden sm:inline">{gameOpen ? "Таймер" : "Игра"}</span>
+                        </button>
+                      )}
+                      <button type="button" onClick={toggleMap} aria-pressed={mapOpen} className="flex items-center gap-2 rounded-full bg-[var(--card)] px-4 py-2 text-sm font-medium transition-colors hover:bg-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current" aria-label={mapOpen ? "Вернуться к таймеру" : "Открыть Road Map"}>
                         {mapOpen ? <Timer size={16} /> : <MapIcon size={16} />} <span className="hidden sm:inline">{mapOpen ? "Таймер" : "Карта"}</span>
                       </button>
                       <button type="button" onClick={() => setOpen(true)} className="flex items-center gap-2 rounded-full bg-[var(--card)] px-4 py-2 text-sm font-medium transition-colors hover:bg-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current" aria-label="Открыть настройки">
@@ -136,7 +154,7 @@ export default function TomatoApp() {
                 className={`pointer-events-none absolute inset-0 grid justify-items-center ${
                   open
                     ? desktop ? "grid-rows-[minmax(1.5rem,11vh)_auto_1fr] pr-[46%]" : "grid-rows-[minmax(.5rem,2vh)_auto_1fr] pb-[62%]"
-                    : showMap ? "grid-rows-[8.25rem_auto_1fr] lg:grid-rows-[4.25rem_auto_1fr]"
+                    : showMap || showGame ? "grid-rows-[8.25rem_auto_1fr] lg:grid-rows-[4.25rem_auto_1fr]"
                     : "grid-rows-[1fr_auto_1fr]"
                 }`}
               >
@@ -171,6 +189,24 @@ export default function TomatoApp() {
                 )}
               </AnimatePresence>
 
+              {/* Tower Defense: тот же раскрывающийся слой, но только на перерыве */}
+              <AnimatePresence>
+                {showGame && (
+                  <motion.section
+                    key="game"
+                    aria-label="Tower Defense"
+                    className="absolute inset-x-3 bottom-[5.5rem] top-[16rem] overflow-hidden rounded-[24px] bg-[var(--card)] sm:inset-x-6 sm:bottom-24 lg:top-[11.75rem]"
+                    style={{ color: "var(--fg)" }}
+                    initial={{ opacity: 0, clipPath: "inset(42% 32% 42% 32% round 28px)" }}
+                    animate={{ opacity: 1, clipPath: "inset(0% 0% 0% 0% round 24px)" }}
+                    exit={{ opacity: 0, clipPath: "inset(42% 32% 42% 32% round 28px)" }}
+                    transition={{ ...SPRING, opacity: { duration: 0.35 } }}
+                  >
+                    {t.td ? <TowerDefense td={t.td} actions={{ join: t.tdJoin, start: t.tdStart, build: t.tdBuild, upgrade: t.tdUpgrade }} /> : <p className="p-6 text-sm text-[var(--muted)]">Загружаем игру…</p>}
+                  </motion.section>
+                )}
+              </AnimatePresence>
+
               {/* Панель настроек выдвигается справа (на узких экранах — снизу) */}
               <AnimatePresence>
                 {open && (
@@ -194,7 +230,7 @@ export default function TomatoApp() {
               </AnimatePresence>
 
               {/* Нижняя Voice-полоса */}
-              <AnimatePresence>{inRoom && !open && <VoiceBar key="voice" conn={t.conn} center={<button type="button" onClick={() => setMapOpen((v) => !v)} className="block w-full rounded-lg py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-white" aria-label={mapOpen ? "Закрыть Road Map" : "Открыть Road Map"}><RoadmapSlot inline road={t.snapshot!.challenge} /></button>} />}</AnimatePresence>
+              <AnimatePresence>{inRoom && !open && <VoiceBar key="voice" conn={t.conn} center={<button type="button" onClick={toggleMap} className="block w-full rounded-lg py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-white" aria-label={mapOpen ? "Закрыть Road Map" : "Открыть Road Map"}><RoadmapSlot inline road={t.snapshot!.challenge} /></button>} />}</AnimatePresence>
             </motion.div>
           )}
         </AnimatePresence>

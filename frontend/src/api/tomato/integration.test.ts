@@ -91,6 +91,77 @@ describe("клиент ↔ backend: Road Map", () => {
   });
 });
 
+describe("клиент ↔ backend: Tower Defense", () => {
+  it("игра закрыта вне перерыва; на перерыве: постройка за монеты, идемпотентный повтор, раунд по серверному времени, награда один раз", async () => {
+    const lotti = await player("ТД-1");
+    const anya = await player("ТД-2");
+    const snap = await lotti.createRoom({ name: "TD", focusMinutes: 25, breakMinutes: 5 });
+    await anya.joinByCode(snap.room.code);
+    const id = snap.room.id;
+
+    // до перерыва: игра закрыта, действия отклоняются сервером
+    expect((await lotti.td(id)).enabled).toBe(false);
+    expect((await fail(lotti.tdBuild(id, "s1", "arrow", "req-before-break-1"))).code).toBe("WRONG_PHASE");
+
+    await lotti.startFocus(id);
+    expect((await lotti.td(id)).enabled).toBe(false); // во время Focus — тоже
+    await advance(25 * 60_000 + 1000, [lotti, anya]);
+
+    const view = await lotti.td(id);
+    expect(view.enabled).toBe(true);
+    expect(view.stages.find((s) => s.id === "forest")?.unlocked).toBe(true); // 2 очка команды открыли узел «Лес знаний»
+    const before = (await lotti.progress()).coins;
+
+    const built = await lotti.tdBuild(id, "s1", "arrow", "req-build-s1-0001");
+    expect(built.cost).toBe(15);
+    const replay = await lotti.tdBuild(id, "s1", "arrow", "req-build-s1-0001"); // повтор того же запроса
+    expect(replay.replayed).toBe(true);
+    expect((await lotti.progress()).coins).toBe(before - 15);
+    expect((await fail(anya.tdBuild(id, "s1", "cannon", "req-other-0002"))).code).toBe("SLOT_TAKEN");
+    await anya.tdBuild(id, "s3", "arrow", "req-build-s3-0003");
+    await lotti.tdBuild(id, "s5", "cannon", "req-build-s5-0004").catch(() => undefined); // может не хватить монет — это решает сервер
+
+    const started = await lotti.tdStart(id, "forest");
+    expect(started.round?.status).toBe("running");
+    expect(started.round?.endsAt).toBe(started.breakEndsAt);
+    await advance(10_000, [lotti, anya]);
+    const mid = await anya.td(id);
+    expect(mid.round?.t).toBeGreaterThan(5); // игровое время идёт по серверным часам
+    await advance(70_000, [lotti, anya]);
+    const done = await lotti.td(id);
+    expect(["won", "lost"]).toContain(done.round?.status);
+    expect(done.round?.enemies).toEqual([]);
+    // клиент не может сам закрыть раунд или назначить результат
+    expect((await fail(lotti.request("POST", `/api/rooms/${id}/td/finish`, { status: "won" }))).status).toBe(404);
+    expect((await fail(lotti.tdStart(id, "forest"))).code).toBe("ROUND_EXISTS");
+  });
+
+  it("WebSocket присылает состояние игры команды; после перерыва раунд закрыт сервером", async () => {
+    const lotti = await player("ТД-3");
+    const anya = await player("ТД-4");
+    const snap = await lotti.createRoom({ name: "TD2", focusMinutes: 25, breakMinutes: 5 });
+    await anya.joinByCode(snap.room.code);
+    const id = snap.room.id;
+    const events: ServerEvent[] = [];
+    const sock = anya.connect();
+    sock.on("*", (e) => events.push(e));
+    sock.subscribe(id);
+    await until(() => events.some((e) => e.type === "room_state"));
+    await lotti.startFocus(id);
+    await advance(25 * 60_000 + 1000, [lotti, anya]);
+    await lotti.tdBuild(id, "s1", "arrow", "req-ws-build-0001");
+    await lotti.tdStart(id, "camp");
+    await advance(5_000, [lotti, anya]);
+    const st = await until(() => events.find((e) => e.type === "td_state" && (e.data as { round?: { status: string } }).round?.status === "running"));
+    expect((st.data as { team: string }).team).toBe("shared");
+    await advance(6 * 60_000, [lotti, anya]); // перерыв закончился
+    const end = await until(() => events.find((e) => e.type === "td_round_finished"));
+    expect(["won", "lost", "expired"]).toContain((end.data as { status: string }).status);
+    expect((await lotti.td(id)).enabled).toBe(false);
+    sock.close();
+  }, 20000);
+});
+
 describe("клиент ↔ backend: Team A/B", () => {
   it("режим команд: автобаланс, смена команды, раздельная карта, победитель — всем одинаково", async () => {
     const lotti = await player("Тим-1");

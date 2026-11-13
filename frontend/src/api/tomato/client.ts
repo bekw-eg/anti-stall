@@ -1,5 +1,5 @@
 import type {
-  Achievement, CreateRoomInput, Me, Progress, Roadmap, RoomSnapshot, ServerEvent, StudySession, Upgrade,
+  Achievement, TdView, CreateRoomInput, Me, Progress, Roadmap, RoomSnapshot, ServerEvent, StudySession, Upgrade,
 } from "./types";
 
 export class TomatoApiError extends Error {
@@ -81,6 +81,15 @@ export class TomatoClient {
     this.request("POST", `/api/rooms/${id}/social/help`, { targetUserId, type });
   prank = (id: string, targetUserId: string, type: "fog" | "sticker") =>
     this.request("POST", `/api/rooms/${id}/social/prank`, { targetUserId, type });
+
+  // --- Tower Defense (только на перерыве; всё решает сервер)
+  td = (id: string) => this.request<TdView>("GET", `/api/rooms/${id}/td`);
+  tdJoin = (id: string) => this.request<TdView>("POST", `/api/rooms/${id}/td/join`);
+  tdStart = (id: string, stageId?: string) => this.request<TdView>("POST", `/api/rooms/${id}/td/start`, { stageId });
+  tdBuild = (id: string, slotId: string, type: string, requestId: string) =>
+    this.request<{ action: string; slotId: string; cost: number; replayed?: boolean }>("POST", `/api/rooms/${id}/td/build`, { slotId, type, requestId });
+  tdUpgrade = (id: string, slotId: string, requestId: string, expectedLevel?: number) =>
+    this.request<{ action: string; slotId: string; level: number; cost: number; replayed?: boolean }>("POST", `/api/rooms/${id}/td/upgrade`, { slotId, requestId, expectedLevel });
 
   /** Открывает WebSocket с авто-переподключением. */
   connect(): TomatoSocket {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TomatoApiError, TomatoClient } from "@/api/tomato";
-import type { CreateRoomInput, Me, RoomSnapshot, ServerEvent, TomatoSocket } from "@/api/tomato";
+import type { CreateRoomInput, Me, RoomSnapshot, ServerEvent, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
 import { extractRoomCode } from "./format";
 import { useNow } from "./useMedia";
 
@@ -20,12 +20,16 @@ export interface Toast { id: number; text: string; tone: "info" | "reward" | "er
 
 const teamLabel = (team?: string) => (team === "A" || team === "B" ? `${team}: ` : "");
 
-function describeEvent(ev: ServerEvent, myId?: string): string | null {
-  const d = ev.data as { team?: string; draw?: boolean; kind?: string; xp?: number; coins?: number; levelUp?: boolean; level?: number; title?: string; rewarded?: boolean; status?: string; to?: string; blocked?: boolean };
+function describeEvent(ev: ServerEvent, myId?: string, myTeam?: string): string | null {
+  const d = ev.data as { winner?: string; team?: string; draw?: boolean; kind?: string; xp?: number; coins?: number; levelUp?: boolean; level?: number; title?: string; rewarded?: boolean; status?: string; to?: string; blocked?: boolean };
   switch (ev.type) {
     case "reward_granted": return d.kind === "achievement" ? null : `+${d.xp} XP · +${d.coins} монет${d.levelUp ? ` · уровень ${d.level}` : ""}`;
     case "achievement_unlocked": return `Достижение: ${d.title}`;
     case "session_completed": return d.rewarded ? null : d.status === "completed" ? "Сессия завершена, дневной лимит наград исчерпан" : "Сессия прервана — без награды";
+    case "td_round_finished":
+      if (myTeam && d.team !== myTeam) return null;
+      return d.status === "won" ? "Оборона выстояла" : d.status === "lost" ? "База пала — в следующий перерыв получится лучше" : "Перерыв закончился — раунд завершён";
+    case "td_duel_result": return d.winner === "draw" ? "Дуэль: ничья" : `Дуэль: победила команда ${d.winner}`;
     case "node_reached": return `${teamLabel(d.team)}этап пройден: ${d.title}`.replace(/^./, (c) => c.toUpperCase());
     case "challenge_completed": return d.draw ? "Ничья: обе команды достигли цели" : d.team === "shared" ? "Команда достигла цели" : `Команда ${d.team} победила`;
     case "help_applied": return d.to === myId ? "Вам помогли: бонус к XP в следующей сессии" : null;
@@ -50,6 +54,9 @@ export function useTomato(initialCode?: string) {
   const [busy, setBusy] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [disconnectedFor, setDisconnectedFor] = useState(0);
+  const [td, setTd] = useState<TdView | null>(null);
+  const tdRef = useRef<TdView | null>(null);
+  tdRef.current = td;
 
   const offsetRef = useRef(0); // serverTime − Date.now()
   const refreshRef = useRef<() => void>(() => undefined);
@@ -76,6 +83,7 @@ export function useTomato(initialCode?: string) {
   const leaveLocal = useCallback(() => {
     setRoomId(null);
     setSnapshot(null);
+    setTd(null);
     setConn("idle");
     store.set(ROOM_KEY, null);
     window.history.replaceState(null, "", "/");
@@ -183,7 +191,19 @@ export function useTomato(initialCode?: string) {
     });
     socket.on("*", (ev) => {
       if (ev.type === "reward_granted" || ev.type === "balance_changed") refresh(); // блок me живёт в снимке
-      const text = describeEvent(ev, myIdRef.current);
+      // Tower Defense: td_state приходит часто и содержит только состояние одной команды — вливаем в локальный вид
+      if (ev.type === "td_state") {
+        const d = ev.data as TdStateEvent;
+        setTd((prev) => {
+          if (!prev) return prev;
+          if (d.team === prev.team) return { ...prev, towers: d.towers, round: d.round };
+          if (prev.rival && prev.rival.team === d.team) return { ...prev, rival: { ...prev.rival, towers: d.towers.length, round: d.round } };
+          return prev;
+        });
+        return;
+      }
+      if (ev.type.startsWith("td_") && tdRef.current) client.td(roomId).then((v) => alive && setTd(v)).catch(() => undefined);
+      const text = describeEvent(ev, myIdRef.current, tdRef.current?.team);
       if (text) push(text, ev.type === "reward_granted" || ev.type === "achievement_unlocked" || ev.type === "challenge_completed" || ev.type === "node_reached" ? "reward" : "info");
     });
 
@@ -268,11 +288,23 @@ export function useTomato(initialCode?: string) {
   const updateSettings = useCallback((s: CreateRoomInput) => withBusy(() => call(() => client.updateSettings(rid, s))), [call, rid, withBusy]);
   const help = useCallback((userId: string, type: "boost" | "shield") => call(() => client.help(rid, userId, type)), [call, rid]);
   const prank = useCallback((userId: string, type: "fog" | "sticker") => call(() => client.prank(rid, userId, type)), [call, rid]);
+  // --- Tower Defense: клиент только отправляет намерения; цену, баланс и результат решает сервер
+  const newRequestId = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "") : `${Date.now()}${Math.random().toString(36).slice(2)}`.padEnd(12, "0"));
+  const loadTd = useCallback(async () => { if (!rid) return null; const v = await call(() => client.td(rid)); if (v) setTd(v); return v; }, [call, rid]);
+  const tdJoin = useCallback(async () => { const v = await call(() => client.tdJoin(rid)); if (v) setTd(v); return v; }, [call, rid]);
+  const tdStart = useCallback(async (stageId?: string) => { const v = await call(() => client.tdStart(rid, stageId)); if (v) setTd(v); return v; }, [call, rid]);
+  const tdBuild = useCallback(async (slot: string, type: string) => { const r = await call(() => client.tdBuild(rid, slot, type, newRequestId())); if (r) await loadTd(); return r; }, [call, loadTd, rid]);
+  const tdUpgrade = useCallback(async (slot: string, level: number) => { const r = await call(() => client.tdUpgrade(rid, slot, newRequestId(), level)); if (r) await loadTd(); return r; }, [call, loadTd, rid]);
+
+  // Перерыв закончился — обновляем состояние игры (раунд закрыт, игра недоступна)
+  const phase = snapshot?.room.phase;
+  useEffect(() => { if (phase && phase !== "break" && tdRef.current?.enabled) loadTd(); }, [phase, loadTd]);
+
   const recordResult = useCallback((result: "done" | "partial" | "not_done") => call(() => client.recordResult(rid, result)), [call, rid]);
 
   return {
     boot, serverOk, demoAvailable, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs,
-    call, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, updateSettings, help, prank, recordResult,
+    call, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, updateSettings, help, prank, recordResult,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

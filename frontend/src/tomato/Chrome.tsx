@@ -31,7 +31,7 @@ export function ConnectionBanner({ conn, disconnectedFor, focusing }: { conn: Co
 
 export function Toasts({ toasts }: { toasts: Toast[] }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[10.5rem] z-30 flex flex-col lg:top-[7.5rem] items-center gap-2 px-4" aria-live="polite">
+    <div className="pointer-events-none absolute bottom-28 left-5 z-30 flex flex-col items-start gap-2 sm:left-8" aria-live="polite">
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div

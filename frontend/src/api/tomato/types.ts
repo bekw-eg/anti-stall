@@ -212,5 +212,104 @@ export type ServerEventType =
   | "player_status_changed" | "team_changed" | "task_updated" | "settings_changed"
   | "timer_started" | "timer_tick" | "phase_changed"
   | "session_completed" | "reward_granted" | "balance_changed" | "achievement_unlocked"
-  | "roadmap_updated" | "node_reached" | "challenge_completed" | "help_applied" | "prank_applied"
+  | "td_state" | "td_round_started" | "td_round_finished" | "td_tower_built" | "td_tower_upgraded" | "td_duel_result" | "roadmap_updated" | "node_reached" | "challenge_completed" | "help_applied" | "prank_applied"
   | "heartbeat_ack" | "unsubscribed" | "error";
+
+// ---------------------------------------------------------------------------- Tower Defense
+export type TowerType = "arrow" | "cannon" | "frost";
+export type EnemyType = "runner" | "grunt" | "tank" | "boss";
+export type RoundStatus = "running" | "won" | "lost" | "expired";
+
+export interface TdTowerDef {
+  id: TowerType;
+  title: string;
+  description: string;
+  cost: number;
+  range: number;
+  damage: number;
+  cooldown: number;
+  splash?: number;
+  upgradeCosts: [number, number];
+}
+
+export interface TdTower {
+  slot: string;
+  type: TowerType;
+  level: number;
+  ownerId: string;
+  ownerName: string;
+}
+
+export interface TdEnemy {
+  id: number;
+  type: EnemyType;
+  x: number; // клетки поля
+  y: number;
+  hp: number;
+  maxHp: number;
+  slowed: boolean;
+}
+
+export interface TdRound {
+  id: string;
+  team: string;
+  stageId: string;
+  status: RoundStatus;
+  current: boolean;
+  startedAt: number;
+  endsAt: number;
+  finishedAt: number | null;
+  speed: number;
+  t: number;
+  wave: number;
+  waves: number;
+  spawned: number;
+  total: number;
+  hp: number;
+  hpMax: number;
+  kills: number;
+  leaked: number;
+  enemies: TdEnemy[];
+  result: { hpLeft: number; hpMax: number; kills: number; leaked: number; total: number; gameTime: number } | null;
+}
+
+export interface TdStage {
+  id: string;
+  title: string;
+  node: string;
+  nodeTitle: string;
+  unlocked: boolean;
+  reward: { xp: number; coins: number };
+  waves: number;
+  enemies: number;
+  wins: number;
+  bestHpLeft: number | null;
+}
+
+export interface TdView {
+  enabled: boolean;
+  phase: string;
+  mode: "shared" | "teams";
+  team: string;
+  breakEndsAt: number | null;
+  serverTime: number;
+  map: { cols: number; rows: number; path: [number, number][]; slots: { id: string; x: number; y: number }[]; pathLength: number };
+  towerTypes: TdTowerDef[];
+  enemyTypes: { id: EnemyType; title: string; hp: number; speed: number; damage: number }[];
+  maxLevel: number;
+  stages: TdStage[];
+  defaultStageId: string;
+  base: { hpMax: number; damageMult: number; wallLevels: number; powerLevels: number };
+  towers: TdTower[];
+  round: TdRound | null;
+  rival: { team: string; towers: number; round: TdRound | null } | null;
+  duel: { stageId: string; winner: "A" | "B" | "draw"; scores: Record<string, number> } | null;
+  me: { userId: string; coins: number; participated: boolean };
+}
+
+/** Событие td_state: состояние игры одной команды */
+export interface TdStateEvent {
+  team: string;
+  towers: TdTower[];
+  round: TdRound | null;
+}
