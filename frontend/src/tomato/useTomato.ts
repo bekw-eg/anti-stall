@@ -190,6 +190,16 @@ export function useTomato(initialCode?: string) {
       if ((ev.data as { code?: string }).code === "UNAUTHORIZED") { client.setToken(null); setUser(null); leaveLocal(); }
     });
     socket.on("*", (ev) => {
+      if (ev.type === "player_ready_changed") {
+        const d = ev.data as { userId: string; isReady: boolean };
+        setSnapshot((prev) => {
+          if (!prev) return prev;
+          const members = prev.members.map((m) => (m.userId === d.userId ? { ...m, isReady: d.isReady } : m));
+          const me = prev.me && prev.me.userId === d.userId ? { ...prev.me, isReady: d.isReady } : prev.me;
+          return { ...prev, members, me };
+        });
+        return;
+      }
       if (ev.type === "reward_granted" || ev.type === "balance_changed") refresh(); // блок me живёт в снимке
       // Tower Defense: td_state приходит часто и содержит только состояние одной команды — вливаем в локальный вид
       if (ev.type === "td_state") {
@@ -284,6 +294,11 @@ export function useTomato(initialCode?: string) {
   const abortSession = useCallback(() => call(() => client.abortSession(rid)), [call, rid]);
   const skipBreak = useCallback(() => call(() => client.skipBreak(rid)), [call, rid]);
   const setTeam = useCallback((team: "A" | "B") => call(() => client.setTeam(rid, team)), [call, rid]);
+  const setReady = useCallback(async (ready: boolean) => {
+    const s = await call(() => client.setReady(rid, ready));
+    if (s) applySnapshot(s);
+    return s;
+  }, [applySnapshot, call, rid]);
   const setTask = useCallback((title: string) => call(() => client.setTask(rid, title)), [call, rid]);
   const updateSettings = useCallback((s: CreateRoomInput) => withBusy(() => call(() => client.updateSettings(rid, s))), [call, rid, withBusy]);
   const help = useCallback((userId: string, type: "boost" | "shield") => call(() => client.help(rid, userId, type)), [call, rid]);
@@ -304,7 +319,7 @@ export function useTomato(initialCode?: string) {
 
   return {
     boot, serverOk, demoAvailable, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs,
-    call, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, updateSettings, help, prank, recordResult,
+    call, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

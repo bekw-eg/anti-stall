@@ -89,4 +89,18 @@ describe('пользователи и комнаты', () => {
     const late = await w.user('Поздний');
     assert.equal((await late.post('/api/rooms/join', { code: L.room.code })).body.error.code, 'ROOM_CLOSED');
   });
+
+  test('статус готовности (isReady): переключение, валидация и сброс при старте фокуса', async () => {
+    const L = await lobby(w, ['Хост', 'Гость']);
+    assert.equal((await L.host.post(L.path('/ready'), { ready: 'yes' })).status, 400);
+
+    const r1 = (await L.rest[0].post(L.path('/ready'), { ready: true })).body;
+    assert.equal(r1.me.isReady, true);
+    assert.deepEqual(r1.members.map((m) => m.isReady), [false, true]);
+
+    await L.host.post(L.path('/start'));
+    assert.equal((await L.rest[0].post(L.path('/ready'), { ready: false })).body.error.code, 'WRONG_PHASE');
+    const duringFocus = (await L.rest[0].get(L.path())).body;
+    assert.deepEqual(duringFocus.members.map((m) => m.isReady), [false, false]);
+  });
 });

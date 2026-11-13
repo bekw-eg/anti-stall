@@ -56,6 +56,7 @@ export function buildRoutes({ config, users, rooms, game, social, td, db, clock 
   r.add('POST', '/api/rooms/:id/close', ({ user, params }) => ok(rooms.close(user, params.id)));
   r.add('PATCH', '/api/rooms/:id/settings', ({ user, params, body }) => ok(rooms.updateSettings(user, params.id, body)));
   r.add('POST', '/api/rooms/:id/team', ({ user, params, body }) => ok(rooms.setTeam(user, params.id, body)));
+  r.add('POST', '/api/rooms/:id/ready', ({ user, params, body }) => ok(rooms.setReady(user, params.id, body)));
   r.add('POST', '/api/rooms/:id/task', ({ user, params, body }) => ok(rooms.setTask(user, params.id, body)));
   r.add('POST', '/api/rooms/:id/start', ({ user, params }) => ok(rooms.startFocus(user, params.id)));
   r.add('POST', '/api/rooms/:id/session/abort', ({ user, params }) => ok(rooms.abortSession(user, params.id)));

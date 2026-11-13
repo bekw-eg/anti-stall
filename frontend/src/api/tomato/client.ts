@@ -70,6 +70,7 @@ export class TomatoClient {
   leaveRoom = (id: string) => this.request<{ left: boolean }>("POST", `/api/rooms/${id}/leave`);
   updateSettings = (id: string, s: CreateRoomInput) => this.request<RoomSnapshot>("PATCH", `/api/rooms/${id}/settings`, s);
   setTeam = (id: string, team: "A" | "B") => this.request<RoomSnapshot>("POST", `/api/rooms/${id}/team`, { team });
+  setReady = (id: string, ready: boolean) => this.request<RoomSnapshot>("POST", `/api/rooms/${id}/ready`, { ready });
   setTask = (id: string, title: string) => this.request<{ task: string | null }>("POST", `/api/rooms/${id}/task`, { title });
   startFocus = (id: string) => this.request<RoomSnapshot>("POST", `/api/rooms/${id}/start`);
   abortSession = (id: string) => this.request<{ status: string }>("POST", `/api/rooms/${id}/session/abort`);

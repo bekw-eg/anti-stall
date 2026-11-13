@@ -10,6 +10,7 @@ export interface Member {
   role: "host" | "member";
   level: number;
   team: string;
+  isReady?: boolean;
   task: string | null;
   status: MemberStatus;
   connection: Connection;
@@ -113,6 +114,7 @@ export interface RoomSnapshot {
     isMember: boolean;
     isHost: boolean;
     team: string | null;
+    isReady?: boolean;
     status: MemberStatus | null;
     task: string | null;
     session: Member["session"];

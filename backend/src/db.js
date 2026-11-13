@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS room_members (
   user_id TEXT NOT NULL REFERENCES users(id),
   role TEXT NOT NULL DEFAULT 'member',
   team_key TEXT NOT NULL DEFAULT 'shared',
+  is_ready INTEGER NOT NULL DEFAULT 0,
   task_title TEXT,
   joined_at INTEGER NOT NULL,
   left_at INTEGER,
@@ -226,6 +227,9 @@ export class Db {
     // v2: командный режим комнаты ('shared' — одна общая команда, 'teams' — Team A против Team B)
     const cols = this.sql.prepare('PRAGMA table_info(rooms)').all().map((c) => c.name);
     if (!cols.includes('mode')) this.sql.exec("ALTER TABLE rooms ADD COLUMN mode TEXT NOT NULL DEFAULT 'shared'");
+    // v3: статус готовности участника комнаты (is_ready)
+    const memberCols = this.sql.prepare('PRAGMA table_info(room_members)').all().map((c) => c.name);
+    if (!memberCols.includes('is_ready')) this.sql.exec('ALTER TABLE room_members ADD COLUMN is_ready INTEGER NOT NULL DEFAULT 0');
     this.sql.prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version', ?)").run(String(SCHEMA_VERSION));
   }
 

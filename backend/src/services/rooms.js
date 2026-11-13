@@ -103,7 +103,7 @@ export function createRoomsService(ctx, game, users, td) {
         const n = (k) => db.get("SELECT COUNT(*) c FROM room_members WHERE room_id = ? AND team_key = ? AND left_at IS NULL", room.id, k).c;
         team = existing && (existing.team_key === 'A' || existing.team_key === 'B') ? existing.team_key : n('A') <= n('B') ? 'A' : 'B';
       }
-      if (existing) db.run('UPDATE room_members SET left_at = NULL, joined_at = ?, team_key = ? WHERE room_id = ? AND user_id = ?', t, team, room.id, user.id);
+      if (existing) db.run('UPDATE room_members SET left_at = NULL, joined_at = ?, team_key = ?, is_ready = 0 WHERE room_id = ? AND user_id = ?', t, team, room.id, user.id);
       else db.run('INSERT INTO room_members(room_id, user_id, team_key, joined_at) VALUES (?,?,?,?)', room.id, user.id, team, t);
       db.emit({ scope: 'room', roomId: room.id, type: 'player_joined', data: { user: users.publicUser(user) } });
       db.emit(stateEvent(room.id));
@@ -117,7 +117,7 @@ export function createRoomsService(ctx, game, users, td) {
       requireMember(room, user);
       const sess = db.get("SELECT * FROM focus_sessions WHERE room_id = ? AND user_id = ? AND status = 'active'", room.id, user.id);
       if (sess) endSessionEarly(room, sess, 'aborted', 'left_room');
-      db.run('UPDATE room_members SET left_at = ? WHERE room_id = ? AND user_id = ?', clock.now(), room.id, user.id);
+      db.run('UPDATE room_members SET left_at = ?, is_ready = 0 WHERE room_id = ? AND user_id = ?', clock.now(), room.id, user.id);
       db.emit({ scope: 'room', roomId: room.id, type: 'player_left', data: { userId: user.id } });
       if (room.host_id === user.id) {
         const next = db.get('SELECT user_id FROM room_members WHERE room_id = ? AND left_at IS NULL ORDER BY joined_at, rowid LIMIT 1', room.id);
@@ -178,6 +178,21 @@ export function createRoomsService(ctx, game, users, td) {
     });
   }
 
+  /** Статус готовности участника комнаты. */
+  function setReady(user, idOrCode, body) {
+    const b = reqObject(body);
+    if (typeof b.ready !== 'boolean') throw E.badRequest('INVALID_FIELD', 'Поле ready должно быть boolean', { field: 'ready' });
+    return db.tx(() => {
+      const room = findRoom(idOrCode);
+      requireMember(room, user);
+      requirePhase(room, 'waiting', 'break');
+      db.run('UPDATE room_members SET is_ready = ? WHERE room_id = ? AND user_id = ?', b.ready ? 1 : 0, room.id, user.id);
+      db.emit({ scope: 'room', roomId: room.id, type: 'player_ready_changed', data: { userId: user.id, isReady: b.ready } });
+      db.emit(stateEvent(room.id));
+      return snapshot(room.id, user.id);
+    });
+  }
+
   // ------------------------------------------------------------------ задачи и результат
   function setTask(user, idOrCode, body) {
     const b = reqObject(body);
@@ -231,6 +246,7 @@ export function createRoomsService(ctx, game, users, td) {
          WHERE m.room_id = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.rowid`, room.id,
       );
       db.run("UPDATE rooms SET phase = 'focus', cycle_id = ?, cycle_no = ?, phase_started_at = ?, phase_ends_at = ? WHERE id = ?", cycleId, cycleNo, t, endsAt, room.id);
+      db.run('UPDATE room_members SET is_ready = 0 WHERE room_id = ?', room.id);
 
       const participants = [];
       const skipped = [];
@@ -372,7 +388,7 @@ export function createRoomsService(ctx, game, users, td) {
         : [],
     );
     const rows = db.all(
-      `SELECT m.user_id, m.role, m.team_key, m.task_title, m.joined_at, u.name, u.xp, u.last_seen_at, u.prank_enabled
+      `SELECT m.user_id, m.role, m.team_key, m.is_ready, m.task_title, m.joined_at, u.name, u.xp, u.last_seen_at, u.prank_enabled
        FROM room_members m JOIN users u ON u.id = m.user_id WHERE m.room_id = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.rowid`, room.id,
     );
     const contributions = new Map(db.all('SELECT user_id, points FROM team_contributions WHERE room_id = ?', room.id).map((c) => [c.user_id, c.points]));
@@ -380,6 +396,7 @@ export function createRoomsService(ctx, game, users, td) {
       const sess = sessions.get(m.user_id);
       return {
         userId: m.user_id, name: m.name, role: m.role, level: game.levelInfo(m.xp).level, team: m.team_key,
+        isReady: Boolean(m.is_ready),
         task: m.task_title, status: memberStatus(room, sess), connection: connectionState(m.last_seen_at, t),
         prankEnabled: Boolean(m.prank_enabled), contribution: contributions.get(m.user_id) ?? 0,
         session: sess ? { id: sess.id, status: sess.status, rewarded: Boolean(sess.rewarded) } : null,
@@ -402,7 +419,7 @@ export function createRoomsService(ctx, game, users, td) {
       const u = db.get('SELECT * FROM users WHERE id = ?', viewerId);
       const isHost = room.host_id === viewerId;
       out.me = {
-        userId: viewerId, isMember: Boolean(mine), isHost, team: mine?.team ?? null, status: mine?.status ?? null, task: mine?.task ?? null,
+        userId: viewerId, isMember: Boolean(mine), isHost, team: mine?.team ?? null, isReady: mine?.isReady ?? false, status: mine?.status ?? null, task: mine?.task ?? null,
         session: mine?.session ?? null, ...game.levelInfo(u.xp), coins: u.coins, prankEnabled: Boolean(u.prank_enabled),
         effects: game.effects(viewerId),
         allowedActions: mine ? allowedActions(room, isHost, mine) : [],
@@ -415,6 +432,7 @@ export function createRoomsService(ctx, game, users, td) {
   function allowedActions(room, isHost, mine) {
     const a = ['set_task', 'leave_room', 'view_roadmap', 'heartbeat'];
     if (room.phase === 'waiting') {
+      a.push('set_ready');
       if (room.mode === 'teams') a.push('set_team');
       if (isHost) a.push('start_focus', 'update_settings', 'close_room');
     } else if (room.phase === 'focus') {
@@ -422,7 +440,7 @@ export function createRoomsService(ctx, game, users, td) {
       const i = a.indexOf('set_task');
       if (mine.status === 'focusing') a.splice(i, 1);
     } else if (room.phase === 'break') {
-      a.push('help', 'prank', 'buy_upgrade', 'record_result');
+      a.push('set_ready', 'help', 'prank', 'buy_upgrade', 'record_result');
       if (isHost) a.push('skip_break', 'close_room');
     }
     return a;
@@ -430,7 +448,7 @@ export function createRoomsService(ctx, game, users, td) {
 
   return {
     findRoom, requireMember, requirePhase, memberRow, loadRoom,
-    create, join, leave, close, updateSettings, setTask, setTeam, recordResult,
+    create, join, leave, close, updateSettings, setTask, setTeam, setReady, recordResult,
     startFocus, abortSession, skipBreak, advance, runningRoomIds, recoverAfterRestart,
     snapshot, connectionState,
   };
