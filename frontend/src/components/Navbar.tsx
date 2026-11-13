@@ -3,7 +3,7 @@ import { Gamepad2, BookOpen, Map, Trophy, Info } from 'lucide-react';
 
 export function Navbar() {
   const navItems = [
-    { to: '/', label: 'Игра', icon: Gamepad2 },
+    { to: '/game', label: 'Игра', icon: Gamepad2 },
     { to: '/achievements', label: 'Достижения', icon: Trophy },
     { to: '/about', label: 'О сайте', icon: Info },
   ];
