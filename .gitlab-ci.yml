@@ -69,7 +69,11 @@ setup:vm:
   stage: deploy
   extends:
     - .ssh_vm
-    - .rules-master
+  rules:
+    # Пока адрес ВМ не задан, деплой-джобы пропускаются (pipeline не падает)
+    - if: '$DEPLOY_HOST == "CHANGE_ME_VM_IP"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH == "master"'
   script:
     - echo "🔧 Готовим виртуальную машину $DEPLOY_HOST (ставим Spirit CLI, если его нет)"
     - |
@@ -83,7 +87,11 @@ deploy:vm:
   stage: deploy
   extends:
     - .ssh_vm
-    - .rules-master
+  rules:
+    # Пока адрес ВМ не задан, деплой-джобы пропускаются (pipeline не падает)
+    - if: '$DEPLOY_HOST == "CHANGE_ME_VM_IP"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH == "master"'
   needs: ["build:image", "setup:vm"]
   resource_group: production
   script:
