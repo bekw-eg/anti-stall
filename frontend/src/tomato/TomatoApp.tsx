@@ -156,7 +156,7 @@ export default function TomatoApp() {
                         {t.demoMode && <DemoBadge compact className="min-w-0" />}
                       </div>
                     </div>
-                    <ParticipantsRow t={t} voice={voice} className="order-last w-full flex-nowrap justify-start overflow-x-auto pb-1 lg:order-none lg:w-auto lg:flex-wrap lg:justify-center lg:overflow-visible lg:pb-0" />
+                    <ParticipantsRow t={t} voice={voice} className="order-last w-full flex-nowrap justify-start overflow-x-auto pb-1 lg:order-none lg:w-auto lg:min-w-0 lg:flex-1 lg:[justify-content:safe_center] [scrollbar-width:thin]" /* одна строка: высота шапки не зависит от числа игроков, иначе компактный таймер наезжает на участников */ />
                     <div className="flex items-center gap-2">
                       {onBreak && (
                         <button type="button" onClick={toggleGame} aria-pressed={gameOpen} className="flex items-center gap-2 rounded-full bg-[var(--card)] px-4 py-2 text-sm font-medium transition-colors hover:bg-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current" aria-label={gameOpen ? "Закрыть игру" : "Открыть игру"}>

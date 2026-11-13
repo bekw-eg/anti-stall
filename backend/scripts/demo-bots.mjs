@@ -38,6 +38,7 @@ for (let i = 0; i < COUNT; i++) {
   roomId = j.body.room.id;
   if (!j.body.room.demo) fail('Это не демо-комната');
   await p.post(`/api/rooms/${roomId}/task`, { title: TASKS[i] });
+  await p.post(`/api/rooms/${roomId}/ready`, { ready: true }); // иначе хост ждёт их «Я готов» и не может начать фокус
   const first = i === 0; // события комнаты печатает только первый бот, личные — каждый свои
   const conn = await connectWs(p, { onEvent: (m) => onEvent(p, m, first) });
   await conn.subscribe(roomId);

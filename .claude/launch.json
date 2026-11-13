@@ -1,6 +1,14 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "frontend", "runtimeExecutable": "npm", "runtimeArgs": ["--prefix", "frontend", "run", "dev"], "port": 4499 }
+    { "name": "frontend", "runtimeExecutable": "npm", "runtimeArgs": ["--prefix", "frontend", "run", "dev"], "port": 4499 },
+    { "name": "backend-demo", "runtimeExecutable": "node", "runtimeArgs": ["--disable-warning=ExperimentalWarning", "backend/src/server.js", "--demo"], "port": 8787 },
+    {
+      "name": "fullstack-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--disable-warning=ExperimentalWarning", "backend/src/server.js", "--demo"],
+      "env": { "PORT": "8799", "TOMATO_STATIC_DIR": "frontend/dist" },
+      "port": 8799
+    }
   ]
 }
