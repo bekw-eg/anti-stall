@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, MotionConfig, motion } from "framer-motion";
+import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion";
 import { Map as MapIcon, Settings, Swords, Timer } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { ConnectionBanner, Toasts } from "./Chrome";
@@ -28,6 +28,8 @@ export default function TomatoApp() {
   const { code: routeCode } = useParams();
   const t = useTomato(routeCode);
   const desktop = useMediaQuery("(min-width: 900px)");
+  const reduce = useReducedMotion(); // left/top/clipPath не отключаются MotionConfig — переключаем на мгновенные сами
+  const instant = { duration: 0 };
 
   const [screen, setScreen] = useState<"welcome" | "stage">("welcome");
   const [open, setOpen] = useState(false); // панель настроек
@@ -95,7 +97,7 @@ export default function TomatoApp() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="fixed inset-0 overflow-hidden bg-white font-sans text-zinc-900 antialiased">
+      <div className="tomato-root fixed inset-0 overflow-hidden bg-white font-sans text-zinc-900 antialiased">
         <ConnectionBanner conn={t.conn} disconnectedFor={t.disconnectedFor} focusing={t.snapshot?.me?.status === "focusing"} />
         <Toasts toasts={t.toasts} />
 
@@ -111,7 +113,7 @@ export default function TomatoApp() {
                 className="absolute inset-0 overflow-hidden rounded-[28px] sm:rounded-[36px]"
                 initial={{ opacity: 0, backgroundColor: FIELD_LIGHT, ...(desktop ? { left: "100%" } : { top: "100%" }) }}
                 animate={{ opacity: 1, backgroundColor: dark ? FIELD_DARK : FIELD_LIGHT, ...fieldAnimate }}
-                transition={{ ...SPRING, backgroundColor: { duration: 0.9 }, opacity: { duration: 0.4 } }}
+                transition={reduce ? instant : { ...SPRING, backgroundColor: { duration: 0.9 }, opacity: { duration: 0.4 } }}
               />
 
               {/* Заглушка под Road Map / мини-игру: размытая карта из реальных данных */}
@@ -182,7 +184,7 @@ export default function TomatoApp() {
                     initial={{ opacity: 0, clipPath: "inset(42% 32% 42% 32% round 28px)" }}
                     animate={{ opacity: 1, clipPath: "inset(0% 0% 0% 0% round 24px)" }}
                     exit={{ opacity: 0, clipPath: "inset(42% 32% 42% 32% round 28px)" }}
-                    transition={{ ...SPRING, opacity: { duration: 0.35 } }}
+                    transition={reduce ? instant : { ...SPRING, opacity: { duration: 0.35 } }}
                   >
                     <RoadMap road={t.snapshot!.challenge} meId={t.snapshot!.me?.userId} />
                   </motion.section>
@@ -200,7 +202,7 @@ export default function TomatoApp() {
                     initial={{ opacity: 0, clipPath: "inset(42% 32% 42% 32% round 28px)" }}
                     animate={{ opacity: 1, clipPath: "inset(0% 0% 0% 0% round 24px)" }}
                     exit={{ opacity: 0, clipPath: "inset(42% 32% 42% 32% round 28px)" }}
-                    transition={{ ...SPRING, opacity: { duration: 0.35 } }}
+                    transition={reduce ? instant : { ...SPRING, opacity: { duration: 0.35 } }}
                   >
                     {t.td ? <TowerDefense td={t.td} actions={{ join: t.tdJoin, start: t.tdStart, build: t.tdBuild, upgrade: t.tdUpgrade }} /> : <p className="p-6 text-sm text-[var(--muted)]">Загружаем игру…</p>}
                   </motion.section>

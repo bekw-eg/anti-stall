@@ -116,7 +116,7 @@ export function createTd(ctx, game) {
       round: roundView(roundOf(room, team), room),
       rival: rival ? { team: rival, towers: towersOf(room, rival).length, round: roundView(roundOf(room, rival), room) } : null,
       duel: duel ? { stageId: duel.stage_id, winner: duel.winner, scores: JSON.parse(duel.scores) } : null,
-      me: { userId, coins: u.coins, participated: Boolean(db.get('SELECT 1 x FROM td_actions WHERE room_id = ? AND team_key = ? AND cycle_id = ? AND user_id = ?', room.id, team, room.cycle_id ?? '-', userId)) },
+      me: { userId, coins: u.coins, participated: participantsOf(room.id, team, room.cycle_id ?? '-').includes(userId) },
     };
   }
 
@@ -160,10 +160,14 @@ export function createTd(ctx, game) {
     return row;
   }
 
-  /** Награда за победу: только тем, кто участвовал в раунде (старт / постройка / улучшение / вход), один раз на игрока. */
+  /** Игрок реально участвует в раунде команды, если запустил его, построил или улучшил башню (одного «захода» в игру мало). */
+  const PARTICIPATION = "kind IN ('start','build','upgrade')";
+  const participantsOf = (roomId, team, cycleId) => db.all(`SELECT DISTINCT user_id FROM td_actions WHERE room_id = ? AND team_key = ? AND cycle_id = ? AND ${PARTICIPATION}`, roomId, team, cycleId).map((r) => r.user_id);
+
+  /** Награда за победу: только тем, кто участвовал в раунде (старт / постройка / улучшение), один раз на игрока. */
   function rewardRound(row, room, result) {
     const stage = stageDef(row.stage_id);
-    const participants = db.all('SELECT DISTINCT user_id FROM td_actions WHERE room_id = ? AND team_key = ? AND cycle_id = ?', room.id, row.team_key, row.cycle_id).map((r) => r.user_id);
+    const participants = participantsOf(room.id, row.team_key, row.cycle_id);
     const first = !db.get("SELECT 1 x FROM td_rounds WHERE room_id = ? AND team_key = ? AND stage_id = ? AND status = 'won' AND id != ?", room.id, row.team_key, row.stage_id, row.id);
     const quality = 0.5 + 0.5 * (result.hpLeft / result.hpMax); // чем целее база, тем больше награда
     const mult = quality * (first ? cfg.firstClearMultiplier : 1);
@@ -192,7 +196,7 @@ export function createTd(ctx, game) {
     if (ins.changes === 0) return;
     const winners = winner === 'draw' ? (a > 0 ? ['A', 'B'] : []) : [winner];
     for (const team of winners) {
-      for (const { user_id: uid } of db.all('SELECT DISTINCT user_id FROM td_actions WHERE room_id = ? AND team_key = ? AND cycle_id = ?', room.id, team, row.cycle_id)) {
+      for (const uid of participantsOf(room.id, team, row.cycle_id)) {
         game.grant(uid, `td:duel:${room.id}:${row.cycle_id}:${uid}`, 'td_duel', cfg.duelReward, { roomId: room.id, team });
       }
     }
@@ -230,7 +234,7 @@ export function createTd(ctx, game) {
     return view(room, user.id);
   }
 
-  /** Войти в игру на этом перерыве (фиксирует участие — нужно для награды). */
+  /** Зайти в игру на этом перерыве (только для статистики; награду даёт участие делом: старт, постройка, улучшение). */
   function join(user, roomKey) {
     return db.tx(() => {
       const { room, team } = context(user, roomKey);

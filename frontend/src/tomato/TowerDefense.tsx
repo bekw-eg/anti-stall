@@ -89,7 +89,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                 className="cursor-pointer outline-none"
                 data-testid={`slot-${s.id}`}
               >
-                <circle r={0.47} fill="transparent" />
+                <circle r={0.62} fill="transparent" /> {/* увеличенная область нажатия для пальца */}
                 {tw ? (
                   <>
                     <circle r={0.4} fill="currentColor" />

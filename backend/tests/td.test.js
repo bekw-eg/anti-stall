@@ -168,6 +168,8 @@ describe('Tower Defense: раунд, результат и награды', () =
       fund(w, lotti, 100); fund(w, anya, 100);
       await build(L, lotti, 's1', 'arrow');
       await build(L, anya, 's3', 'arrow');
+      await post(L, boris, 'join', {}); // Боря зашёл в игру, но ничего не делает: «заход» награды не даёт
+      assert.equal((await td(L, boris)).me.participated, false);
       const xp0 = [await lotti.progress(), await anya.progress(), await boris.progress()].map((p) => p.xp);
       const s = await post(L, lotti, 'start', { stageId: 'camp' });
       assert.equal(s.body.round.stageId, 'camp');

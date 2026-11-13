@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import type { Roadmap } from "@/api/tomato";
 import { NODE_STATUS_LABEL, defaultNode, edgeFill, nodeById } from "./roadmapGeometry";
 
@@ -13,6 +13,9 @@ const MARKER_SPRING = { type: "spring", stiffness: 90, damping: 18, mass: 1 } as
  */
 export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
   const [picked, setPicked] = useState<string | null>(null);
+  // left/top и pathLength не относятся к «transform»-анимациям, поэтому MotionConfig их не отключает — делаем это сами
+  const reduce = useReducedMotion();
+  const instant = { duration: 0 };
   const selected = nodeById(road, picked ?? "") ?? defaultNode(road);
   const pct = Math.min(100, (road.points / road.goal) * 100);
 
@@ -28,7 +31,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
             return (
               <g key={`${a}-${b}`}>
                 <line {...common} stroke="currentColor" strokeOpacity={0.22} strokeWidth={2} strokeDasharray={fill >= 1 ? undefined : "2 6"} strokeLinecap="round" />
-                <motion.line {...common} stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" initial={false} animate={{ pathLength: fill }} transition={{ duration: 0.9, ease: "easeInOut" }} />
+                <motion.line {...common} stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" initial={false} animate={{ pathLength: fill }} transition={reduce ? instant : { duration: 0.9, ease: "easeInOut" }} />
               </g>
             );
           })}
@@ -74,7 +77,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
               className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2"
               initial={false}
               animate={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }}
-              transition={MARKER_SPRING}
+              transition={reduce ? instant : MARKER_SPRING}
               aria-hidden
             >
               <span className="relative -top-7 flex flex-col items-center sm:-top-9" style={{ marginLeft: offset }}>
@@ -114,7 +117,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
                     <span className="tabular-nums text-[var(--muted)]">{team.points}/{road.goal}</span>
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-[var(--line)]" role="progressbar" aria-label={team.name} aria-valuenow={team.points} aria-valuemin={0} aria-valuemax={road.goal}>
-                    <motion.div className="h-full rounded-full bg-[var(--fg)]" initial={false} animate={{ width: `${Math.min(100, (team.points / road.goal) * 100)}%` }} transition={{ duration: 0.8 }} />
+                    <motion.div className="h-full rounded-full bg-[var(--fg)]" initial={false} animate={{ width: `${Math.min(100, (team.points / road.goal) * 100)}%` }} transition={reduce ? instant : { duration: 0.8 }} />
                   </div>
                 </li>
               ))}
@@ -127,7 +130,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
                 <span className="tabular-nums">{road.points}/{road.goal}</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-[var(--line)]" role="progressbar" aria-valuenow={road.points} aria-valuemin={0} aria-valuemax={road.goal}>
-                <motion.div className="h-full rounded-full bg-[var(--fg)]" initial={false} animate={{ width: `${pct}%` }} transition={{ duration: 0.8 }} />
+                <motion.div className="h-full rounded-full bg-[var(--fg)]" initial={false} animate={{ width: `${pct}%` }} transition={reduce ? instant : { duration: 0.8 }} />
               </div>
             </>
           )}

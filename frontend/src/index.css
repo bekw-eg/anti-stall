@@ -113,3 +113,12 @@ img { pointer-events: none; }
     box-shadow: var(--shadow-elevated);
   }
 }
+
+/* Tomato: при prefers-reduced-motion гасим и CSS-переходы (полоски прогресса, цвета) */
+@media (prefers-reduced-motion: reduce) {
+  .tomato-root *, .tomato-root *::before, .tomato-root *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
