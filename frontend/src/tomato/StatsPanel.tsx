@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { TomatoApiError } from "@/api/tomato";
 import type { Achievement, RoomStats, StudyStats } from "@/api/tomato";
-import { formatDuration } from "./format";
+import { apiErrorText, formatDuration } from "./format";
 import { client } from "./useTomato";
 import type { Tomato } from "./useTomato";
 
@@ -32,23 +33,36 @@ export function StatsPanel({ t }: { t: Tomato }) {
   const [stats, setStats] = useState<StudyStats | null>(null);
   const [room, setRoom] = useState<RoomStats | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0); // «Повторить» — новый запрос
   // перечитываем, когда что-то могло измениться: награды, фаза, очки команды
   const refreshKey = `${me?.xp}:${me?.coins}:${snap.room.phase}:${snap.room.cycleNo}:${snap.challenge.points}:${snap.members.length}`;
 
   useEffect(() => {
     let alive = true;
-    client.stats().then((s) => alive && setStats(s)).catch(() => undefined);
-    client.roomStats(snap.room.id).then((r) => alive && setRoom(r)).catch(() => undefined);
-    client.achievements().then((a) => alive && setAchievements(a.achievements)).catch(() => undefined);
+    const fail = (e: unknown) => { if (alive) setError(e instanceof TomatoApiError ? apiErrorText(e) : "Нет связи с сервером"); };
+    setError(null);
+    client.stats().then((s) => alive && setStats(s)).catch(fail);
+    client.roomStats(snap.room.id).then((r) => alive && setRoom(r)).catch(fail);
+    client.achievements().then((a) => alive && setAchievements(a.achievements)).catch(fail);
     return () => { alive = false; };
-  }, [refreshKey, snap.room.id]);
+  }, [refreshKey, snap.room.id, attempt]);
 
-  if (!stats) return <p className="p-6 text-sm text-[var(--muted)]">Загружаем статистику…</p>;
+  const errorBox = error && (
+    <div role="alert" className="flex flex-wrap items-center gap-3 rounded-2xl bg-[var(--card)] px-4 py-3 text-sm lg:col-span-2" data-testid="stats-error">
+      <span>Не удалось загрузить статистику: {error}</span>
+      <button type="button" onClick={() => setAttempt((n) => n + 1)} className="rounded-full bg-[var(--fg)] px-4 py-1.5 text-xs font-medium text-[var(--field)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current">
+        Повторить
+      </button>
+    </div>
+  );
+  if (!stats) return error ? <div className="p-5 sm:p-6">{errorBox}</div> : <p className="p-6 text-sm text-[var(--muted)]">Загружаем статистику…</p>;
   const maxDay = Math.max(...stats.daily.map((d) => d.focusSeconds), 1);
   const span = stats.nextLevelXp - stats.levelStartXp;
 
   return (
     <div className="grid h-full gap-8 overflow-y-auto p-5 sm:p-6 lg:grid-cols-2" data-testid="stats-panel">
+      {errorBox}
       <section aria-labelledby="me-stats-h" className="flex min-w-0 flex-col gap-5">
         <div className="flex items-baseline justify-between">
           <h2 id="me-stats-h" className="text-sm font-semibold uppercase tracking-[0.2em]">Ваш прогресс</h2>
@@ -104,7 +118,7 @@ export function StatsPanel({ t }: { t: Tomato }) {
           <h2 id="team-stats-h" className="text-sm font-semibold uppercase tracking-[0.2em]">Командный прогресс</h2>
           {room && <span className="text-xs text-[var(--muted)]">циклов: {room.cycles}</span>}
         </div>
-        {!room ? <p className="text-sm text-[var(--muted)]">Загружаем…</p> : (
+        {!room ? <p className="text-sm text-[var(--muted)]">{error ? "Командная статистика не загрузилась" : "Загружаем…"}</p> : (
           <>
             {room.winner && (
               <p className="rounded-xl bg-[var(--card)] px-4 py-3 text-sm font-medium">

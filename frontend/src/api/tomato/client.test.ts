@@ -26,6 +26,16 @@ describe("TomatoClient (REST)", () => {
     expect(headers.Authorization).toBe(`Bearer ${"t".repeat(40)}`);
   });
 
+  it("sandbox уходит в теле регистрации только когда запрошен", async () => {
+    const fetchFn = mockFetch(() => ({ status: 201, body: { user: { id: "u1", name: "Лотти", sandbox: true }, token: "s".repeat(40) } }));
+    const c = new TomatoClient();
+    const u = await c.register("Лотти", { sandbox: true });
+    expect(u.sandbox).toBe(true);
+    expect(JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string)).toEqual({ name: "Лотти", sandbox: true });
+    await c.register("Аня");
+    expect(JSON.parse((fetchFn.mock.calls[1][1] as RequestInit).body as string)).toEqual({ name: "Аня" });
+  });
+
   it("ошибки сервера превращаются в TomatoApiError с кодом", async () => {
     mockFetch(() => ({ status: 409, body: { error: { code: "WRONG_PHASE", message: "Нельзя сейчас", details: { phase: "focus" } } } }));
     const c = new TomatoClient();
@@ -51,5 +61,75 @@ describe("TomatoClient (REST)", () => {
 
   it("connect() без токена — понятная ошибка", () => {
     expect(() => new TomatoClient().connect()).toThrow(/токен/i);
+  });
+});
+
+describe("TomatoSocket (переподключение)", () => {
+  /** Минимальный управляемый WebSocket */
+  class WS {
+    static OPEN = 1;
+    static all: WS[] = [];
+    readyState = 0;
+    onopen: (() => void) | null = null;
+    onmessage: ((m: { data: string }) => void) | null = null;
+    onclose: ((e: { code?: number }) => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor() { WS.all.push(this); }
+    send() {}
+    close() {}
+    open() { this.readyState = 1; this.onopen?.(); }
+    hello() { this.open(); this.onmessage?.({ data: JSON.stringify({ type: "hello", ts: Date.now(), data: {} }) }); }
+    drop(code?: number) { this.readyState = 3; this.onclose?.({ code }); }
+  }
+  beforeEach(() => { WS.all = []; vi.useFakeTimers(); vi.stubGlobal("WebSocket", WS); });
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+  const connect = () => { const c = new TomatoClient({ baseUrl: "http://h" }); c.setToken("t".repeat(40)); return c.connect(); };
+
+  it("4401 — без переподключения, в событии disconnected есть код", () => {
+    const s = connect();
+    const codes: unknown[] = [];
+    s.on("disconnected", (e) => codes.push((e.data as { code?: number }).code));
+    WS.all[0].hello();
+    WS.all[0].drop(4401);
+    vi.advanceTimersByTime(60_000);
+    expect(WS.all).toHaveLength(1);
+    expect(codes).toEqual([4401]);
+  });
+
+  it("4429 — пауза перед переподключением", () => {
+    connect();
+    WS.all[0].hello();
+    WS.all[0].drop(4429);
+    vi.advanceTimersByTime(10_000);
+    expect(WS.all).toHaveLength(1);
+    vi.advanceTimersByTime(5_100);
+    expect(WS.all).toHaveLength(2);
+  });
+
+  it("backoff сбрасывается только после hello, а не на open", () => {
+    connect();
+    WS.all[0].drop(1006); // повтор через 500 мс
+    vi.advanceTimersByTime(500);
+    expect(WS.all).toHaveLength(2);
+    WS.all[1].open(); // открылся, но авторизации не было
+    WS.all[1].drop(1006); // повтор через 1000 мс
+    vi.advanceTimersByTime(500);
+    expect(WS.all).toHaveLength(2);
+    vi.advanceTimersByTime(500);
+    expect(WS.all).toHaveLength(3);
+    WS.all[2].hello();
+    WS.all[2].drop(1006); // после hello — снова 500 мс
+    vi.advanceTimersByTime(500);
+    expect(WS.all).toHaveLength(4);
+  });
+
+  it("битое сообщение не роняет обработку", () => {
+    const s = connect();
+    const seen: string[] = [];
+    s.on("*", (e) => seen.push(e.type));
+    WS.all[0].open();
+    expect(() => WS.all[0].onmessage?.({ data: "{не json" })).not.toThrow();
+    WS.all[0].onmessage?.({ data: JSON.stringify({ type: "hello", ts: Date.now(), data: {} }) });
+    expect(seen).toEqual(["hello"]);
   });
 });

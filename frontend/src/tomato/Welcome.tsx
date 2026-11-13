@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
+import { DemoBadge } from "./Chrome";
 import { EASE } from "./motion";
 
-export function Welcome({ onStart, ready, serverOk }: { onStart: () => void; ready: boolean; serverOk: boolean | null }) {
+export function Welcome({ onStart, ready, serverOk, demo = false }: { onStart: () => void; ready: boolean; serverOk: boolean | null; demo?: boolean }) {
   const letters = "TOMATO".split("");
   return (
     <motion.section
@@ -10,6 +11,12 @@ export function Welcome({ onStart, ready, serverOk }: { onStart: () => void; rea
       exit={{ opacity: 0, y: -24, filter: "blur(6px)" }}
       transition={{ duration: 0.5, ease: EASE }}
     >
+      {demo && (
+        <motion.div className="absolute inset-x-4 top-6 flex justify-center" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.4, ease: EASE }}>
+          <DemoBadge />
+        </motion.div>
+      )}
+
       <h1 className="flex text-[clamp(2.75rem,12vw,7rem)] font-light leading-none tracking-[0.18em] text-zinc-900" aria-label="Tomato">
         {letters.map((l, i) => (
           <motion.span

@@ -131,6 +131,8 @@ export interface Me extends LevelInfo {
   name: string;
   coins: number;
   prankEnabled: boolean;
+  /** Песочный аккаунт демо-сервера: играет только в демо-комнатах (старый backend поле не присылает) */
+  sandbox?: boolean;
   createdAt: number;
   activeSession: { id: string; roomId: string; scheduledEndAt: number } | null;
   rooms: { id: string; code: string; name: string; phase: Phase }[];
@@ -273,6 +275,19 @@ export interface IceConfig {
 export type VoiceSignal =
   | { description: { type: "offer" | "answer"; sdp: string } }
   | { candidate: RTCIceCandidateInit | null };
+
+/** GET /api/health */
+export interface HealthInfo {
+  status: string;
+  serverTime: number;
+  /** Демо-сервер: песочные аккаунты и только демо-комнаты */
+  demoMode: boolean;
+}
+
+export interface RegisterOptions {
+  /** Песочный аккаунт — только если сервер в демо-режиме (иначе 403 DEMO_DISABLED) */
+  sandbox?: boolean;
+}
 
 export interface CreateRoomInput {
   name?: string;

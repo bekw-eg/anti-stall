@@ -1,5 +1,5 @@
 import type {
-  Achievement, TdView, CreateRoomInput, IceConfig, Me, Progress, Roadmap, RoomSnapshot, RoomStats, ServerEvent, SocialAction, StudySession, StudyStats, Upgrade, VoicePeer,
+  Achievement, TdView, CreateRoomInput, HealthInfo, IceConfig, Me, Progress, RegisterOptions, Roadmap, RoomSnapshot, RoomStats, ServerEvent, SocialAction, StudySession, StudyStats, Upgrade, VoicePeer,
 } from "./types";
 
 export class TomatoApiError extends Error {
@@ -47,9 +47,13 @@ export class TomatoClient {
     return json as T;
   }
 
+  health = () => this.request<HealthInfo>("GET", "/api/health");
+
   // --- пользователь
-  async register(name: string): Promise<Me> {
-    const { user, token } = await this.request<{ user: Me; token: string }>("POST", "/api/users", { name });
+  /** sandbox:true — песочный аккаунт демо-сервера; поле отправляется только когда оно нужно */
+  async register(name: string, opts: RegisterOptions = {}): Promise<Me> {
+    const body = opts.sandbox ? { name, sandbox: true } : { name };
+    const { user, token } = await this.request<{ user: Me; token: string }>("POST", "/api/users", body);
     this.setToken(token);
     return user;
   }
@@ -110,9 +114,16 @@ export class TomatoClient {
 
 type Handler = (ev: ServerEvent) => void;
 
+/** Коды закрытия WebSocket от сервера: токен не принят / слишком много сообщений */
+export const WS_CLOSE_UNAUTHORIZED = 4401;
+export const WS_CLOSE_RATE_LIMIT = 4429;
+const RATE_LIMIT_PAUSE_MS = 15_000;
+
 /**
  * WebSocket с экспоненциальным переподключением. После реконнекта сам заново авторизуется
  * и подписывается на комнаты: сервер присылает свежий room_state, награды повторно не выдаются.
+ * Закрытие с кодом 4401 (токен не принят) — без переподключения; 4429 — пауза перед повтором.
+ * Событие "disconnected" несёт data.code — код закрытия.
  */
 export class TomatoSocket {
   private ws: WebSocket | null = null;
@@ -180,13 +191,14 @@ export class TomatoSocket {
     const ws = new WebSocket(this.url);
     this.ws = ws;
     ws.onopen = () => {
-      this.attempt = 0;
       ws.send(JSON.stringify({ type: "auth", token: this.getToken() }));
     };
     ws.onmessage = (m) => {
-      const ev = JSON.parse(m.data) as ServerEvent;
+      const ev = safe(() => JSON.parse(m.data) as ServerEvent);
+      if (!ev || typeof ev.type !== "string") return; // битое сообщение не роняет обработку
       if (typeof ev.ts === "number") this.clockOffset = ev.ts - Date.now();
       if (ev.type === "hello") {
+        this.attempt = 0; // backoff сбрасываем только после успешной авторизации, а не на open
         this.authed = true;
         this.rooms.forEach((id) => this.send({ type: "subscribe", roomId: id }));
         if (this.hb) clearInterval(this.hb);
@@ -194,12 +206,15 @@ export class TomatoSocket {
       }
       this.emit(ev);
     };
-    ws.onclose = () => {
+    ws.onclose = (e: { code?: number }) => {
       this.authed = false;
       if (this.hb) clearInterval(this.hb);
-      this.emit({ type: "disconnected", ts: Date.now(), data: {} });
+      const code = e?.code;
+      if (code === WS_CLOSE_UNAUTHORIZED) this.closed = true; // с этим токеном переподключаться бессмысленно
+      this.emit({ type: "disconnected", ts: Date.now(), data: { code } });
       if (this.closed) return;
-      const delay = Math.min(10_000, 500 * 2 ** this.attempt++);
+      const backoff = Math.min(10_000, 500 * 2 ** this.attempt++);
+      const delay = code === WS_CLOSE_RATE_LIMIT ? Math.max(backoff, RATE_LIMIT_PAUSE_MS) : backoff;
       setTimeout(() => !this.closed && this.open(), delay);
     };
     ws.onerror = () => ws.close();

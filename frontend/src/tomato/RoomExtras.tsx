@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, Copy, Headphones } from "lucide-react";
 import type { Member, Roadmap } from "@/api/tomato";
-import { STATUS_LABEL, initials, roomLink } from "./format";
+import { initials, memberStatusLabel, readiness, roomLink } from "./format";
 import { disabledReason } from "./socialRules";
 import type { Tomato } from "./useTomato";
 import type { Voice } from "./voice/useVoice";
@@ -39,9 +39,7 @@ function Controls({ t }: { t: Tomato }) {
   );
 
   if (actions.includes("start_focus")) {
-    const readyCount = snap.members.filter((m) => Boolean(m.isReady)).length;
-    const totalCount = snap.members.length;
-    const allReady = totalCount > 0 && readyCount === totalCount;
+    const { ready: readyCount, total: totalCount, all: allReady } = readiness(snap.members, snap.me?.userId); // офлайн не ждём
     return (
       <div className="flex flex-col items-center gap-3">
         <div className="flex flex-wrap items-center justify-center gap-3">
@@ -62,7 +60,7 @@ function Controls({ t }: { t: Tomato }) {
         </div>
         {!allReady && (
           <p className="text-xs text-[var(--muted)]">
-            Ждём готовности всех участников ({readyCount}/{totalCount})
+            Ждём готовности всех участников в сети ({readyCount}/{totalCount})
           </p>
         )}
         {snap.members.length < 2 && (
@@ -264,10 +262,10 @@ export function ParticipantsRow({ t, voice, className = "" }: { t: Tomato; voice
               {(m.team === "A" || m.team === "B") && <span className="rounded bg-[var(--card)] px-1.5 text-[10px] font-semibold" title={`Команда ${m.team}`}>{m.team}</span>}
               {isReady ? (
                 <span className="inline-flex items-center gap-0.5 font-semibold text-emerald-500">
-                  <Check size={12} /> Ready
+                  <Check size={12} /> {memberStatusLabel(m, showReady)}
                 </span>
               ) : (
-                <span className="text-[var(--muted)]">{STATUS_LABEL[m.status]}</span>
+                <span className="text-[var(--muted)]">{memberStatusLabel(m, showReady)}</span>
               )}
               {m.task && m.status !== "waiting" && <span className="hidden max-w-[8rem] truncate text-[var(--muted)] sm:inline">· {m.task}</span>}
               {onBreak && m.userId !== meId && (

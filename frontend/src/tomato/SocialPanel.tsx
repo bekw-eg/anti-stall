@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CloudFog, Shield, Sparkles, Sticker } from "lucide-react";
 import type { Member, SocialAction } from "@/api/tomato";
 import { formatAgo, initials } from "./format";
-import { ACTION_TEXT, KIND, SHIELD_COST, disabledReason, type ActionType } from "./socialRules";
+import { ACTION_TEXT, KIND, disabledReason, type ActionType } from "./socialRules";
 import { useNow } from "./useMedia";
 import type { Tomato } from "./useTomato";
 
@@ -74,7 +74,7 @@ export function SocialPanel({ t }: { t: Tomato }) {
               </div>
               <div className="flex flex-wrap gap-1.5">
                 <ActionButton type="boost" target={m} t={t} icon={<Sparkles size={13} />} label="Бонус к XP" />
-                <ActionButton type="shield" target={m} t={t} icon={<Shield size={13} />} label={`Щит · ${SHIELD_COST}`} />
+                <ActionButton type="shield" target={m} t={t} icon={<Shield size={13} />} label={`Щит · ${t.shieldCost}`} />
                 <ActionButton type="fog" target={m} t={t} icon={<CloudFog size={13} />} label="Туман" />
                 <ActionButton type="sticker" target={m} t={t} icon={<Sticker size={13} />} label="Стикер" />
               </div>

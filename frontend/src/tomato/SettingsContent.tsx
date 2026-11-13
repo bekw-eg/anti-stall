@@ -60,7 +60,8 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
   const nameOk = t.name.trim().length > 0;
   const codeOk = extractRoomCode(code) !== null;
 
-  const settingsInput = form.demo ? { demo: true, focusSeconds: 25, breakSeconds: 15 } : { focusMinutes: form.work, breakMinutes: form.rest };
+  const demo = form.demo || t.demoMode; // демо-сервер: песочный аккаунт создаёт только демо-комнаты
+  const settingsInput = demo ? { demo: true, focusSeconds: 25, breakSeconds: 15 } : { focusMinutes: form.work, breakMinutes: form.rest };
   const changed = room ? (room.demo ? false : room.settings.focusSec !== form.work * 60 || room.settings.breakSec !== form.rest * 60) : false;
 
   return (
@@ -90,16 +91,20 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
       {view === "profile" && t.user ? <ProfilePanel t={t} /> : (<>
       {/* Таймер */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Segmented label="Фокус, мин" values={WORK_PRESETS} value={form.work} onChange={form.setWork} disabled={locked || form.demo} />
-        <Segmented label="Перерыв, мин" values={REST_PRESETS} value={form.rest} onChange={form.setRest} disabled={locked || form.demo} />
+        <Segmented label="Фокус, мин" values={WORK_PRESETS} value={form.work} onChange={form.setWork} disabled={locked || demo} />
+        <Segmented label="Перерыв, мин" values={REST_PRESETS} value={form.rest} onChange={form.setRest} disabled={locked || demo} />
       </div>
 
-      {t.demoAvailable && !inRoom && (
-        <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-white/50 px-4 py-3 text-sm text-zinc-700">
-          <input type="checkbox" checked={form.demo} onChange={(e) => form.setDemo(e.target.checked)} className="mt-1 h-4 w-4 accent-zinc-900" />
+      {/* На демо-сервере демо-режим не выбирается: он включён и заблокирован, причина — в подписи */}
+      {t.demoMode && !inRoom && (
+        <label className="flex cursor-not-allowed items-start gap-3 rounded-xl bg-white/50 px-4 py-3 text-sm text-zinc-700">
+          <input type="checkbox" checked disabled readOnly aria-describedby="demo-mode-note" className="mt-1 h-4 w-4 accent-zinc-900" />
           <span>
             <span className="block font-medium text-zinc-900">Демо-режим</span>
-            <span className="text-xs text-zinc-500">Фокус 25 секунд, перерыв 15 секунд. Правила и награды те же.</span>
+            <span id="demo-mode-note" className="text-xs text-zinc-500">
+              Фокус 25 секунд, перерыв 15 секунд. Включён всегда: это демо-песочница — здесь создаются только демо-комнаты,
+              а прогресс не переносится в реальный аккаунт.
+            </span>
           </span>
         </label>
       )}

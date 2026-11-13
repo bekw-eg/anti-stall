@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion";
 import { BarChart3, Map as MapIcon, Settings, Swords, Timer, Users } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { ConnectionBanner, Toasts } from "./Chrome";
+import { ConnectionBanner, DemoBadge, Toasts } from "./Chrome";
 import { SPRING, FIELD_DARK, FIELD_LIGHT } from "./motion";
 import { PrankOverlay } from "./PrankOverlay";
 import { ParticipantsRow, RoadmapSlot } from "./RoomExtras";
@@ -48,7 +48,8 @@ export default function TomatoApp() {
   const toggleGame = () => toggle("game");
   const [work, setWork] = useState(25);
   const [rest, setRest] = useState(5);
-  const [demo, setDemo] = useState(false);
+  const [demoPick, setDemo] = useState(false);
+  const demo = demoPick || t.demoMode; // демо-сервер: любая новая комната — демо
   const [teamMode, setTeamMode] = useState(false);
 
   const room = t.snapshot?.room;
@@ -56,7 +57,6 @@ export default function TomatoApp() {
   const voice = useVoice(client, t.socket, room?.id ?? null, t.snapshot?.me?.userId);
 
   useEffect(() => { document.title = "Tomato"; }, []);
-  useEffect(() => { if (t.demoAvailable) setDemo(true); }, [t.demoAvailable]);
 
   // Первичный показ после загрузки: восстановленная комната → фокус-комната; ссылка-приглашение → настройки
   const booted = useRef(false);
@@ -117,12 +117,12 @@ export default function TomatoApp() {
   return (
     <MotionConfig reducedMotion="user">
       <div className="tomato-root fixed inset-0 overflow-hidden bg-white font-sans text-zinc-900 antialiased">
-        <ConnectionBanner conn={t.conn} disconnectedFor={t.disconnectedFor} focusing={t.snapshot?.me?.status === "focusing"} />
+        <ConnectionBanner conn={t.conn} disconnectedFor={t.disconnectedFor} focusing={t.snapshot?.me?.status === "focusing"} graceSec={t.graceSec} />
         <Toasts toasts={t.toasts} />
         {inRoom && <PrankOverlay t={t} />}
 
         <AnimatePresence>
-          {screen === "welcome" && <Welcome key="welcome" ready={t.boot === "ready"} serverOk={t.serverOk} onStart={() => { setScreen("stage"); setOpen(!inRoom); }} />}
+          {screen === "welcome" && <Welcome key="welcome" ready={t.boot === "ready"} serverOk={t.serverOk} demo={t.demoMode} onStart={() => { setScreen("stage"); setOpen(!inRoom); }} />}
         </AnimatePresence>
 
         <AnimatePresence>
@@ -151,7 +151,10 @@ export default function TomatoApp() {
                   <motion.header key="head" className="absolute inset-x-0 top-0 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-6 py-5 sm:px-8" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} style={{ color: "var(--fg)" }}>
                     <div className="min-w-0">
                       <h1 className="truncate text-sm font-semibold">{room!.name}</h1>
-                      <p className="font-mono text-xs tracking-widest text-[var(--muted)]">{room!.code}</p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="font-mono text-xs tracking-widest text-[var(--muted)]">{room!.code}</p>
+                        {t.demoMode && <DemoBadge compact className="min-w-0" />}
+                      </div>
                     </div>
                     <ParticipantsRow t={t} voice={voice} className="order-last w-full flex-nowrap justify-start overflow-x-auto pb-1 lg:order-none lg:w-auto lg:flex-wrap lg:justify-center lg:overflow-visible lg:pb-0" />
                     <div className="flex items-center gap-2">

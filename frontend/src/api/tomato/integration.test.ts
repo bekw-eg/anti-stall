@@ -309,3 +309,35 @@ describe("клиент ↔ backend", () => {
     sock.close();
   });
 });
+
+describe("клиент ↔ backend: демо-песочница", () => {
+  let demoApp: BackendApp;
+  let demoBase: string;
+  beforeAll(async () => {
+    demoApp = createApp({ config: loadConfig({ TOMATO_DEMO: "1" }, { dbPath: ":memory:" }), clock: new FakeClock() });
+    demoBase = `http://127.0.0.1:${(await demoApp.listen(0, "127.0.0.1")).port}`;
+  });
+  afterAll(() => demoApp.close());
+
+  it("песочный аккаунт — только на демо-сервере и только в демо-комнатах; обычный аккаунт в демо-комнату не попадает", async () => {
+    const sandbox = new TomatoClient({ baseUrl: demoBase });
+    expect((await sandbox.health()).demoMode).toBe(true);
+    const u = await sandbox.register("Песок", { sandbox: true });
+    expect(u.sandbox).toBe(true);
+    expect((await sandbox.me()).sandbox).toBe(true);
+    expect((await fail(sandbox.createRoom({ name: "Обычная", focusMinutes: 25, breakMinutes: 5 }))).code).toBe("SANDBOX_DEMO_ONLY");
+    const demo = await sandbox.createRoom({ name: "Демо", demo: true, focusSeconds: 25, breakSeconds: 15 });
+    expect(demo.room.demo).toBe(true);
+
+    const regular = new TomatoClient({ baseUrl: demoBase });
+    expect((await regular.register("Обычный")).sandbox).toBe(false);
+    expect((await fail(regular.joinByCode(demo.room.code))).code).toBe("DEMO_SANDBOX_ONLY");
+
+    // обычный сервер: песочную регистрацию не даёт, а токен с демо-сервера там не действует (отдельная БД)
+    const normal = new TomatoClient({ baseUrl: base });
+    expect((await normal.health()).demoMode).toBe(false);
+    expect((await fail(normal.register("Песок", { sandbox: true }))).code).toBe("DEMO_DISABLED");
+    normal.setToken(sandbox.token);
+    expect((await fail(normal.me())).status).toBe(401);
+  });
+});

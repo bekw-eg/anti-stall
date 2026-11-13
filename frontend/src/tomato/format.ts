@@ -1,4 +1,4 @@
-import type { MemberStatus } from "@/api/tomato";
+import type { Member, MemberStatus } from "@/api/tomato";
 
 export const pad = (n: number) => n.toString().padStart(2, "0");
 
@@ -19,10 +19,18 @@ export function extractRoomCode(input: string): string | null {
   return CODE_RE.test(code) ? code : null;
 }
 
+/** Коды ошибок API, для которых у интерфейса свой понятный текст; для остальных — сообщение сервера. */
+export const API_ERROR_TEXT: Record<string, string> = {
+  SANDBOX_DEMO_ONLY: "В демо-песочнице доступны только демо-комнаты",
+  DEMO_SANDBOX_ONLY: "Это демо-комната: войти в неё можно только из демо-песочницы",
+  DEMO_DISABLED: "Демо-режим на этом сервере выключен",
+};
+export const apiErrorText = (e: { code: string; message?: string }) => API_ERROR_TEXT[e.code] ?? (e.message || "Что-то пошло не так");
+
 export const roomLink = (code: string) => `${window.location.origin}/room/${code}`;
 
 export const STATUS_LABEL: Record<MemberStatus, string> = {
-  waiting: "готов",
+  waiting: "ждёт", // в комнате, но ещё не отметил «Я готов»
   focusing: "в фокусе",
   finished: "закончил",
   aborted: "вышел раньше",
@@ -30,6 +38,20 @@ export const STATUS_LABEL: Record<MemberStatus, string> = {
   spectating: "наблюдает",
   resting: "отдыхает",
 };
+
+/** Подпись участника: пока готовность можно отметить (ожидание / перерыв), отметка «готов» важнее статуса. */
+export const memberStatusLabel = (m: Pick<Member, "status" | "isReady">, showReady: boolean) =>
+  showReady && m.isReady ? "готов" : STATUS_LABEL[m.status];
+
+/**
+ * Готовность к старту фокуса. Сервер участников без связи дольше grace-периода (connection: "offline")
+ * пропускает, поэтому их готовность не ждём; себя считаем всегда.
+ */
+export function readiness(members: Pick<Member, "userId" | "isReady" | "connection">[], meId?: string) {
+  const present = members.filter((m) => m.connection !== "offline" || m.userId === meId);
+  const ready = present.filter((m) => Boolean(m.isReady)).length;
+  return { ready, total: present.length, all: present.length > 0 && ready === present.length };
+}
 
 export const initials = (name: string) => (name.trim()[0] ?? "?").toUpperCase();
 

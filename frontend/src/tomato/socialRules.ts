@@ -4,13 +4,15 @@ import type { Tomato } from "./useTomato";
 export type ActionType = "boost" | "shield" | "fog" | "sticker";
 export const KIND: Record<ActionType, "help" | "prank"> = { boost: "help", shield: "help", fog: "prank", sticker: "prank" };
 export const ACTION_TEXT: Record<ActionType, string> = { boost: "бонус к XP", shield: "щит от шуток", fog: "туман", sticker: "стикер" };
+/** Цена щита по умолчанию; актуальную присылает сервер (GET /api/config → t.shieldCost) */
 export const SHIELD_COST = 10;
 
 /**
  * Почему действие сейчас недоступно (подсказка для кнопки). Окончательно решает сервер —
  * здесь только объяснение пользователю, чтобы не нажимать заведомо бесполезную кнопку.
  */
-export function disabledReason(type: ActionType, target: Member, t: Pick<Tomato, "snapshot" | "feed">): string | null {
+export function disabledReason(type: ActionType, target: Member, t: Pick<Tomato, "snapshot" | "feed"> & { shieldCost?: number }): string | null {
+  const shieldCost = t.shieldCost ?? SHIELD_COST;
   const snap = t.snapshot!;
   const me = snap.me;
   if (!me) return "Вы не участник комнаты";
@@ -20,7 +22,7 @@ export function disabledReason(type: ActionType, target: Member, t: Pick<Tomato,
   if (sentThisBreak) return "Уже отправлено в этот перерыв";
   if (kind === "help") {
     if (snap.room.mode === "teams" && target.team !== me.team) return "Помогать можно только своей команде";
-    if (type === "shield" && me.coins < SHIELD_COST) return `Нужно ${SHIELD_COST} монет`;
+    if (type === "shield" && me.coins < shieldCost) return `Нужно ${shieldCost} монет`;
     return null;
   }
   if (!me.prankEnabled) return "Вы выключили шутки — отправлять их тоже нельзя";

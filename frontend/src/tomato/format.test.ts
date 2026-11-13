@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractRoomCode, formatTime, initials, roomLink } from "./format";
+import { API_ERROR_TEXT, apiErrorText, extractRoomCode, formatTime, initials, memberStatusLabel, readiness, roomLink } from "./format";
 
 describe("formatTime", () => {
   it("форматирует секунды как MM:SS", () => {
@@ -35,5 +35,35 @@ describe("прочее", () => {
     expect(initials("  аня")).toBe("А");
     expect(initials("")).toBe("?");
     expect(roomLink("ABC123")).toBe(`${window.location.origin}/room/ABC123`);
+  });
+});
+
+describe("memberStatusLabel", () => {
+  it("в ожидании: не готов → «ждёт», готов → «готов» (без английского Ready)", () => {
+    expect(memberStatusLabel({ status: "waiting", isReady: false }, true)).toBe("ждёт");
+    expect(memberStatusLabel({ status: "waiting" }, true)).toBe("ждёт");
+    expect(memberStatusLabel({ status: "waiting", isReady: true }, true)).toBe("готов");
+  });
+  it("вне ожидания/перерыва отметка готовности не показывается", () => {
+    expect(memberStatusLabel({ status: "focusing", isReady: true }, false)).toBe("в фокусе");
+  });
+});
+
+describe("readiness", () => {
+  const m = (userId: string, connection: "online" | "reconnecting" | "offline", isReady: boolean) => ({ userId, connection, isReady });
+  it("участников без связи не ждём, переподключающихся — ждём", () => {
+    expect(readiness([m("me", "online", true), m("a", "offline", false)], "me")).toEqual({ ready: 1, total: 1, all: true });
+    expect(readiness([m("me", "online", true), m("a", "reconnecting", false)], "me")).toEqual({ ready: 1, total: 2, all: false });
+  });
+  it("себя считаем всегда, даже если сервер видит нас офлайн", () => {
+    expect(readiness([m("me", "offline", false), m("a", "online", true)], "me")).toEqual({ ready: 1, total: 2, all: false });
+  });
+});
+
+describe("apiErrorText", () => {
+  it("коды песочницы — понятным русским текстом, остальное — сообщение сервера", () => {
+    for (const code of ["SANDBOX_DEMO_ONLY", "DEMO_SANDBOX_ONLY", "DEMO_DISABLED"]) expect(apiErrorText({ code, message: "x" })).toBe(API_ERROR_TEXT[code]);
+    expect(apiErrorText({ code: "WRONG_PHASE", message: "Нельзя сейчас" })).toBe("Нельзя сейчас");
+    expect(apiErrorText({ code: "HTTP_ERROR", message: "" })).toBe("Что-то пошло не так");
   });
 });

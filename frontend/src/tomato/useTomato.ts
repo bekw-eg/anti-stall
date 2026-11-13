@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { TomatoApiError, TomatoClient } from "@/api/tomato";
+import { TomatoApiError, TomatoClient, WS_CLOSE_UNAUTHORIZED } from "@/api/tomato";
 import type { Connection, CreateRoomInput, Me, RoomSnapshot, ServerEvent, SocialAction, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
-import { extractRoomCode } from "./format";
+import { apiErrorText, extractRoomCode } from "./format";
+import { SHIELD_COST } from "./socialRules";
 import { useNow } from "./useMedia";
 
 export const client = new TomatoClient();
+
+/**
+ * Сохранённый аккаунт не подходит этому серверу: обычный на демо-сервере или песочный на обычном.
+ * Старый backend поле sandbox не присылает — тогда аккаунт не трогаем.
+ */
+export const sandboxMismatch = (me: Pick<Me, "sandbox">, demoMode: boolean) => typeof me.sandbox === "boolean" && me.sandbox !== demoMode;
 
 const ROOM_KEY = "tomato2.roomId";
 const NAME_KEY = "tomato2.name";
@@ -48,7 +55,12 @@ function describeEvent(ev: ServerEvent, myId?: string, myTeam?: string): string 
 export function useTomato(initialCode?: string) {
   const [boot, setBoot] = useState<"loading" | "ready">("loading");
   const [serverOk, setServerOk] = useState<boolean | null>(null);
-  const [demoAvailable, setDemoAvailable] = useState(false);
+  // health.demoMode: демо-сервер — песочные аккаунты и только демо-комнаты
+  const [demoMode, setDemoMode] = useState(false);
+  const demoRef = useRef(false);
+  // Параметры сервера (GET /api/config, hello): значения по умолчанию — на случай, если их там нет
+  const [graceSec, setGraceSec] = useState(30);
+  const [shieldCost, setShieldCost] = useState(SHIELD_COST);
   const [user, setUser] = useState<Me | null>(null);
   const [name, setName] = useState(store.get(NAME_KEY) ?? "");
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -102,26 +114,30 @@ export function useTomato(initialCode?: string) {
   }, [applySnapshot]);
 
   /** Единая обработка ошибок: сеть, устаревший токен, ошибки домена. */
+  const report = useCallback((e: unknown) => {
+    if (e instanceof TomatoApiError) {
+      if (e.status === 401) {
+        client.setToken(null);
+        setUser(null);
+        leaveLocal();
+        push("Сессия устарела — войдите заново", "error");
+      } else push(apiErrorText(e), "error");
+    } else {
+      setServerOk(false);
+      push("Нет связи с сервером", "error");
+    }
+  }, [leaveLocal, push]);
+
   const call = useCallback(async <T,>(fn: () => Promise<T>): Promise<T | null> => {
     try {
       const r = await fn();
       setServerOk(true);
       return r;
     } catch (e) {
-      if (e instanceof TomatoApiError) {
-        if (e.status === 401) {
-          client.setToken(null);
-          setUser(null);
-          leaveLocal();
-          push("Сессия устарела — войдите заново", "error");
-        } else push(e.message, "error");
-      } else {
-        setServerOk(false);
-        push("Нет связи с сервером", "error");
-      }
+      report(e);
       return null;
     }
-  }, [leaveLocal, push]);
+  }, [report]);
 
   // ---------------------------------------------------------------- загрузка и восстановление
   useEffect(() => {
@@ -129,10 +145,11 @@ export function useTomato(initialCode?: string) {
     (async () => {
       for (;;) {
         try {
-          const h = await fetch("/api/health").then((r) => r.json());
+          const h = await client.health();
           if (cancelled) return;
           setServerOk(true);
-          setDemoAvailable(Boolean(h.demoMode));
+          demoRef.current = Boolean(h.demoMode);
+          setDemoMode(demoRef.current);
           offsetRef.current = h.serverTime - Date.now();
         } catch {
           if (cancelled) return;
@@ -141,21 +158,41 @@ export function useTomato(initialCode?: string) {
           if (cancelled) return;
           continue;
         }
+        client.config().then((c) => {
+          if (cancelled) return;
+          const cfg = c as { social?: { shield?: { cost?: number } }; presence?: { graceMs?: number } };
+          if (typeof cfg.social?.shield?.cost === "number") setShieldCost(cfg.social.shield.cost);
+          if (typeof cfg.presence?.graceMs === "number" && cfg.presence.graceMs > 0) setGraceSec(Math.round(cfg.presence.graceMs / 1000));
+        }).catch(() => undefined);
+        const code = initialCode ? extractRoomCode(initialCode) : null;
         try {
           if (client.token) {
             const me = await client.me();
             if (cancelled) return;
-            setUser(me);
-            setName((n) => n || me.name);
-            const saved = store.get(ROOM_KEY);
-            const code = initialCode ? extractRoomCode(initialCode) : null;
-            if (code) enterRoom(await client.joinByCode(code));
-            else if (saved) enterRoom(await client.room(saved));
+            if (sandboxMismatch(me, demoRef.current)) {
+              // аккаунт с другого типа сервера: забываем его, при входе зарегистрируемся заново (один раз, по действию пользователя)
+              client.setToken(null);
+              store.set(ROOM_KEY, null);
+            } else {
+              setUser(me);
+              setName((n) => n || me.name);
+              const saved = store.get(ROOM_KEY);
+              if (code) enterRoom(await client.joinByCode(code));
+              else if (saved) enterRoom(await client.room(saved));
+            }
           }
         } catch (e) {
           if (e instanceof TomatoApiError) {
-            if (e.status === 401) client.setToken(null);
-            else store.set(ROOM_KEY, null); // комната закрыта / нет доступа
+            if (e.status === 401) {
+              client.setToken(null); // устарел или выдан другим сервером (у демо — своя БД)
+              store.set(ROOM_KEY, null);
+            } else {
+              // комната закрыта / нет доступа — забываем; 5xx/429 — оставляем до следующей загрузки
+              const gone = e.status === 403 || e.status === 404 || e.status === 409;
+              if (gone) store.set(ROOM_KEY, null);
+              if (code) push(`Не удалось войти в комнату ${code}: ${apiErrorText(e)}`, "error");
+              else if (!gone) push(apiErrorText(e), "error");
+            }
           } else {
             await sleep(3000); // сеть пропала посреди восстановления — повторяем
             if (cancelled) return;
@@ -175,12 +212,34 @@ export function useTomato(initialCode?: string) {
     if (!roomId) return;
     let alive = true;
     let everOnline = false;
+    let ended = false; // комната уже сброшена — повторные сигналы (REST + WS) не дублируют тосты
     setConn("connecting");
 
+    /** Комнаты для нас больше нет (вышли в другой вкладке, закрыта): сбрасываем её локально. */
+    const roomGone = (text: string) => {
+      if (!alive || ended) return;
+      ended = true;
+      leaveLocal();
+      push(text, "error");
+    };
+    /** Токен не принят сокетом (4401 / UNAUTHORIZED): разлогиниваем явно, а не молча. */
+    const unauthorized = () => {
+      if (!alive || ended) return;
+      ended = true;
+      client.setToken(null);
+      setUser(null);
+      leaveLocal();
+      push("Сессия устарела — войдите заново", "error");
+    };
+    const applyRoom = (s: RoomSnapshot) => {
+      if (s.me && s.me.isMember === false) roomGone("Вы больше не участник этой комнаты");
+      else applySnapshot(s);
+    };
+
     const refresh = () => {
-      client.room(roomId).then((s) => alive && applySnapshot(s)).catch((e) => {
+      client.room(roomId).then((s) => alive && applyRoom(s)).catch((e) => {
         if (!alive) return;
-        if (e instanceof TomatoApiError && (e.status === 403 || e.status === 404)) { leaveLocal(); push("Комната недоступна", "error"); }
+        if (e instanceof TomatoApiError && (e.status === 403 || e.status === 404)) roomGone("Комната недоступна");
       });
     };
     refreshRef.current = refresh;
@@ -190,11 +249,25 @@ export function useTomato(initialCode?: string) {
     socket.subscribe(roomId);
     setSocket(socket);
     client.socialFeed(roomId).then((r) => alive && setFeed(r.actions)).catch(() => undefined);
-    socket.on("hello", () => { everOnline = true; setConn("online"); });
-    socket.on("disconnected", () => setConn(everOnline ? "reconnecting" : "connecting"));
-    socket.on("room_state", (ev) => { if (ev.roomId === roomId) { applySnapshot(ev.data as RoomSnapshot); if (ev.ts) offsetRef.current = ev.ts - Date.now(); } });
+    socket.on("hello", (ev) => {
+      everOnline = true;
+      setConn("online");
+      const g = (ev.data as { graceMs?: number }).graceMs;
+      if (typeof g === "number" && g > 0) setGraceSec(Math.round(g / 1000));
+    });
+    socket.on("disconnected", (ev) => {
+      if ((ev.data as { code?: number }).code === WS_CLOSE_UNAUTHORIZED) unauthorized();
+      else setConn(everOnline ? "reconnecting" : "connecting");
+    });
+    socket.on("room_state", (ev) => {
+      if (ev.roomId !== roomId) return;
+      if (ev.ts) offsetRef.current = ev.ts - Date.now();
+      applyRoom(ev.data as RoomSnapshot);
+    });
     socket.on("error", (ev) => {
-      if ((ev.data as { code?: string }).code === "UNAUTHORIZED") { client.setToken(null); setUser(null); leaveLocal(); }
+      const code = (ev.data as { code?: string }).code;
+      if (code === "UNAUTHORIZED") unauthorized();
+      else if (code === "NOT_A_MEMBER" || code === "ROOM_NOT_FOUND") roomGone("Комната недоступна: вы вышли из неё или она закрыта");
     });
     socket.on("*", (ev) => {
       if (ev.type === "player_ready_changed") {
@@ -242,7 +315,8 @@ export function useTomato(initialCode?: string) {
     // Присутствие: WS шлёт heartbeat сам; REST-heartbeat страхует от обрыва только сокета.
     const hb = setInterval(() => { client.request("POST", "/api/heartbeat", {}).then(() => setServerOk(true)).catch(() => undefined); }, 5000);
     const onVisible = () => { if (document.visibilityState === "visible") refresh(); };
-    const onOnline = () => refresh();
+    // сеть вернулась: если сокет пережил обрыв, сам он hello не пришлёт — снимаем «Нет сети» здесь
+    const onOnline = () => { refresh(); setConn(socket.ready ? "online" : everOnline ? "reconnecting" : "connecting"); };
     const onOffline = () => setConn("offline");
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("online", onOnline);
@@ -275,20 +349,36 @@ export function useTomato(initialCode?: string) {
   }, [conn]);
 
   // ---------------------------------------------------------------- действия
+  /**
+   * Аккаунт под этот сервер. Сохранённый токен проверяется: 401 (устарел / с другого сервера) или
+   * несовпадение sandbox ↔ demoMode — токен сбрасывается и делается ровно одна новая регистрация.
+   */
   const ensureUser = useCallback(async (displayName: string) => {
     const trimmed = displayName.trim();
     if (client.token) {
-      const me = await call(() => client.me());
-      if (me && me.name !== trimmed) { const u = await call(() => client.updateMe({ name: trimmed })); if (u) setUser(u); }
-      else if (me) setUser(me);
-      if (client.token) { store.set(NAME_KEY, trimmed); return true; }
+      let me: Me | null = null;
+      try {
+        me = await client.me();
+        setServerOk(true);
+      } catch (e) {
+        if (!(e instanceof TomatoApiError && e.status === 401)) { report(e); return false; }
+      }
+      if (me && !sandboxMismatch(me, demoRef.current)) {
+        const u = me.name !== trimmed ? await call(() => client.updateMe({ name: trimmed })) : me;
+        if (!client.token) return false; // 401 на переименовании — call уже всё сбросил
+        setUser(u ?? me);
+        store.set(NAME_KEY, trimmed);
+        return true;
+      }
+      client.setToken(null);
+      setUser(null);
     }
-    const u = await call(() => client.register(trimmed));
+    const u = await call(() => client.register(trimmed, demoRef.current ? { sandbox: true } : {}));
     if (!u) return false;
     setUser(u);
     store.set(NAME_KEY, trimmed);
     return true;
-  }, [call]);
+  }, [call, report]);
 
   const withBusy = useCallback(async <T,>(fn: () => Promise<T>) => {
     setBusy(true);
@@ -297,7 +387,8 @@ export function useTomato(initialCode?: string) {
 
   const createRoom = useCallback((displayName: string, input: CreateRoomInput) => withBusy(async () => {
     if (!(await ensureUser(displayName))) return false;
-    const s = await call(() => client.createRoom({ name: `Комната ${displayName.trim()}`, ...input }));
+    // на демо-сервере песочный аккаунт может создать только демо-комнату
+    const s = await call(() => client.createRoom({ name: `Комната ${displayName.trim()}`, ...input, ...(demoRef.current ? { demo: true } : {}) }));
     if (s) enterRoom(s);
     return Boolean(s);
   }), [call, ensureUser, enterRoom, withBusy]);
@@ -313,7 +404,19 @@ export function useTomato(initialCode?: string) {
 
   const room = snapshot?.room;
   const rid = room?.id ?? "";
-  const leaveRoom = useCallback(async () => { if (!rid) return; await call(() => client.leaveRoom(rid)); leaveLocal(); }, [call, leaveLocal, rid]);
+  /** Выход: локально — только если сервер подтвердил (или комнаты для нас уже нет: 403/404). */
+  const leaveRoom = useCallback(async () => {
+    if (!rid) return false;
+    try {
+      await client.leaveRoom(rid);
+      setServerOk(true);
+    } catch (e) {
+      const gone = e instanceof TomatoApiError && (e.status === 403 || e.status === 404);
+      if (!gone) { report(e); return false; } // при 401 report уже сбросил комнату и токен
+    }
+    leaveLocal();
+    return true;
+  }, [leaveLocal, report, rid]);
   const startFocus = useCallback(() => call(() => client.startFocus(rid)), [call, rid]);
   const abortSession = useCallback(() => call(() => client.abortSession(rid)), [call, rid]);
   const skipBreak = useCallback(() => call(() => client.skipBreak(rid)), [call, rid]);
@@ -354,7 +457,7 @@ export function useTomato(initialCode?: string) {
   }, [call]);
 
   return {
-    boot, serverOk, demoAvailable, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
+    boot, serverOk, demoMode, graceSec, shieldCost, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
     call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled,
   };
 }
