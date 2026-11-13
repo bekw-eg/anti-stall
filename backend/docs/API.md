@@ -42,8 +42,9 @@
 |---|---|---|
 | POST 🔓 | `/api/users` | Регистрация: `{name}` → 201 `{user, token}` |
 | GET | `/api/users/me` | Профиль: `id,name,level,xp,coins,prankEnabled,activeSession,rooms[]` |
-| PATCH | `/api/users/me` | `{name?, prankEnabled?}` (остальные поля игнорируются) |
-| GET | `/api/users/me/progress` | XP, уровень, монеты, улучшения, достижения, эффекты, статистика |
+| PATCH | `/api/users/me` | `{name?, prankEnabled?}` (остальные поля игнорируются); комнатам игрока уходит свежий `room_state` |
+| GET | `/api/users/me/progress` | XP, уровень, монеты, улучшения, достижения, эффекты, статистика (`stats.focusSeconds`, `stats.interruptedSessions`) |
+| GET | `/api/users/me/stats?tz` | Статистика занятий: `sessions{completed, rewarded, interrupted, focusSeconds, averageSeconds, todayFocusSeconds, todaySessions}`, уровень/XP, `bestStreakDays`, `social{helpsSent, pranksSent, helpsReceived, pranksReceived}`, `achievements{unlocked,total}`, `daily[7]{dayStart, focusSeconds, sessions}`. `tz` — смещение пояса клиента в минутах (−840…840), только чтобы резать сутки. Время концентрации — только завершённые сессии, по серверным меткам |
 | GET | `/api/users/me/sessions?limit&offset` | История занятий: задача, статус, результат, награды |
 | GET | `/api/users/me/achievements` | Список достижений |
 | GET | `/api/users/me/upgrades` | Каталог улучшений игрока (`canBuy`, `nextCost`) |
@@ -74,6 +75,9 @@
 | POST | `/api/rooms/:id/td/start` | участник, `break` | `{stageId?}` — начать раунд команды (один за перерыв) |
 | POST | `/api/rooms/:id/td/build` | участник, `break` | `{slotId, type, requestId}` — построить башню за свои Tomato Coins |
 | POST | `/api/rooms/:id/td/upgrade` | участник, `break` | `{slotId, requestId, expectedLevel?}` — улучшить башню (до 3 уровня) |
+| GET | `/api/rooms/:id/stats` | участник | Командный прогресс: `teams[]{key, name, points, goal, completedSessions, focusSeconds, members[]{userId, name, team, completedSessions, interruptedSessions, focusSeconds, points}}`, `totals`, `winner`, `cycles` |
+| GET | `/api/rooms/:id/voice` | участник | Кто сейчас в голосовом канале: `{peers[]{userId, name, muted, deafened, speaking, joinedAt}, maxPeers}` |
+| GET | `/api/voice/ice-servers` | любой авторизованный | `{iceServers[], ttlSec, relay}` — STUN и (если настроен) TURN с временными логинами, см. [VOICE.md](VOICE.md) |
 | GET | `/api/rooms/:id/social` | участник | Последние 30 соц-действий |
 | POST | `/api/rooms/:id/social/help` | участник, `break` | `{targetUserId, type:"boost"|"shield"}` |
 | POST | `/api/rooms/:id/social/prank` | участник, `break` | `{targetUserId, type:"fog"|"sticker"}` |
@@ -158,9 +162,15 @@
 | `subscribe` | `roomId` | `room_joined`, затем `room_state`; только участникам (`NOT_A_MEMBER`) |
 | `unsubscribe` | `roomId` | `unsubscribed` |
 | `heartbeat` / `ping` | — | `heartbeat_ack {serverTime}`; обновляет присутствие |
+| `voice_join` | `roomId, muted?, deafened?` | `voice_joined {self, peers[], iceServers[], ttlSec, relay}`; остальным — `voice_peer_joined`. Только подписчику комнаты (`NOT_SUBSCRIBED`); канал до 8 человек (`VOICE_FULL`) |
+| `voice_leave` | `roomId` | `voice_left`; остальным — `voice_peer_left {reason:"left"}` |
+| `voice_signal` | `roomId, to, signal` | пересылается `to` как `voice_signal {from, signal}`. `signal` — `{description:{type:"offer"|"answer", sdp}}` или `{candidate:{candidate, sdpMid, sdpMLineIndex, usernameFragment}|null}`; лишние поля отбрасываются. Ошибки: `VOICE_NOT_JOINED`, `VOICE_PEER_NOT_FOUND`, `INVALID_SIGNAL` |
+| `voice_state` | `roomId, muted?, deafened?, speaking?` | рассылается комнате как `voice_state` (только при изменении; с выключенным микрофоном `speaking` всегда `false`) |
 
-Любое другое событие (`give_me_coins`, `complete_session`, `start_timer`…) → `error UNKNOWN_EVENT`.
-Эхо `reqId` возвращается в ответе/ошибке. Лимит 30 сообщений/с, 16 КБ. Без `auth` за 5 с соединение закрывается.
+Любое другое событие (`give_me_coins`, `complete_session`, `start_timer`…) → `error UNKNOWN_EVENT`. Голосовые сообщения
+не меняют ни экономику, ни прогресс: сервер только пересылает SDP/ICE участникам того же голосового канала.
+Эхо `reqId` возвращается в ответе/ошибке. Лимит 30 сообщений/с (плюс отдельно до 200 `voice_signal`/с — ICE-кандидаты
+приходят пачками), 64 КБ на сообщение. Без `auth` за 5 с соединение закрывается.
 Сервер сам пингует соединения каждые 5 с (pong тоже считается присутствием).
 
 ### Сервер → клиент
@@ -187,6 +197,12 @@
 | `td_tower_built` / `td_tower_upgraded` | `{team, slotId, type?, level, by}` |
 | `td_round_finished` | `{team, stageId, status:"won|lost|expired", result:{hpLeft,hpMax,kills,leaked,total,gameTime}, reward}` |
 | `td_duel_result` | `{stageId, winner:"A|B|draw", scores}` — дуэль команд A/B (оба сыграли один этап) |
+| `voice_roster` | `{peers[]}` — кто в голосе; приходит сразу после `subscribe` |
+| `voice_peer_joined` / `voice_peer_left` | `{peer}` / `{userId, reason:"left|disconnected|replaced|left_room|rejoined"}` |
+| `voice_state` | `{userId, muted, deafened, speaking}` |
+
+Голосу лично: `voice_signal {from, signal}` (только адресату), `voice_kicked {reason:"replaced|left_room"}` — голос открыт
+в другой вкладке (новое соединение вытесняет старое) или игрок вышел из комнаты.
 
 Личные (всем соединениям игрока):
 
