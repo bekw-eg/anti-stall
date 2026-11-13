@@ -28,11 +28,16 @@ variables:
   # Образ для deploy-джобы: любой, где есть dp CLI (нужен для авторизации в registry) и ssh
   DEPLOY_IMG: registry.spirit.t-education.com/cicd-images/base-noble:release-1.1.0
 
-# 1. Сборка образа через Kaniko и публикация в registry
+# 1. Сборка образа через Kaniko и публикация в registry.
+# Проект — монорепозиторий (frontend/ и backend/), а шаблон .dp_build по умолчанию ищет Dockerfile в корне,
+# поэтому явно указываем Dockerfile и контекст сборки фронтенда.
 build:image:
   extends:
     - .dp_build
     - .rules-merge-or-master-or-parent
+  variables:
+    DOCKERFILE_PATH: $CI_PROJECT_DIR/frontend/Dockerfile
+    CONTEXT: $CI_PROJECT_DIR/frontend
   after_script:
     - |
       if [ "$CI_JOB_STATUS" = "success" ]; then
@@ -85,7 +90,7 @@ deploy:vm:
     - echo "🚀 Запускаем деплой образа $IMAGE_NAME на $DEPLOY_HOST"
     # кладём на ВМ compose-файл и ключ сервис-аккаунта
     - $SSH $VM "mkdir -p ~/app"
-    - $SCP deploy/docker-compose.yml $SPIRIT_DOCKER_SA_KEY $VM:app/
+    - $SCP frontend/deploy/docker-compose.yml $SPIRIT_DOCKER_SA_KEY $VM:app/
     # на ВМ: входим в registry, скачиваем новый образ и перезапускаем.
     # dp и docker запускаем через sudo: dp пишет helper в /usr/local/bin, это требует root
     - |
