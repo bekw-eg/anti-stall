@@ -22,13 +22,16 @@
 cd backend
 npm install
 npm start                 # http://localhost:8787, WebSocket /ws, БД data/tomato.db
-npm run start:demo        # то же + ускоренные демо-комнаты (см. docs/DEMO_MODE.md)
-npm test                  # 93 автотеста, управляемые часы
-npm run demo              # сквозной сценарий для жюри (нужен сервер с TOMATO_DEMO=1)
+npm run start:demo        # демо-сервер: песочные аккаунты, ускоренные комнаты, отдельная БД data/tomato-demo.db (docs/DEMO_MODE.md)
+npm test                  # 125 автотестов, управляемые часы
+npm run demo              # сквозной сценарий для жюри (нужен демо-сервер)
+npm run demo:seed         # изолированные тестовые аккаунты и комната -> data/demo-seed.json
+npm run demo:bots -- --room CODE   # боты-игроки для показа (команды leave/help/prank/status/quit)
+npm run cheat-check       # атаки на живой демо-сервер, таблица PASS/FAIL
 ```
 
 Переменные окружения: `PORT` (8787), `HOST`, `TOMATO_DB` (путь к файлу SQLite),
-`TOMATO_DEMO=1`, `TOMATO_CORS_ORIGIN` (по умолчанию `*`); голос — `TOMATO_STUN_URLS`, `TOMATO_TURN_URLS`,
+`TOMATO_DEMO=1` (или флаг `--demo`), `TOMATO_STATIC_DIR` (раздавать собранный frontend), `TOMATO_CORS_ORIGIN` (по умолчанию `*`); голос — `TOMATO_STUN_URLS`, `TOMATO_TURN_URLS`,
 `TOMATO_TURN_SECRET` (см. docs/VOICE.md).
 
 Frontend в dev-режиме проксирует `/api` и `/ws` на `http://localhost:8787` (`frontend/vite.config.ts`,

@@ -58,7 +58,7 @@ export function SocialPanel({ t }: { t: Tomato }) {
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="friends-h" className="text-sm font-semibold uppercase tracking-[0.2em]">Друзья</h2>
           <p className="text-xs text-[var(--muted)]" data-testid="social-phase-note">
-            {onBreak ? "Перерыв: помогите другу или подшутите — до 3 шуток, не чаще раза в 20 с" : "Сейчас все занимаются — помощь и шутки откроются на перерыве"}
+            {onBreak ? `Перерыв: помогите другу или подшутите — до ${t.prankRules.maxPerBreak} шуток, не чаще раза в ${Math.max(1, Math.round((snap.room.demo ? t.prankRules.demoCooldownMs : t.prankRules.cooldownMs) / 1000))} с` : "Сейчас все занимаются — помощь и шутки откроются на перерыве"}
           </p>
         </div>
         {others.length === 0 && <p className="text-sm text-[var(--muted)]">Пока вы одни в комнате — позовите друзей по ссылке.</p>}

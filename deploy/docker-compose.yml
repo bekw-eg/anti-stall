@@ -24,6 +24,9 @@ services:
   demo:
     image: ${IMAGE_NAME:-tomato:local}
     profiles: ["demo"]
+    build:
+      context: ..
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "${DEMO_PORT:-8081}:3000"

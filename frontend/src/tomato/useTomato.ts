@@ -61,6 +61,8 @@ export function useTomato(initialCode?: string) {
   // Параметры сервера (GET /api/config, hello): значения по умолчанию — на случай, если их там нет
   const [graceSec, setGraceSec] = useState(30);
   const [shieldCost, setShieldCost] = useState(SHIELD_COST);
+  // правила шуток для подсказки в «Друзьях»; в демо-комнатах свой, короткий кулдаун
+  const [prankRules, setPrankRules] = useState({ cooldownMs: 20_000, demoCooldownMs: 20_000, maxPerBreak: 3 });
   const [user, setUser] = useState<Me | null>(null);
   const [name, setName] = useState(store.get(NAME_KEY) ?? "");
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -160,8 +162,13 @@ export function useTomato(initialCode?: string) {
         }
         client.config().then((c) => {
           if (cancelled) return;
-          const cfg = c as { social?: { shield?: { cost?: number } }; presence?: { graceMs?: number } };
+          const cfg = c as { social?: { shield?: { cost?: number }; prankRules?: { cooldownMs?: number; demoCooldownMs?: number; maxPerBreak?: number } }; presence?: { graceMs?: number } };
           if (typeof cfg.social?.shield?.cost === "number") setShieldCost(cfg.social.shield.cost);
+          const pr = cfg.social?.prankRules;
+          if (pr) setPrankRules((p) => {
+            const cooldownMs = typeof pr.cooldownMs === "number" ? pr.cooldownMs : p.cooldownMs;
+            return { cooldownMs, demoCooldownMs: typeof pr.demoCooldownMs === "number" ? pr.demoCooldownMs : cooldownMs, maxPerBreak: typeof pr.maxPerBreak === "number" ? pr.maxPerBreak : p.maxPerBreak };
+          });
           if (typeof cfg.presence?.graceMs === "number" && cfg.presence.graceMs > 0) setGraceSec(Math.round(cfg.presence.graceMs / 1000));
         }).catch(() => undefined);
         const code = initialCode ? extractRoomCode(initialCode) : null;
@@ -457,7 +464,7 @@ export function useTomato(initialCode?: string) {
   }, [call]);
 
   return {
-    boot, serverOk, demoMode, graceSec, shieldCost, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
+    boot, serverOk, demoMode, graceSec, shieldCost, prankRules, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
     call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled,
   };
 }
