@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 155 45% 17%;
+    --foreground: 0 0% 100%;
+
+    --card: 155 45% 20%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 155 45% 20%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 50 93% 66%;
+    --primary-foreground: 155 45% 17%;
+
+    --secondary: 50 93% 66%;
+    --secondary-foreground: 155 45% 17%;
+
+    --muted: 155 45% 25%;
+    --muted-foreground: 0 0% 85%;
+
+    --accent: 50 93% 66%;
+    --accent-foreground: 155 45% 17%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 155 45% 30%;
+    --input: 155 45% 25%;
+    --ring: 50 93% 66%;
+
+    --radius: 0.75rem;
+
+    --success: 150 60% 50%;
+    --success-foreground: 0 0% 100%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(50 93% 66%), hsl(50 93% 76%));
+    --gradient-secondary: linear-gradient(135deg, hsl(50 93% 66%), hsl(50 93% 76%));
+    --gradient-bg: linear-gradient(180deg, hsl(155 45% 17%), hsl(155 45% 20%));
+
+    --shadow-soft: 0 2px 8px hsl(0 0% 0% / 0.3);
+    --shadow-card: 0 4px 16px hsl(0 0% 0% / 0.4);
+    --shadow-elevated: 0 8px 24px hsl(0 0% 0% / 0.5);
+
+    --sidebar-background: 155 45% 17%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 50 93% 66%;
+    --sidebar-primary-foreground: 155 45% 17%;
+    --sidebar-accent: 155 45% 25%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 155 45% 30%;
+    --sidebar-ring: 50 93% 66%;
+  }
+}
+img { pointer-events: none; }
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    overscroll-behavior: none;
+  }
+
+  body {
+    @apply bg-gradient-to-b from-background to-muted/20 text-foreground min-h-screen;
+    background-image: var(--gradient-bg);
+    overscroll-behavior: none;
+    overflow-x: hidden;
+  }
+
+  button {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer utilities {
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+
+  .gradient-secondary {
+    background: var(--gradient-secondary);
+  }
+
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+
+  .shadow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+}
