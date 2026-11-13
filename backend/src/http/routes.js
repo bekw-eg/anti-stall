@@ -4,7 +4,7 @@ import { reqInt, reqObject } from '../validate.js';
 import { Router } from './router.js';
 
 /** Привязка REST-маршрутов к сервисам. Здесь нет бизнес-логики: только разбор запроса. */
-export function buildRoutes({ config, users, rooms, game, social, td, db, clock }) {
+export function buildRoutes({ config, users, rooms, game, social, td, voice, clock }) {
   const r = new Router();
   const ok = (body, status = 200) => ({ status, body });
 
@@ -20,6 +20,7 @@ export function buildRoutes({ config, users, rooms, game, social, td, db, clock 
     upgrades: Object.values(UPGRADES).map((u) => ({ ...u, costs: Array.from({ length: u.maxLevel }, (_, i) => upgradeCost(u, i)) })),
     achievements: Object.values(ACHIEVEMENTS).map(({ condition, ...a }) => a),
     roadmap: { ...ROADMAP, baseHp: BASE_HP },
+    voice: { maxPeers: config.voice.maxPeers, turnConfigured: config.voice.turnUrls.length > 0 && Boolean(config.voice.turnSecret || config.voice.turnCredential) },
   }), { auth: false });
 
   // ---- пользователи
@@ -29,6 +30,11 @@ export function buildRoutes({ config, users, rooms, game, social, td, db, clock 
   r.add('GET', '/api/users/me/progress', ({ user }) => ok(game.progress(user.id)));
   r.add('GET', '/api/users/me/sessions', ({ user, query }) => ok({ sessions: users.sessions(user.id, query) }));
   r.add('GET', '/api/users/me/achievements', ({ user }) => ok({ achievements: game.listAchievements(user.id) }));
+  r.add('GET', '/api/users/me/stats', ({ user, query }) => {
+    const tz = query.tz === undefined ? 0 : Number(query.tz);
+    if (!Number.isInteger(tz) || tz < -840 || tz > 840) throw E.badRequest('INVALID_FIELD', 'tz — смещение часового пояса в минутах от -840 до 840', { field: 'tz' });
+    return ok(game.studyStats(user.id, { tzOffsetMin: tz }));
+  });
   r.add('GET', '/api/users/me/upgrades', ({ user }) => ok({ upgrades: game.listUpgrades(user.id) }));
   r.add('POST', '/api/users/me/upgrades/:id/purchase', ({ user, params, body }) => {
     const b = reqObject(body);
@@ -82,6 +88,18 @@ export function buildRoutes({ config, users, rooms, game, social, td, db, clock 
   r.add('POST', '/api/rooms/:id/td/start', ({ user, params, body }) => ok(td.start(user, params.id, body)));
   r.add('POST', '/api/rooms/:id/td/build', ({ user, params, body }) => ok(td.build(user, params.id, body), 201));
   r.add('POST', '/api/rooms/:id/td/upgrade', ({ user, params, body }) => ok(td.upgrade(user, params.id, body)));
+  r.add('GET', '/api/rooms/:id/stats', ({ user, params }) => {
+    const room = rooms.findRoom(params.id);
+    rooms.requireMember(room, user);
+    return ok(game.roomStats(room.id));
+  });
+  // ---- голос: кто в канале и ICE-серверы (сам сигналинг — по WebSocket)
+  r.add('GET', '/api/rooms/:id/voice', ({ user, params }) => {
+    const room = rooms.findRoom(params.id);
+    rooms.requireMember(room, user);
+    return ok({ roomId: room.id, peers: voice.peers(room.id), maxPeers: config.voice.maxPeers });
+  });
+  r.add('GET', '/api/voice/ice-servers', ({ user }) => ok(voice.iceServers(user.id)));
   r.add('GET', '/api/rooms/:id/social', ({ user, params }) => ok({ actions: social.recent(user, params.id) }));
   r.add('POST', '/api/rooms/:id/social/help', ({ user, params, body }) => ok(social.help(user, params.id, body), 201));
   r.add('POST', '/api/rooms/:id/social/prank', ({ user, params, body }) => ok(social.prank(user, params.id, body), 201));

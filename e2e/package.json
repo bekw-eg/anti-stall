@@ -1,0 +1,14 @@
+{
+  "name": "antistall-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Сквозные проверки в настоящем Google Chrome (голос WebRTC, помощь/шутки, статистика). Отдельный пакет: не влияет на сборку frontend.",
+  "scripts": {
+    "voice": "node voice.e2e.mjs",
+    "social": "node social.e2e.mjs",
+    "test": "node voice.e2e.mjs && node social.e2e.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.48.2"
+  }
+}

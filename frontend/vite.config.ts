@@ -16,6 +16,11 @@ export default defineConfig(({ mode }) => ({
   },
   preview: {
     allowedHosts: true,
+    // та же схема для собранной версии (vite preview): /api и /ws уходят на backend
+    proxy: {
+      "/api": { target: process.env.VITE_BACKEND_URL ?? "http://localhost:8787", changeOrigin: true },
+      "/ws": { target: process.env.VITE_BACKEND_URL ?? "http://localhost:8787", ws: true },
+    },
   },
   plugins: [react()],
   resolve: {
