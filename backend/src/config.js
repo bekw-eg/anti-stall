@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 /**
  * Вся настраиваемая логика проекта. Экономика, лимиты и тайминги живут здесь,
  * а не в коде бизнес-правил — клиент никогда не присылает эти значения.
@@ -7,7 +9,7 @@ export function loadConfig(env = process.env, overrides = {}) {
   const cfg = {
     port: Number(env.PORT || 8787),
     host: env.HOST || '0.0.0.0',
-    dbPath: env.TOMATO_DB || new URL('../data/tomato.db', import.meta.url).pathname,
+    dbPath: env.TOMATO_DB || fileURLToPath(new URL('../data/tomato.db', import.meta.url)),
     corsOrigin: env.TOMATO_CORS_ORIGIN || '*',
 
     /** Демо-режим для жюри: только по явному флагу сервера, см. docs/DEMO_MODE.md */

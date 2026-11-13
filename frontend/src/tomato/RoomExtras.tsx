@@ -18,12 +18,51 @@ function Controls({ t }: { t: Tomato }) {
   useEffect(() => () => clearTimeout(timer.current), []);
   const [copied, setCopied] = useState(false);
 
+  const isReady = Boolean(snap.me?.isReady);
+  const canReady = phase === "waiting" || phase === "break";
+  const readyButton = canReady && (
+    <motion.button
+      type="button"
+      onClick={() => t.setReady(!isReady)}
+      whileTap={{ scale: 0.97 }}
+      className={`${btn} flex items-center gap-2 px-8 text-base shadow-sm ${
+        isReady
+          ? "bg-emerald-600 text-white hover:bg-emerald-700"
+          : "border-2 border-emerald-500/80 bg-[var(--card)] text-[var(--fg)] hover:bg-emerald-500/15"
+      }`}
+    >
+      {isReady && <Check size={18} />}
+      {isReady ? "Не готов" : "Я готов"}
+    </motion.button>
+  );
+
   if (actions.includes("start_focus")) {
+    const readyCount = snap.members.filter((m) => Boolean(m.isReady)).length;
+    const totalCount = snap.members.length;
+    const allReady = totalCount > 0 && readyCount === totalCount;
     return (
       <div className="flex flex-col items-center gap-3">
-        <motion.button type="button" onClick={t.startFocus} whileTap={{ scale: 0.97 }} className={`${btn} bg-zinc-900 px-10 text-white hover:bg-black`}>
-          Начать фокус
-        </motion.button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {readyButton}
+          <motion.button
+            type="button"
+            disabled={!allReady}
+            onClick={t.startFocus}
+            whileTap={allReady ? { scale: 0.97 } : undefined}
+            className={`${btn} px-10 text-white ${
+              allReady
+                ? "animate-pulse bg-zinc-900 hover:bg-black"
+                : "cursor-not-allowed bg-zinc-900/45 opacity-60"
+            }`}
+          >
+            Начать фокус
+          </motion.button>
+        </div>
+        {!allReady && (
+          <p className="text-xs text-[var(--muted)]">
+            Ждём готовности всех участников ({readyCount}/{totalCount})
+          </p>
+        )}
         {snap.members.length < 2 && (
           <button
             type="button"
@@ -51,14 +90,24 @@ function Controls({ t }: { t: Tomato }) {
     );
   }
   if (actions.includes("skip_break")) {
-    return <button type="button" onClick={t.skipBreak} className={`${btn} border border-[var(--line)] text-[var(--muted)] hover:text-[var(--fg)]`}>Пропустить перерыв</button>;
+    return (
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        {readyButton}
+        <button type="button" onClick={t.skipBreak} className={`${btn} border border-[var(--line)] text-[var(--muted)] hover:text-[var(--fg)]`}>Пропустить перерыв</button>
+      </div>
+    );
   }
   const hint =
     phase === "waiting" ? "Ждём, пока создатель запустит сессию"
     : phase === "focus" ? "Вы наблюдаете — присоединитесь в следующем цикле"
     : phase === "completed" ? "Комната закрыта"
     : "";
-  return <p className="text-sm text-[var(--muted)]">{hint}</p>;
+  return (
+    <div className="flex flex-col items-center gap-2">
+      {readyButton}
+      {hint && <p className="text-sm text-[var(--muted)]">{hint}</p>}
+    </div>
+  );
 }
 
 /** После сессии на перерыве: пользователь отмечает результат (влияет только на историю). */
@@ -172,32 +221,47 @@ function ActionMenu({ member, t }: { member: Member; t: Tomato }) {
 export function ParticipantsRow({ t, className = "" }: { t: Tomato; className?: string }) {
   const snap = t.snapshot!;
   const meId = snap.me?.userId;
-  const onBreak = snap.room.phase === "break";
+  const phase = snap.room.phase;
+  const onBreak = phase === "break";
+  const showReady = phase === "waiting" || phase === "break";
   return (
     <ul className={`flex gap-2 ${className || "flex-wrap justify-center"}`} aria-label="Участники">
       <AnimatePresence initial={false}>
-        {snap.members.map((m: Member) => (
-          <motion.li
-            key={m.userId}
-            layout
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="flex shrink-0 items-center gap-2 rounded-full bg-[var(--card)] py-1.5 pl-1.5 pr-3 text-xs text-[var(--fg)]"
-          >
-            <span className="relative flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-[11px] font-medium text-white">
-              {initials(m.name)}
-              <span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-[#d9d9d9] ${CONN_COLOR[m.connection]}`} title={m.connection} />
-            </span>
-            <span className="max-w-[7rem] truncate font-medium">{m.name}{m.userId === meId && " (вы)"}</span>
-            {(m.team === "A" || m.team === "B") && <span className="rounded bg-[var(--card)] px-1.5 text-[10px] font-semibold" title={`Команда ${m.team}`}>{m.team}</span>}
-            <span className="text-[var(--muted)]">{STATUS_LABEL[m.status]}</span>
-            {m.task && m.status !== "waiting" && <span className="hidden max-w-[8rem] truncate text-[var(--muted)] sm:inline">· {m.task}</span>}
-            {onBreak && m.userId !== meId && (
-              <ActionMenu member={m} t={t} />
-            )}
-          </motion.li>
-        ))}
+        {snap.members.map((m: Member) => {
+          const isReady = showReady && Boolean(m.isReady);
+          return (
+            <motion.li
+              key={m.userId}
+              layout
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className={`flex shrink-0 items-center gap-2 rounded-full bg-[var(--card)] py-1.5 pl-1.5 pr-3 text-xs text-[var(--fg)] ${
+                isReady ? "ring-1 ring-emerald-500/60" : ""
+              }`}
+            >
+              <span className={`relative flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-[11px] font-medium text-white ${
+                isReady ? "ring-2 ring-emerald-500" : ""
+              }`}>
+                {initials(m.name)}
+                <span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-[#d9d9d9] ${CONN_COLOR[m.connection]}`} title={m.connection} />
+              </span>
+              <span className="max-w-[7rem] truncate font-medium">{m.name}{m.userId === meId && " (вы)"}</span>
+              {(m.team === "A" || m.team === "B") && <span className="rounded bg-[var(--card)] px-1.5 text-[10px] font-semibold" title={`Команда ${m.team}`}>{m.team}</span>}
+              {isReady ? (
+                <span className="inline-flex items-center gap-0.5 font-semibold text-emerald-500">
+                  <Check size={12} /> Ready
+                </span>
+              ) : (
+                <span className="text-[var(--muted)]">{STATUS_LABEL[m.status]}</span>
+              )}
+              {m.task && m.status !== "waiting" && <span className="hidden max-w-[8rem] truncate text-[var(--muted)] sm:inline">· {m.task}</span>}
+              {onBreak && m.userId !== meId && (
+                <ActionMenu member={m} t={t} />
+              )}
+            </motion.li>
+          );
+        })}
       </AnimatePresence>
     </ul>
   );
