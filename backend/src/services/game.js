@@ -371,12 +371,106 @@ export function createGame(ctx) {
     );
   }
 
+  // ------------------------------------------------------------------ статистика занятий
+  // Время концентрации считается только по завершённым сессиям и только по серверным меткам времени.
+  const FOCUS_SEC = 'MIN(duration_sec, (ended_at - started_at) / 1000)';
+
+  function focusTotals(userId) {
+    const r = db.get(
+      `SELECT SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) completed,
+              SUM(CASE WHEN status IN ('aborted','abandoned') THEN 1 ELSE 0 END) interrupted,
+              COALESCE(SUM(CASE WHEN status = 'completed' THEN ${FOCUS_SEC} ELSE 0 END), 0) focus
+       FROM focus_sessions WHERE user_id = ?`, userId,
+    );
+    return { completed: r.completed ?? 0, interrupted: r.interrupted ?? 0, focusSeconds: r.focus ?? 0 };
+  }
+
+  /**
+   * Личная статистика: сессии, время концентрации (всего / сегодня / по дням), уровень, достижения, соцдействия.
+   * tzOffsetMin — смещение часового пояса клиента (минуты к UTC), только чтобы правильно резать сутки.
+   */
+  function studyStats(userId, { tzOffsetMin = 0, days = 7 } = {}) {
+    const u = userRow(userId);
+    const t = clock.now();
+    const s = stats(userId);
+    const totals = focusTotals(userId);
+    const tz = tzOffsetMin * 60_000;
+    const today = Math.floor((t + tz) / DAY);
+    const from = (today - (days - 1)) * DAY - tz;
+    const daily = Array.from({ length: days }, (_, i) => ({ dayStart: (today - (days - 1) + i) * DAY - tz, focusSeconds: 0, sessions: 0 }));
+    for (const r of db.all(`SELECT ended_at e, ${FOCUS_SEC} s FROM focus_sessions WHERE user_id = ? AND status = 'completed' AND ended_at >= ?`, userId, from)) {
+      const i = Math.floor((r.e + tz) / DAY) - (today - (days - 1));
+      if (i >= 0 && i < days) { daily[i].focusSeconds += r.s; daily[i].sessions += 1; }
+    }
+    const achievements = listAchievements(userId);
+    return {
+      userId, name: u.name, ...levelInfo(u.xp), coins: u.coins,
+      sessions: {
+        completed: totals.completed,
+        rewarded: s.completedSessions,
+        interrupted: totals.interrupted,
+        focusSeconds: totals.focusSeconds,
+        averageSeconds: totals.completed ? Math.round(totals.focusSeconds / totals.completed) : 0,
+        todayFocusSeconds: daily[days - 1].focusSeconds,
+        todaySessions: daily[days - 1].sessions,
+      },
+      bestStreakDays: s.bestStreakDays,
+      social: {
+        helpsSent: s.helpsSent,
+        pranksSent: s.pranksSent,
+        helpsReceived: db.get("SELECT COUNT(*) c FROM social_actions WHERE target_id = ? AND kind = 'help'", userId).c,
+        pranksReceived: db.get("SELECT COUNT(*) c FROM social_actions WHERE target_id = ? AND kind = 'prank'", userId).c,
+      },
+      achievements: { unlocked: achievements.filter((a) => a.unlocked).length, total: achievements.length },
+      daily,
+    };
+  }
+
+  /** Командный прогресс комнаты: очки команд по карте и вклад каждого участника (сессии, время, очки). */
+  function roomStats(roomId) {
+    const room = db.get('SELECT * FROM rooms WHERE id = ?', roomId);
+    const road = roadmapView(roomId);
+    const per = new Map(db.all(
+      `SELECT user_id,
+              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) completed,
+              SUM(CASE WHEN status IN ('aborted','abandoned') THEN 1 ELSE 0 END) interrupted,
+              COALESCE(SUM(CASE WHEN status = 'completed' THEN ${FOCUS_SEC} ELSE 0 END), 0) focus
+       FROM focus_sessions WHERE room_id = ? GROUP BY user_id`, roomId,
+    ).map((r) => [r.user_id, r]));
+    const points = new Map(db.all('SELECT user_id, SUM(points) p FROM team_contributions WHERE room_id = ? GROUP BY user_id', roomId).map((r) => [r.user_id, r.p]));
+    const members = db.all(
+      `SELECT m.user_id AS userId, u.name, m.team_key AS team FROM room_members m JOIN users u ON u.id = m.user_id
+       WHERE m.room_id = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.rowid`, roomId,
+    ).map((m) => {
+      const r = per.get(m.userId);
+      return { ...m, completedSessions: r?.completed ?? 0, interruptedSessions: r?.interrupted ?? 0, focusSeconds: r?.focus ?? 0, points: points.get(m.userId) ?? 0 };
+    });
+    const teams = road.teams.map((tm) => {
+      const list = members.filter((m) => room.mode !== 'teams' || m.team === tm.key);
+      return {
+        key: tm.key, name: tm.name, points: tm.points, goal: road.goal, finished: tm.finished, completed: tm.completed,
+        positionNodeId: tm.positionNodeId,
+        completedSessions: list.reduce((a, m) => a + m.completedSessions, 0),
+        focusSeconds: list.reduce((a, m) => a + m.focusSeconds, 0),
+        members: list,
+      };
+    });
+    return {
+      roomId, mode: room.mode, cycles: room.cycle_no, goal: road.goal, winner: road.winner, teams,
+      totals: { completedSessions: members.reduce((a, m) => a + m.completedSessions, 0), focusSeconds: members.reduce((a, m) => a + m.focusSeconds, 0) },
+    };
+  }
+
   function progress(userId) {
     const u = userRow(userId);
     const s = stats(userId);
+    const totals = focusTotals(userId);
     return {
       userId, name: u.name, ...levelInfo(u.xp), coins: u.coins, prankEnabled: Boolean(u.prank_enabled),
-      stats: { completedSessions: s.completedSessions, bestStreakDays: s.bestStreakDays, helpsSent: s.helpsSent, pranksSent: s.pranksSent },
+      stats: {
+        completedSessions: s.completedSessions, bestStreakDays: s.bestStreakDays, helpsSent: s.helpsSent, pranksSent: s.pranksSent,
+        focusSeconds: totals.focusSeconds, interruptedSessions: totals.interrupted,
+      },
       upgrades: listUpgrades(userId),
       achievements: listAchievements(userId),
       effects: effects(userId),
@@ -386,5 +480,6 @@ export function createGame(ctx) {
   return {
     levelInfo, grant, spend, completeSession, addTeamPoints, roadmapView, gameView,
     listUpgrades, purchaseUpgrade, upgradeLevel, checkAchievements, listAchievements, progress, effects, stats,
+    studyStats, roomStats,
   };
 }

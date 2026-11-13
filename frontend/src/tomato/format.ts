@@ -32,3 +32,20 @@ export const STATUS_LABEL: Record<MemberStatus, string> = {
 };
 
 export const initials = (name: string) => (name.trim()[0] ?? "?").toUpperCase();
+
+/** Длительность для статистики: «45 с», «25 мин», «2 ч 05 мин». */
+export function formatDuration(totalSeconds: number) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  if (s < 60) return `${s} с`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} мин`;
+  return `${Math.floor(m / 60)} ч ${pad(m % 60)} мин`;
+}
+
+/** Сколько прошло: «только что», «3 мин назад», «2 ч назад». */
+export function formatAgo(atMs: number, nowMs: number) {
+  const s = Math.max(0, Math.round((nowMs - atMs) / 1000));
+  if (s < 45) return "только что";
+  if (s < 3600) return `${Math.max(1, Math.round(s / 60))} мин назад`;
+  return `${Math.round(s / 3600)} ч назад`;
+}

@@ -9,7 +9,7 @@ export function loadConfig(env = process.env, overrides = {}) {
   const cfg = {
     port: Number(env.PORT || 8787),
     host: env.HOST || '0.0.0.0',
-    dbPath: env.TOMATO_DB || fileURLToPath(new URL('../data/tomato.db', import.meta.url)),
+    dbPath: env.TOMATO_DB || fileURLToPath(new URL('../data/tomato.db', import.meta.url)), // pathname ломался на Windows ("/C:/…")
     corsOrigin: env.TOMATO_CORS_ORIGIN || '*',
 
     /** Демо-режим для жюри: только по явному флагу сервера, см. docs/DEMO_MODE.md */
@@ -49,6 +49,22 @@ export function loadConfig(env = process.env, overrides = {}) {
       nodeReward: { xp: 25, coins: 10 }, // за каждый промежуточный этап карты, один раз на участника с вкладом
     },
 
+    // Голос: WebRTC mesh внутри комнаты. Сервер только передаёт сигналы и выдаёт ICE-серверы,
+    // сам звук идёт напрямую между браузерами (или через TURN, если задан).
+    voice: {
+      maxPeers: Number(env.TOMATO_VOICE_MAX_PEERS || 8),
+      stunUrls: splitList(env.TOMATO_STUN_URLS ?? 'stun:stun.l.google.com:19302,stun:stun.cloudflare.com:3478'),
+      turnUrls: splitList(env.TOMATO_TURN_URLS ?? ''),
+      // Вариант 1 (рекомендуется, coturn use-auth-secret): общий секрет → временные логины на час
+      turnSecret: env.TOMATO_TURN_SECRET || null,
+      // Вариант 2: статичные логин/пароль TURN
+      turnUsername: env.TOMATO_TURN_USERNAME || null,
+      turnCredential: env.TOMATO_TURN_CREDENTIAL || null,
+      turnTtlSec: 3600,
+      maxSdpBytes: 32 * 1024,
+      signalsPerSec: 200, // кандидаты ICE приходят пачками — отдельный лимит от остальных сообщений
+    },
+
     social: {
       helpDailyLimit: 6,
       boost: { xpBonusPct: 25, ttlMs: 24 * 3600_000 },
@@ -61,6 +77,10 @@ export function loadConfig(env = process.env, overrides = {}) {
     },
   };
   return deepMerge(cfg, overrides);
+}
+
+function splitList(value) {
+  return String(value).split(',').map((s) => s.trim()).filter(Boolean);
 }
 
 function deepMerge(base, extra) {

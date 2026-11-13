@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TomatoApiError, TomatoClient } from "@/api/tomato";
-import type { CreateRoomInput, Me, RoomSnapshot, ServerEvent, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
+import type { Connection, CreateRoomInput, Me, RoomSnapshot, ServerEvent, SocialAction, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
 import { extractRoomCode } from "./format";
 import { useNow } from "./useMedia";
 
@@ -32,8 +32,11 @@ function describeEvent(ev: ServerEvent, myId?: string, myTeam?: string): string 
     case "td_duel_result": return d.winner === "draw" ? "Дуэль: ничья" : `Дуэль: победила команда ${d.winner}`;
     case "node_reached": return `${teamLabel(d.team)}этап пройден: ${d.title}`.replace(/^./, (c) => c.toUpperCase());
     case "challenge_completed": return d.draw ? "Ничья: обе команды достигли цели" : d.team === "shared" ? "Команда достигла цели" : `Команда ${d.team} победила`;
-    case "help_applied": return d.to === myId ? "Вам помогли: бонус к XP в следующей сессии" : null;
-    case "prank_applied": return d.to === myId ? (d.blocked ? "Щит отразил шутку" : "Вам отправили шутку") : null;
+    case "help_applied": {
+      const h = ev.data as { type?: string };
+      return d.to === myId ? (h.type === "shield" ? "Вам подарили щит от шуток" : "Вам помогли: бонус к XP в следующей сессии") : null;
+    }
+    case "prank_applied": return d.to === myId ? (d.blocked ? "Щит отразил шутку" : null) : null; // сама шутка видна на экране
     default: return null;
   }
 }
@@ -57,6 +60,8 @@ export function useTomato(initialCode?: string) {
   const [td, setTd] = useState<TdView | null>(null);
   const tdRef = useRef<TdView | null>(null);
   tdRef.current = td;
+  const [socket, setSocket] = useState<TomatoSocket | null>(null); // общий сокет комнаты (голос использует его же)
+  const [feed, setFeed] = useState<SocialAction[]>([]); // лента помощи и шуток комнаты
 
   const offsetRef = useRef(0); // serverTime − Date.now()
   const refreshRef = useRef<() => void>(() => undefined);
@@ -183,6 +188,8 @@ export function useTomato(initialCode?: string) {
 
     const socket: TomatoSocket = client.connect();
     socket.subscribe(roomId);
+    setSocket(socket);
+    client.socialFeed(roomId).then((r) => alive && setFeed(r.actions)).catch(() => undefined);
     socket.on("hello", () => { everOnline = true; setConn("online"); });
     socket.on("disconnected", () => setConn(everOnline ? "reconnecting" : "connecting"));
     socket.on("room_state", (ev) => { if (ev.roomId === roomId) { applySnapshot(ev.data as RoomSnapshot); if (ev.ts) offsetRef.current = ev.ts - Date.now(); } });
@@ -201,6 +208,21 @@ export function useTomato(initialCode?: string) {
         return;
       }
       if (ev.type === "reward_granted" || ev.type === "balance_changed") refresh(); // блок me живёт в снимке
+      // онлайн/переподключение участника: сервер шлёт только это событие, снимок комнаты не меняется
+      if (ev.type === "player_status_changed") {
+        const d = ev.data as { userId: string; connection?: Connection };
+        if (d.connection) setSnapshot((s) => s && { ...s, members: s.members.map((m) => (m.userId === d.userId ? { ...m, connection: d.connection! } : m)) });
+      }
+      if (ev.type === "help_applied" || ev.type === "prank_applied") {
+        const d = ev.data as { actionId: number; type: SocialAction["type"]; from: string; to: string; blocked?: boolean; at: number; effectEndsAt?: number | null };
+        const item: SocialAction = {
+          id: d.actionId, kind: ev.type === "help_applied" ? "help" : "prank", type: d.type, fromUserId: d.from, toUserId: d.to,
+          status: d.blocked ? "blocked" : "applied", at: d.at, effectEndsAt: d.effectEndsAt ?? null,
+        };
+        setFeed((f) => [item, ...f.filter((x) => x.id !== item.id)].slice(0, 30));
+        // эффекты и монеты живут в снимке: получателю и отправителю нужен свежий
+        if (d.to === myIdRef.current || d.from === myIdRef.current) refresh();
+      }
       // Tower Defense: td_state приходит часто и содержит только состояние одной команды — вливаем в локальный вид
       if (ev.type === "td_state") {
         const d = ev.data as TdStateEvent;
@@ -228,6 +250,8 @@ export function useTomato(initialCode?: string) {
     return () => {
       alive = false;
       socket.close();
+      setSocket(null);
+      setFeed([]);
       clearInterval(hb);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
@@ -317,9 +341,21 @@ export function useTomato(initialCode?: string) {
 
   const recordResult = useCallback((result: "done" | "partial" | "not_done") => call(() => client.recordResult(rid, result)), [call, rid]);
 
+  /** Получать шутки: переключатель меняется сразу, сервер подтверждает (при ошибке — откат). */
+  const setPranksEnabled = useCallback(async (on: boolean) => {
+    const apply = (v: boolean) => {
+      setSnapshot((s) => (s?.me ? { ...s, me: { ...s.me, prankEnabled: v }, members: s.members.map((m) => (m.userId === s.me!.userId ? { ...m, prankEnabled: v } : m)) } : s));
+      setUser((u) => (u ? { ...u, prankEnabled: v } : u));
+    };
+    apply(on);
+    const r = await call(() => client.updateMe({ prankEnabled: on }));
+    if (!r) apply(!on);
+    return Boolean(r);
+  }, [call]);
+
   return {
-    boot, serverOk, demoAvailable, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs,
-    call, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult,
+    boot, serverOk, demoAvailable, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
+    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;
