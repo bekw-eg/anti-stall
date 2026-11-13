@@ -1,5 +1,5 @@
 import type {
-  Achievement, TdView, CreateRoomInput, Me, Progress, Roadmap, RoomSnapshot, ServerEvent, StudySession, Upgrade,
+  Achievement, TdView, CreateRoomInput, IceConfig, Me, Progress, Roadmap, RoomSnapshot, RoomStats, ServerEvent, SocialAction, StudySession, StudyStats, Upgrade, VoicePeer,
 } from "./types";
 
 export class TomatoApiError extends Error {
@@ -58,6 +58,8 @@ export class TomatoClient {
   progress = () => this.request<Progress>("GET", "/api/users/me/progress");
   sessions = (limit = 50) => this.request<{ sessions: StudySession[] }>("GET", `/api/users/me/sessions?limit=${limit}`);
   achievements = () => this.request<{ achievements: Achievement[] }>("GET", "/api/users/me/achievements");
+  /** tzOffsetMin — минуты к UTC (для Алматы +300): нужен только чтобы сервер правильно резал сутки */
+  stats = (tzOffsetMin = -new Date().getTimezoneOffset()) => this.request<StudyStats>("GET", `/api/users/me/stats?tz=${tzOffsetMin}`);
   upgrades = () => this.request<{ upgrades: Upgrade[] }>("GET", "/api/users/me/upgrades");
   buyUpgrade = (id: string, expectedLevel?: number) =>
     this.request<{ upgradeId: string; level: number; cost: number }>("POST", `/api/users/me/upgrades/${id}/purchase`, { expectedLevel });
@@ -81,6 +83,12 @@ export class TomatoClient {
     this.request("POST", `/api/rooms/${id}/social/help`, { targetUserId, type });
   prank = (id: string, targetUserId: string, type: "fog" | "sticker") =>
     this.request("POST", `/api/rooms/${id}/social/prank`, { targetUserId, type });
+  socialFeed = (id: string) => this.request<{ actions: SocialAction[] }>("GET", `/api/rooms/${id}/social`);
+  roomStats = (id: string) => this.request<RoomStats>("GET", `/api/rooms/${id}/stats`);
+
+  // --- голос (сигналинг — по WebSocket, см. TomatoSocket.sendRaw)
+  voicePeers = (id: string) => this.request<{ roomId: string; peers: VoicePeer[]; maxPeers: number }>("GET", `/api/rooms/${id}/voice`);
+  iceServers = () => this.request<IceConfig>("GET", "/api/voice/ice-servers");
 
   // --- Tower Defense (только на перерыве; всё решает сервер)
   td = (id: string) => this.request<TdView>("GET", `/api/rooms/${id}/td`);
@@ -144,6 +152,20 @@ export class TomatoSocket {
     this.ws?.close();
   }
 
+  /** Сокет авторизован (получен hello) — можно отправлять голосовые сигналы. */
+  get ready() {
+    return this.authed && this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  /** Отправка произвольного сообщения (голосовой сигналинг). false — нет соединения, сообщение не ушло. */
+  sendRaw(msg: object): boolean {
+    if (!this.ready) return false;
+    this.ws!.send(JSON.stringify(msg));
+    return true;
+  }
+
+  private authed = false;
+
   private send(msg: object) {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
@@ -164,6 +186,7 @@ export class TomatoSocket {
       const ev = JSON.parse(m.data) as ServerEvent;
       if (typeof ev.ts === "number") this.clockOffset = ev.ts - Date.now();
       if (ev.type === "hello") {
+        this.authed = true;
         this.rooms.forEach((id) => this.send({ type: "subscribe", roomId: id }));
         if (this.hb) clearInterval(this.hb);
         this.hb = setInterval(() => this.send({ type: "heartbeat" }), 5000); // присутствие
@@ -171,6 +194,7 @@ export class TomatoSocket {
       this.emit(ev);
     };
     ws.onclose = () => {
+      this.authed = false;
       if (this.hb) clearInterval(this.hb);
       this.emit({ type: "disconnected", ts: Date.now(), data: {} });
       if (this.closed) return;

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Headphones } from "lucide-react";
 import type { Member, Roadmap } from "@/api/tomato";
 import { STATUS_LABEL, initials, roomLink } from "./format";
+import { disabledReason } from "./socialRules";
 import type { Tomato } from "./useTomato";
+import type { Voice } from "./voice/useVoice";
 
 const btn =
   "rounded-full px-6 py-2.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current";
@@ -144,24 +146,29 @@ export function RoadmapSlot({ road, inline = false }: { road: Roadmap; inline?: 
 }
 
 const CONN_COLOR = { online: "bg-emerald-500", reconnecting: "bg-amber-400", offline: "bg-zinc-400" } as const;
+const CONN_TITLE = { online: "в сети", reconnecting: "переподключается", offline: "не в сети" } as const;
 
-/** Действия на перерыве: доступны только Break, во время Focus меню не показывается. */
+/** Быстрые действия на перерыве: доступны только Break, во время Focus меню не показывается. */
 function ActionMenu({ member, t }: { member: Member; t: Tomato }) {
   const [open, setOpen] = useState(false);
-  const item = "block w-full rounded-md px-3 py-1.5 text-left text-xs hover:bg-black/5";
+  const item = "block w-full rounded-md px-3 py-1.5 text-left text-xs hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40";
   const run = (fn: () => unknown) => () => { setOpen(false); fn(); };
+  const opts = [
+    ["boost", "Бонус к XP", () => t.help(member.userId, "boost")],
+    ["shield", "Щит от шуток · 10 монет", () => t.help(member.userId, "shield")],
+    ["fog", "Шутка: туман", () => t.prank(member.userId, "fog")],
+    ["sticker", "Шутка: стикер", () => t.prank(member.userId, "sticker")],
+  ] as const;
   return (
     <span className="relative">
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-label={`Действия для ${member.name}`} className="px-1 text-[var(--muted)] hover:text-[var(--fg)]">⋯</button>
       <AnimatePresence>
         {open && (
-          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} className="absolute right-0 top-full z-20 mt-2 w-44 rounded-xl bg-white p-1 text-zinc-900 shadow-xl ring-1 ring-black/10">
-            <button type="button" className={item} onClick={run(() => t.help(member.userId, "boost"))}>Бонус к XP</button>
-            <button type="button" className={item} onClick={run(() => t.help(member.userId, "shield"))}>Щит от шуток · 10 монет</button>
-            {member.prankEnabled && (<>
-              <button type="button" className={item} onClick={run(() => t.prank(member.userId, "fog"))}>Шутка: туман</button>
-              <button type="button" className={item} onClick={run(() => t.prank(member.userId, "sticker"))}>Шутка: стикер</button>
-            </>)}
+          <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} className="absolute right-0 top-full z-20 mt-2 w-52 rounded-xl bg-white p-1 text-zinc-900 shadow-xl ring-1 ring-black/10">
+            {opts.map(([type, label, fn]) => {
+              const reason = disabledReason(type, member, t);
+              return <button key={type} type="button" className={item} disabled={reason !== null} title={reason ?? undefined} onClick={run(fn)}>{label}{reason && <span className="block text-[10px] text-zinc-500">{reason}</span>}</button>;
+            })}
           </motion.div>
         )}
       </AnimatePresence>
@@ -169,10 +176,11 @@ function ActionMenu({ member, t }: { member: Member; t: Tomato }) {
   );
 }
 
-export function ParticipantsRow({ t, className = "" }: { t: Tomato; className?: string }) {
+export function ParticipantsRow({ t, voice, className = "" }: { t: Tomato; voice?: Voice; className?: string }) {
   const snap = t.snapshot!;
   const meId = snap.me?.userId;
   const onBreak = snap.room.phase === "break";
+  const inVoice = new Map((voice?.peers ?? []).map((p) => [p.userId, p]));
   return (
     <ul className={`flex gap-2 ${className || "flex-wrap justify-center"}`} aria-label="Участники">
       <AnimatePresence initial={false}>
@@ -185,11 +193,16 @@ export function ParticipantsRow({ t, className = "" }: { t: Tomato; className?: 
             exit={{ opacity: 0, scale: 0.9 }}
             className="flex shrink-0 items-center gap-2 rounded-full bg-[var(--card)] py-1.5 pl-1.5 pr-3 text-xs text-[var(--fg)]"
           >
-            <span className="relative flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-[11px] font-medium text-white">
+            <span
+              className={`relative flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-[11px] font-medium text-white transition-shadow ${inVoice.get(m.userId)?.speaking ? "ring-2 ring-emerald-400" : ""}`}
+              data-connection={m.connection}
+              data-member-avatar={m.userId}
+            >
               {initials(m.name)}
-              <span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-[#d9d9d9] ${CONN_COLOR[m.connection]}`} title={m.connection} />
+              <span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-[#d9d9d9] ${CONN_COLOR[m.connection]}`} title={CONN_TITLE[m.connection]} />
             </span>
             <span className="max-w-[7rem] truncate font-medium">{m.name}{m.userId === meId && " (вы)"}</span>
+            {inVoice.has(m.userId) && <Headphones size={12} className="shrink-0 text-[var(--muted)]" aria-label="в голосе" />}
             {(m.team === "A" || m.team === "B") && <span className="rounded bg-[var(--card)] px-1.5 text-[10px] font-semibold" title={`Команда ${m.team}`}>{m.team}</span>}
             <span className="text-[var(--muted)]">{STATUS_LABEL[m.status]}</span>
             {m.task && m.status !== "waiting" && <span className="hidden max-w-[8rem] truncate text-[var(--muted)] sm:inline">· {m.task}</span>}

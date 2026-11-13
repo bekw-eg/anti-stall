@@ -161,7 +161,7 @@ export interface Progress extends LevelInfo {
   name: string;
   coins: number;
   prankEnabled: boolean;
-  stats: { completedSessions: number; bestStreakDays: number; helpsSent: number; pranksSent: number };
+  stats: { completedSessions: number; bestStreakDays: number; helpsSent: number; pranksSent: number; focusSeconds: number; interruptedSessions: number };
   upgrades: Upgrade[];
   achievements: Achievement[];
   effects: Effect[];
@@ -185,6 +185,92 @@ export interface StudySession {
   xp: number;
   coins: number;
 }
+
+/** GET /api/users/me/stats — личная статистика (всё считает сервер) */
+export interface StudyStats extends LevelInfo {
+  userId: string;
+  name: string;
+  coins: number;
+  sessions: {
+    completed: number;
+    rewarded: number;
+    interrupted: number;
+    focusSeconds: number;
+    averageSeconds: number;
+    todayFocusSeconds: number;
+    todaySessions: number;
+  };
+  bestStreakDays: number;
+  social: { helpsSent: number; pranksSent: number; helpsReceived: number; pranksReceived: number };
+  achievements: { unlocked: number; total: number };
+  daily: { dayStart: number; focusSeconds: number; sessions: number }[];
+}
+
+export interface RoomStatsMember {
+  userId: string;
+  name: string;
+  team: string;
+  completedSessions: number;
+  interruptedSessions: number;
+  focusSeconds: number;
+  points: number;
+}
+
+/** GET /api/rooms/:id/stats — командный прогресс комнаты */
+export interface RoomStats {
+  roomId: string;
+  mode: "shared" | "teams";
+  cycles: number;
+  goal: number;
+  winner: "A" | "B" | "draw" | null;
+  teams: {
+    key: string;
+    name: string;
+    points: number;
+    goal: number;
+    finished: boolean;
+    completed: boolean;
+    positionNodeId: string;
+    completedSessions: number;
+    focusSeconds: number;
+    members: RoomStatsMember[];
+  }[];
+  totals: { completedSessions: number; focusSeconds: number };
+}
+
+/** Действие помощи/пакости из ленты комнаты */
+export interface SocialAction {
+  id: number;
+  kind: "help" | "prank";
+  type: "boost" | "shield" | "fog" | "sticker";
+  fromUserId: string;
+  toUserId: string;
+  status: "applied" | "blocked";
+  at: number;
+  effectEndsAt: number | null;
+}
+
+// ---------------------------------------------------------------------------- Голос
+export interface VoicePeer {
+  userId: string;
+  name: string;
+  muted: boolean;
+  deafened: boolean;
+  speaking: boolean;
+  joinedAt: number;
+}
+
+export interface IceConfig {
+  iceServers: RTCIceServer[];
+  ttlSec: number;
+  /** настроен ли TURN (звонок пройдёт и через строгий NAT) */
+  relay: boolean;
+}
+
+/** Сигнал WebRTC, который сервер пересылает между участниками голосового канала */
+export type VoiceSignal =
+  | { description: { type: "offer" | "answer"; sdp: string } }
+  | { candidate: RTCIceCandidateInit | null };
 
 export interface CreateRoomInput {
   name?: string;
@@ -213,6 +299,7 @@ export type ServerEventType =
   | "timer_started" | "timer_tick" | "phase_changed"
   | "session_completed" | "reward_granted" | "balance_changed" | "achievement_unlocked"
   | "td_state" | "td_round_started" | "td_round_finished" | "td_tower_built" | "td_tower_upgraded" | "td_duel_result" | "roadmap_updated" | "node_reached" | "challenge_completed" | "help_applied" | "prank_applied"
+  | "voice_roster" | "voice_joined" | "voice_left" | "voice_peer_joined" | "voice_peer_left" | "voice_state" | "voice_signal" | "voice_kicked"
   | "heartbeat_ack" | "unsubscribed" | "error";
 
 // ---------------------------------------------------------------------------- Tower Defense

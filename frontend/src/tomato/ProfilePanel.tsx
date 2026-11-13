@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { client } from "./useTomato";
 import type { Tomato } from "./useTomato";
 import type { Progress, StudySession } from "@/api/tomato";
+import { formatDuration } from "./format";
 
 type Tab = "upgrades" | "achievements" | "history";
 const SESSION_LABEL: Record<string, string> = { completed: "завершена", aborted: "досрочно", abandoned: "нет связи", active: "идёт" };
@@ -44,7 +45,7 @@ export function ProfilePanel({ t }: { t: Tomato }) {
         </div>
         <p className="mt-2 flex justify-between text-xs text-zinc-500">
           <span className="tabular-nums">{progress.xp} / {progress.nextLevelXp} XP</span>
-          <span className="tabular-nums">{progress.coins} монет · занятий: {progress.stats.completedSessions}</span>
+          <span className="tabular-nums">{progress.coins} монет · занятий: {progress.stats.completedSessions} · {formatDuration(progress.stats.focusSeconds ?? 0)}</span>
         </p>
         {progress.effects.length > 0 && (
           <p className="mt-2 text-xs text-zinc-600">
@@ -58,7 +59,13 @@ export function ProfilePanel({ t }: { t: Tomato }) {
           type="checkbox"
           className="mt-1 h-4 w-4 accent-zinc-900"
           checked={progress.prankEnabled}
-          onChange={async (e) => { await t.call(() => client.updateMe({ prankEnabled: e.target.checked })); load(); }}
+          onChange={async (e) => {
+            // галочка переключается сразу; при ошибке сервера — откат
+            const on = e.target.checked;
+            setProgress((p) => (p ? { ...p, prankEnabled: on } : p));
+            const ok = await t.setPranksEnabled(on);
+            if (!ok) setProgress((p) => (p ? { ...p, prankEnabled: !on } : p));
+          }}
         />
         <span>Получать дружеские шутки<span className="block text-xs text-zinc-500">Если выключить, отправлять их тоже нельзя.</span></span>
       </label>
