@@ -18,13 +18,16 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export type Conn = "idle" | "connecting" | "online" | "reconnecting" | "offline";
 export interface Toast { id: number; text: string; tone: "info" | "reward" | "error" }
 
+const teamLabel = (team?: string) => (team === "A" || team === "B" ? `${team}: ` : "");
+
 function describeEvent(ev: ServerEvent, myId?: string): string | null {
-  const d = ev.data as { kind?: string; xp?: number; coins?: number; levelUp?: boolean; level?: number; title?: string; rewarded?: boolean; status?: string; to?: string; blocked?: boolean };
+  const d = ev.data as { team?: string; draw?: boolean; kind?: string; xp?: number; coins?: number; levelUp?: boolean; level?: number; title?: string; rewarded?: boolean; status?: string; to?: string; blocked?: boolean };
   switch (ev.type) {
     case "reward_granted": return d.kind === "achievement" ? null : `+${d.xp} XP · +${d.coins} монет${d.levelUp ? ` · уровень ${d.level}` : ""}`;
     case "achievement_unlocked": return `Достижение: ${d.title}`;
     case "session_completed": return d.rewarded ? null : d.status === "completed" ? "Сессия завершена, дневной лимит наград исчерпан" : "Сессия прервана — без награды";
-    case "challenge_completed": return "Команда достигла цели";
+    case "node_reached": return `${teamLabel(d.team)}этап пройден: ${d.title}`.replace(/^./, (c) => c.toUpperCase());
+    case "challenge_completed": return d.draw ? "Ничья: обе команды достигли цели" : d.team === "shared" ? "Команда достигла цели" : `Команда ${d.team} победила`;
     case "help_applied": return d.to === myId ? "Вам помогли: бонус к XP в следующей сессии" : null;
     case "prank_applied": return d.to === myId ? (d.blocked ? "Щит отразил шутку" : "Вам отправили шутку") : null;
     default: return null;
@@ -181,7 +184,7 @@ export function useTomato(initialCode?: string) {
     socket.on("*", (ev) => {
       if (ev.type === "reward_granted" || ev.type === "balance_changed") refresh(); // блок me живёт в снимке
       const text = describeEvent(ev, myIdRef.current);
-      if (text) push(text, ev.type === "reward_granted" || ev.type === "achievement_unlocked" || ev.type === "challenge_completed" ? "reward" : "info");
+      if (text) push(text, ev.type === "reward_granted" || ev.type === "achievement_unlocked" || ev.type === "challenge_completed" || ev.type === "node_reached" ? "reward" : "info");
     });
 
     // Присутствие: WS шлёт heartbeat сам; REST-heartbeat страхует от обрыва только сокета.
@@ -260,6 +263,7 @@ export function useTomato(initialCode?: string) {
   const startFocus = useCallback(() => call(() => client.startFocus(rid)), [call, rid]);
   const abortSession = useCallback(() => call(() => client.abortSession(rid)), [call, rid]);
   const skipBreak = useCallback(() => call(() => client.skipBreak(rid)), [call, rid]);
+  const setTeam = useCallback((team: "A" | "B") => call(() => client.setTeam(rid, team)), [call, rid]);
   const setTask = useCallback((title: string) => call(() => client.setTask(rid, title)), [call, rid]);
   const updateSettings = useCallback((s: CreateRoomInput) => withBusy(() => call(() => client.updateSettings(rid, s))), [call, rid, withBusy]);
   const help = useCallback((userId: string, type: "boost" | "shield") => call(() => client.help(rid, userId, type)), [call, rid]);
@@ -268,7 +272,7 @@ export function useTomato(initialCode?: string) {
 
   return {
     boot, serverOk, demoAvailable, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs,
-    call, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, updateSettings, help, prank, recordResult,
+    call, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, updateSettings, help, prank, recordResult,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

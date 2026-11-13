@@ -55,6 +55,81 @@ beforeAll(async () => {
 });
 afterAll(() => app.close());
 
+describe("клиент ↔ backend: Road Map", () => {
+  it("карта приходит с сервера, этап засчитывается сервером, все видят одно и то же, событие node_reached доходит по WS", async () => {
+    const lotti = await player("Карта-1");
+    const anya = await player("Карта-2");
+    const snap = await lotti.createRoom({ name: "Карта", focusMinutes: 25, breakMinutes: 5 });
+    await anya.joinByCode(snap.room.code);
+    const id = snap.room.id;
+
+    const road0 = await lotti.roadmap(id);
+    expect(road0.positionNodeId).toBe("camp");
+    expect(road0.next).toEqual({ nodeId: "forest", title: "Лес знаний", pointsNeeded: 2 });
+    expect(road0.edges).toHaveLength(3);
+    expect(road0.teams).toHaveLength(1);
+
+    const events: ServerEvent[] = [];
+    const sock = anya.connect();
+    sock.on("*", (e) => events.push(e));
+    sock.subscribe(id);
+    await until(() => events.some((e) => e.type === "room_state"));
+
+    await lotti.startFocus(id);
+    await advance(25 * 60_000 + 1000, [lotti, anya]); // обе сессии завершены → 2 очка → этап «Лес знаний»
+    const [a, b] = await Promise.all([lotti.roadmap(id), anya.roadmap(id)]);
+    expect(a).toEqual(b); // синхронизация между участниками
+    expect(a.positionNodeId).toBe("forest");
+    expect(a.nodes.find((n) => n.id === "forest")?.reachedAt).toBeGreaterThan(0);
+    expect(a.segment).toEqual({ from: "forest", to: "bridge", progress: 0 });
+
+    const reached = await until(() => events.find((e) => e.type === "node_reached"));
+    expect((reached.data as { nodeId: string }).nodeId).toBe("forest");
+    expect((await lotti.progress()).xp).toBe(125); // 100 за сессию + 25 за этап (начислил сервер)
+    expect((await lotti.room(id)).challenge.positionNodeId).toBe("forest"); // тот же снимок в room_state
+    sock.close();
+  });
+});
+
+describe("клиент ↔ backend: Team A/B", () => {
+  it("режим команд: автобаланс, смена команды, раздельная карта, победитель — всем одинаково", async () => {
+    const lotti = await player("Тим-1");
+    const anya = await player("Тим-2");
+    const snap = await lotti.createRoom({ name: "A vs B", focusMinutes: 25, breakMinutes: 5, teamMode: true });
+    expect(snap.room.mode).toBe("teams");
+    const joined = await anya.joinByCode(snap.room.code);
+    expect(joined.members.map((m) => m.team)).toEqual(["A", "B"]);
+    expect(joined.me?.team).toBe("B");
+    expect(joined.me?.allowedActions).toContain("set_team");
+    const switched = await anya.setTeam(snap.room.id, "A");
+    expect(switched.me?.team).toBe("A");
+    await anya.setTeam(snap.room.id, "B");
+
+    const id = snap.room.id;
+    const mine = await lotti.roadmap(id);
+    const theirs = await anya.roadmap(id);
+    expect(mine.mode).toBe("teams");
+    expect([mine.teamKey, theirs.teamKey]).toEqual(["A", "B"]);
+    expect(mine.teams.map((t) => t.key)).toEqual(["A", "B"]);
+
+    // по одному игроку в команде идут вровень: через 6 циклов — ничья, обе команды награждены
+    for (let i = 0; i < 6; i++) {
+      await lotti.startFocus(id);
+      await advance(25 * 60_000 + 1000, [lotti, anya]);
+      await advance(5 * 60_000, [lotti, anya]);
+    }
+    const [a, b] = await Promise.all([lotti.roadmap(id), anya.roadmap(id)]);
+    expect(a.winner).toBe("draw");
+    expect(b.winner).toBe("draw");
+    expect(a.completed && b.completed).toBe(true);
+    expect(a.teams.map((t) => t.points)).toEqual([6, 6]);
+    await lotti.setTeam(id, "B"); // между циклами (waiting) смена разрешена
+    await lotti.setTeam(id, "A");
+    await lotti.startFocus(id);
+    expect((await fail(lotti.setTeam(id, "B"))).code).toBe("WRONG_PHASE"); // во время сессии — нет
+  });
+});
+
 describe("клиент ↔ backend", () => {
   it("создание комнаты, вход по коду, одинаковое состояние у обоих", async () => {
     const lotti = await player("Лотти");
@@ -146,7 +221,7 @@ describe("клиент ↔ backend", () => {
     for (const c of [...app.hub.conns]) c.ws.terminate();
     await sleep(1800);
     expect(events.filter((e) => e.type === "reward_granted" && (e.data as { kind: string }).kind === "focus_session")).toHaveLength(1);
-    expect((await lotti.progress()).xp).toBe(100);
+    expect((await lotti.progress()).xp).toBe(125); // 100 + 25 за этап карты
     sock.close();
   }, 20000);
 

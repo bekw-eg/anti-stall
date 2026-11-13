@@ -115,7 +115,7 @@ export function RoadmapSlot({ road, inline = false }: { road: Roadmap; inline?: 
   return (
     <div className={inline ? "flex w-full items-center gap-3" : "w-full"} style={vars} aria-label={`Командная цель: ${road.points} из ${road.goal}`}>
       {inline ? (
-        <span className="hidden shrink-0 text-xs text-[var(--muted)] md:inline">{road.completed ? "Цель достигнута" : "Командная цель"}</span>
+        <span className="hidden shrink-0 text-xs text-[var(--muted)] md:inline">{road.winner ? "Цель достигнута" : road.mode === "teams" ? "Гонка команд" : "Командная цель"}</span>
       ) : (
         <div className="mb-2 flex justify-between text-xs text-[var(--muted)]">
           <span>{road.completed ? "Командная цель достигнута" : "Командная цель"}</span>
@@ -134,7 +134,11 @@ export function RoadmapSlot({ road, inline = false }: { road: Roadmap; inline?: 
           />
         ))}
       </div>
-      {inline && <span className="shrink-0 text-xs tabular-nums text-[var(--muted)]">{road.points}/{road.goal}</span>}
+      {inline && (
+        <span className="shrink-0 text-xs tabular-nums text-[var(--muted)]">
+          {road.mode === "teams" ? road.teams.map((t) => `${t.key} ${t.points}`).join(" : ") : `${road.points}/${road.goal}`}
+        </span>
+      )}
     </div>
   );
 }
@@ -170,7 +174,7 @@ export function ParticipantsRow({ t, className = "" }: { t: Tomato; className?: 
   const meId = snap.me?.userId;
   const onBreak = snap.room.phase === "break";
   return (
-    <ul className={`flex flex-wrap justify-center gap-2 ${className}`} aria-label="Участники">
+    <ul className={`flex gap-2 ${className || "flex-wrap justify-center"}`} aria-label="Участники">
       <AnimatePresence initial={false}>
         {snap.members.map((m: Member) => (
           <motion.li
@@ -179,13 +183,14 @@ export function ParticipantsRow({ t, className = "" }: { t: Tomato; className?: 
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
-            className="flex items-center gap-2 rounded-full bg-[var(--card)] py-1.5 pl-1.5 pr-3 text-xs text-[var(--fg)]"
+            className="flex shrink-0 items-center gap-2 rounded-full bg-[var(--card)] py-1.5 pl-1.5 pr-3 text-xs text-[var(--fg)]"
           >
             <span className="relative flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-[11px] font-medium text-white">
               {initials(m.name)}
               <span className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-[#d9d9d9] ${CONN_COLOR[m.connection]}`} title={m.connection} />
             </span>
             <span className="max-w-[7rem] truncate font-medium">{m.name}{m.userId === meId && " (вы)"}</span>
+            {(m.team === "A" || m.team === "B") && <span className="rounded bg-[var(--card)] px-1.5 text-[10px] font-semibold" title={`Команда ${m.team}`}>{m.team}</span>}
             <span className="text-[var(--muted)]">{STATUS_LABEL[m.status]}</span>
             {m.task && m.status !== "waiting" && <span className="hidden max-w-[8rem] truncate text-[var(--muted)] sm:inline">· {m.task}</span>}
             {onBreak && m.userId !== meId && (

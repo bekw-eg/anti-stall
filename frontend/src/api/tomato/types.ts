@@ -27,21 +27,49 @@ export interface RoadmapNode {
   type: "start" | "focus_goal" | "boss";
   status: "completed" | "current" | "next" | "locked";
   challenge: { kind: string; required: number } | null;
+  /** Когда сервер зафиксировал прохождение этапа (null — ещё не пройден / стартовый узел) */
+  reachedAt: number | null;
+  /** Награда за этап: у промежуточных — этапная, у финального — командная */
+  reward: { xp: number; coins: number } | null;
+  /** Доля пути до узла от предыдущего (0..1) — считает сервер */
+  progress: number;
+}
+
+export interface RoadmapTeam {
+  key: string; // "shared" | "A" | "B"
+  name: string;
+  points: number;
+  positionNodeId: string;
+  /** дошла до финального узла */
+  finished: boolean;
+  /** победила (получила командную награду) */
+  completed: boolean;
 }
 
 export interface Roadmap {
   roadmapId: string;
   title: string;
+  /** "shared" — одна общая команда, "teams" — Team A против Team B */
+  mode: "shared" | "teams";
+  /** Команда зрителя: верхний уровень (points, nodes[].status, next…) описывает её */
   teamKey: string;
   points: number;
   goal: number;
   completed: boolean;
+  finished: boolean;
+  winner: "A" | "B" | "draw" | null;
   completedAt: number | null;
   reward: { xp: number; coins: number };
   positionNodeId: string;
+  /** Следующий этап и сколько очков до него; null, если цель достигнута */
+  next: { nodeId: string; title: string; pointsNeeded: number } | null;
+  /** Участок пути между текущим и следующим узлом и доля пройденного */
+  segment: { from: string; to: string; progress: number } | null;
+  /** Команды. Сейчас одна общая; Team A/B — задел, UI показывает маркер на каждую */
+  teams: RoadmapTeam[];
   nodes: RoadmapNode[];
   edges: [string, string][];
-  contributions: { userId: string; name: string; points: number }[];
+  contributions: { userId: string; name: string; points: number; team?: string }[];
 }
 
 export interface RoomInfo {
@@ -53,6 +81,7 @@ export interface RoomInfo {
   cycleId: string | null;
   cycleNo: number;
   demo: boolean;
+  mode: "shared" | "teams";
   settings: { focusSec: number; breakSec: number };
   phaseStartedAt: number;
   phaseEndsAt: number | null;
@@ -83,6 +112,7 @@ export interface RoomSnapshot {
     userId: string;
     isMember: boolean;
     isHost: boolean;
+    team: string | null;
     status: MemberStatus | null;
     task: string | null;
     session: Member["session"];
@@ -160,6 +190,8 @@ export interface CreateRoomInput {
   name?: string;
   focusMinutes?: number;
   breakMinutes?: number;
+  /** Командный режим: Team A против Team B */
+  teamMode?: boolean;
   /** Только если сервер запущен с TOMATO_DEMO=1 */
   demo?: boolean;
   focusSeconds?: number;
@@ -177,8 +209,8 @@ export interface ServerEvent<T = unknown> {
 
 export type ServerEventType =
   | "hello" | "room_joined" | "room_state" | "player_joined" | "player_left" | "host_changed"
-  | "player_status_changed" | "task_updated" | "settings_changed"
+  | "player_status_changed" | "team_changed" | "task_updated" | "settings_changed"
   | "timer_started" | "timer_tick" | "phase_changed"
   | "session_completed" | "reward_granted" | "balance_changed" | "achievement_unlocked"
-  | "roadmap_updated" | "challenge_completed" | "help_applied" | "prank_applied"
+  | "roadmap_updated" | "node_reached" | "challenge_completed" | "help_applied" | "prank_applied"
   | "heartbeat_ack" | "unsubscribed" | "error";

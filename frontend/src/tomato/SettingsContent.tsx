@@ -38,6 +38,8 @@ export interface FormState {
   work: number;
   rest: number;
   demo: boolean;
+  teamMode: boolean;
+  setTeamMode: (v: boolean) => void;
   setWork: (v: number) => void;
   setRest: (v: number) => void;
   setDemo: (v: boolean) => void;
@@ -101,6 +103,29 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
           </span>
         </label>
       )}
+      {!inRoom && (
+        <label className="flex cursor-pointer items-start gap-3 rounded-xl bg-white/50 px-4 py-3 text-sm text-zinc-700">
+          <input type="checkbox" checked={form.teamMode} onChange={(e) => form.setTeamMode(e.target.checked)} className="mt-1 h-4 w-4 accent-zinc-900" />
+          <span>
+            <span className="block font-medium text-zinc-900">Команды A и B</span>
+            <span className="text-xs text-zinc-500">Две команды идут по одной карте — побеждает первая, набравшая цель.</span>
+          </span>
+        </label>
+      )}
+      {inRoom && room!.mode === "teams" && (
+        <fieldset disabled={room!.phase !== "waiting"}>
+          <legend className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">Ваша команда</legend>
+          <div className="flex rounded-xl bg-white/50 p-1" role="radiogroup" aria-label="Ваша команда">
+            {(["A", "B"] as const).map((k) => (
+              <button key={k} type="button" role="radio" aria-checked={snap?.me?.team === k} onClick={() => t.setTeam(k)}
+                className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed ${snap?.me?.team === k ? "bg-zinc-900 text-white" : "text-zinc-600 hover:text-zinc-900"}`}>
+                Команда {k}
+              </button>
+            ))}
+          </div>
+          {room!.phase !== "waiting" && <p className="mt-2 text-xs text-zinc-500">Сменить команду можно между циклами.</p>}
+        </fieldset>
+      )}
       {inRoom && room!.demo && <p className="text-xs text-zinc-500">Демо-комната: фокус {room!.settings.focusSec} с, перерыв {room!.settings.breakSec} с.</p>}
       {locked && !room!.demo && <p className="text-xs text-zinc-500">Длительность меняет создатель комнаты до старта сессии.</p>}
 
@@ -115,7 +140,7 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
           <button
             type="button"
             disabled={!nameOk || t.busy}
-            onClick={() => t.createRoom(t.name, { ...settingsInput })}
+            onClick={() => t.createRoom(t.name, { ...settingsInput, teamMode: form.teamMode })}
             className="rounded-xl bg-zinc-900 py-3.5 text-[15px] font-medium text-white transition-colors hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-not-allowed disabled:bg-zinc-400"
           >
             {t.busy ? "Подождите…" : "Создать комнату"}
@@ -164,7 +189,7 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
             <ul className="flex flex-col gap-1.5 text-sm text-zinc-800">
               {snap!.members.map((m) => (
                 <li key={m.userId} className="flex items-center justify-between rounded-lg bg-white/50 px-3 py-2">
-                  <span className="truncate">{m.name}{m.role === "host" && <span className="ml-2 text-xs text-zinc-500">создатель</span>}</span>
+                  <span className="truncate">{m.name}{m.role === "host" && <span className="ml-2 text-xs text-zinc-500">создатель</span>}{(m.team === "A" || m.team === "B") && <span className="ml-2 text-xs font-semibold text-zinc-500">{m.team}</span>}</span>
                   <span className={`h-2 w-2 shrink-0 rounded-full ${m.connection === "online" ? "bg-emerald-500" : m.connection === "reconnecting" ? "bg-amber-400" : "bg-zinc-400"}`} />
                 </li>
               ))}

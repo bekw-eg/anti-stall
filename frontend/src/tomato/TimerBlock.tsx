@@ -11,7 +11,10 @@ const PHASE_LABEL = { waiting: "Ожидание", focus: "Фокус", break: "
  * расположение родительской сетки, а `layout` плавно переводит таймер между позициями.
  * Время — это отображение серверного phaseEndsAt, сам клиент ничего не завершает.
  */
-export function TimerBlock({ t, open, previewSeconds, summary }: { t: Tomato; open: boolean; previewSeconds: number; summary: React.ReactNode }) {
+export type TimerMode = "room" | "settings" | "map";
+
+export function TimerBlock({ t, mode, previewSeconds, summary }: { t: Tomato; mode: TimerMode; previewSeconds: number; summary: React.ReactNode }) {
+  const open = mode === "settings";
   const room = t.snapshot?.room;
   const live = room && (room.phase === "focus" || room.phase === "break") && t.remainingMs !== null;
   const seconds = live ? Math.ceil(t.remainingMs! / 1000) : room ? (room.phase === "completed" ? 0 : room.settings.focusSec) : previewSeconds;
@@ -32,13 +35,13 @@ export function TimerBlock({ t, open, previewSeconds, summary }: { t: Tomato; op
         className="pointer-events-auto flex select-none flex-col items-center"
         style={{ color: "var(--timer)" }}
       >
-        <motion.span layout="position" transition={SPRING} className="mb-3 text-xs font-medium uppercase tracking-[0.35em] opacity-60">
+        <motion.span layout="position" transition={SPRING} className={`${mode === "map" ? "mb-2" : "mb-3"} text-xs font-medium uppercase tracking-[0.35em] opacity-60`}>
           {label}
         </motion.span>
         <motion.p
           layout
           transition={SPRING}
-          className={`font-light leading-none tracking-tight tabular-nums ${open ? "text-6xl lg:text-7xl" : "text-[clamp(4.5rem,min(20vw,20vh),11rem)]"}`}
+          className={`font-light leading-none tracking-tight tabular-nums ${mode === "settings" ? "text-6xl lg:text-7xl" : mode === "map" ? "text-5xl sm:text-6xl" : "text-[clamp(4.5rem,min(20vw,20vh),11rem)]"}`}
         >
           {formatTime(seconds)}
         </motion.p>
@@ -50,7 +53,7 @@ export function TimerBlock({ t, open, previewSeconds, summary }: { t: Tomato; op
       <motion.div layout transition={SPRING} className="pointer-events-auto mt-6 flex w-full justify-center self-start overflow-y-auto">
         <AnimatePresence mode="wait" initial={false}>
           {open ? <motion.div key="summary" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>{summary}</motion.div>
-            : inRoom ? <RoomExtras key="extras" t={t} /> : null}
+            : inRoom && mode === "room" ? <RoomExtras key="extras" t={t} /> : null}
         </AnimatePresence>
       </motion.div>
     </>
