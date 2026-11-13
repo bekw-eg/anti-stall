@@ -43,6 +43,7 @@ export function loadConfig(env = process.env, overrides = {}) {
       maxRewardFactor: 2,
       dailyRewardedSessions: demoMode ? 500 : 16, // потолок наград за сутки (анти-накрутка)
       challengeReward: { xp: 150, coins: 60 },
+      td: { dailyRewardedRounds: demoMode ? 500 : 8, duelReward: { xp: 15, coins: 10 }, firstClearMultiplier: 1.5, minRemainingSec: 6 },
       nodeReward: { xp: 25, coins: 10 }, // за каждый промежуточный этап карты, один раз на участника с вкладом
     },
 

@@ -10,7 +10,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
  *
  * Фазы: waiting → focus → break → waiting …; host может закрыть комнату (completed).
  */
-export function createRoomsService(ctx, game, users) {
+export function createRoomsService(ctx, game, users, td) {
   const { db, clock, config } = ctx;
   const L = config.limits;
 
@@ -139,6 +139,7 @@ export function createRoomsService(ctx, game, users) {
       const room = findRoom(idOrCode);
       requireHost(room, user);
       requirePhase(room, 'waiting', 'break');
+      td.closeRounds(room, clock.now());
       db.run("UPDATE rooms SET phase = 'completed', phase_ends_at = NULL, closed_at = ? WHERE id = ?", clock.now(), room.id);
       db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: room.phase, to: 'completed' } });
       db.emit(stateEvent(room.id));
@@ -285,6 +286,7 @@ export function createRoomsService(ctx, game, users) {
 
   // ------------------------------------------------------------------ серверный таймер
   function toWaiting(room, at) {
+    td.closeRounds(room, at); // перерыв закончился: незавершённые игровые раунды корректно закрываются, учёба продолжается
     db.run("UPDATE rooms SET phase = 'waiting', phase_started_at = ?, phase_ends_at = NULL WHERE id = ?", at, room.id);
     db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'break', to: 'waiting', cycleId: room.cycle_id, phaseStartedAt: at, phaseEndsAt: null } });
     db.emit(stateEvent(room.id));
@@ -331,7 +333,10 @@ export function createRoomsService(ctx, game, users) {
         finishFocus(room);
       } else if (room.phase === 'break' && t >= room.phase_ends_at) {
         toWaiting(room, room.phase_ends_at);
-      } else break;
+      } else {
+        if (room.phase === 'break') td.tick(room, t); // игровые раунды живут только внутри перерыва
+        break;
+      }
       room = loadRoom(roomId);
     }
   }

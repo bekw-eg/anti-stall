@@ -4,7 +4,7 @@ import { reqInt, reqObject } from '../validate.js';
 import { Router } from './router.js';
 
 /** Привязка REST-маршрутов к сервисам. Здесь нет бизнес-логики: только разбор запроса. */
-export function buildRoutes({ config, users, rooms, game, social, db, clock }) {
+export function buildRoutes({ config, users, rooms, game, social, td, db, clock }) {
   const r = new Router();
   const ok = (body, status = 200) => ({ status, body });
 
@@ -75,6 +75,12 @@ export function buildRoutes({ config, users, rooms, game, social, db, clock }) {
     rooms.requireMember(room, user);
     return ok(game.gameView(room.id));
   });
+  // ---- Tower Defense (только на перерыве; всё решает сервер)
+  r.add('GET', '/api/rooms/:id/td', ({ user, params }) => ok(td.get(user, params.id)));
+  r.add('POST', '/api/rooms/:id/td/join', ({ user, params }) => ok(td.join(user, params.id)));
+  r.add('POST', '/api/rooms/:id/td/start', ({ user, params, body }) => ok(td.start(user, params.id, body)));
+  r.add('POST', '/api/rooms/:id/td/build', ({ user, params, body }) => ok(td.build(user, params.id, body), 201));
+  r.add('POST', '/api/rooms/:id/td/upgrade', ({ user, params, body }) => ok(td.upgrade(user, params.id, body)));
   r.add('GET', '/api/rooms/:id/social', ({ user, params }) => ok({ actions: social.recent(user, params.id) }));
   r.add('POST', '/api/rooms/:id/social/help', ({ user, params, body }) => ok(social.help(user, params.id, body), 201));
   r.add('POST', '/api/rooms/:id/social/prank', ({ user, params, body }) => ok(social.prank(user, params.id, body), 201));

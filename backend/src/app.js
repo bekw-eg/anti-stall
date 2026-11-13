@@ -8,6 +8,7 @@ import { readJson } from './http/router.js';
 import { createGame } from './services/game.js';
 import { createRoomsService } from './services/rooms.js';
 import { createSocialService } from './services/social.js';
+import { createTd } from './services/td.js';
 import { createUsersService } from './services/users.js';
 import { Hub } from './ws/hub.js';
 
@@ -19,9 +20,11 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
   const ctx = { db, clock, config };
   const game = createGame(ctx);
   const users = createUsersService(ctx, game);
-  const rooms = createRoomsService(ctx, game, users);
+  const td = createTd(ctx, game);
+  const rooms = createRoomsService(ctx, game, users, td);
+  td.setRooms(rooms);
   const social = createSocialService(ctx, game, rooms);
-  const router = buildRoutes({ config, users, rooms, game, social, db, clock });
+  const router = buildRoutes({ config, users, rooms, game, social, td, db, clock });
 
   const cors = {
     'Access-Control-Allow-Origin': config.corsOrigin,
@@ -94,7 +97,7 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
 
   let timer = null;
   return {
-    config, clock, db, server, hub, services: { game, users, rooms, social }, tick,
+    config, clock, db, server, hub, services: { game, users, rooms, social, td }, tick,
     startScheduler() {
       timer = setInterval(tick, config.tickMs);
       timer.unref?.();

@@ -304,7 +304,7 @@ export function createGame(ctx) {
     const road = roadmapView(roomId);
     const maxHp = BASE_HP + wallLevels * UPGRADES.base_walls.effect.perLevel;
     return {
-      status: 'preview', // полноценной Tower Defense пока нет: см. docs/FRONTEND_INTEGRATION.md
+      status: 'see /td', // полное состояние мини-игры — GET /api/rooms/:id/td
       base: { hp: maxHp, maxHp, wallLevels },
       towers: { slots: 1 + Math.floor(road.points / 2), damageMultiplier: 1 + (towerLevels * UPGRADES.tower_power.effect.perLevel) / 100, powerLevels: towerLevels },
       teamPoints: road.points,
@@ -329,6 +329,8 @@ export function createGame(ctx) {
          WHERE c.user_id = ? AND c.points > 0 AND p.completed_at IS NOT NULL`, userId).c,
       helpsSent: db.get("SELECT COUNT(*) c FROM social_actions WHERE sender_id = ? AND kind = 'help' AND status = 'applied'", userId).c,
       pranksSent: db.get("SELECT COUNT(*) c FROM social_actions WHERE sender_id = ? AND kind = 'prank' AND status IN ('applied','blocked')", userId).c,
+      towersBuilt: db.get("SELECT COUNT(*) c FROM td_actions WHERE user_id = ? AND kind = 'build'", userId).c,
+      tdWins: db.get("SELECT COUNT(*) c FROM reward_transactions WHERE user_id = ? AND kind = 'td_round'", userId).c,
       upgradesBought: db.get('SELECT COUNT(*) c FROM user_upgrades WHERE user_id = ? AND level > 0', userId).c,
     };
   }

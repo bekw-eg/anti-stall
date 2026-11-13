@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -120,6 +120,60 @@ CREATE TABLE IF NOT EXISTS team_contributions (
   user_id TEXT NOT NULL REFERENCES users(id),
   points INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (room_id, team_key, user_id)
+);
+
+-- Tower Defense. Башни команды живут между перерывами; раунд — на один перерыв.
+CREATE TABLE IF NOT EXISTS td_towers (
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  team_key TEXT NOT NULL,
+  slot_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 3),
+  owner_id TEXT NOT NULL REFERENCES users(id),
+  built_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, team_key, slot_id)
+);
+CREATE TABLE IF NOT EXISTS td_rounds (
+  id TEXT PRIMARY KEY,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  team_key TEXT NOT NULL,
+  cycle_id TEXT NOT NULL,
+  stage_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running','won','lost','expired')),
+  started_at INTEGER NOT NULL,
+  ends_at INTEGER NOT NULL,
+  speed REAL NOT NULL,
+  state TEXT NOT NULL,
+  result TEXT,
+  finished_at INTEGER,
+  -- один раунд команды за перерыв: повторный старт невозможен
+  UNIQUE (room_id, team_key, cycle_id)
+);
+-- Журнал действий в игре. UNIQUE(user_id, request_id) — идемпотентность: повтор запроса не списывает монеты дважды.
+CREATE TABLE IF NOT EXISTS td_actions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  team_key TEXT NOT NULL,
+  cycle_id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL CHECK (kind IN ('join','start','build','upgrade')),
+  request_id TEXT,
+  slot_id TEXT,
+  cost INTEGER NOT NULL DEFAULT 0,
+  result TEXT,
+  created_at INTEGER NOT NULL,
+  UNIQUE (user_id, request_id)
+);
+CREATE INDEX IF NOT EXISTS td_actions_by_cycle ON td_actions(room_id, team_key, cycle_id);
+-- Исход дуэли команд A/B за перерыв (если обе сыграли один этап)
+CREATE TABLE IF NOT EXISTS td_duels (
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  cycle_id TEXT NOT NULL,
+  stage_id TEXT NOT NULL,
+  winner TEXT NOT NULL,
+  scores TEXT NOT NULL,
+  decided_at INTEGER NOT NULL,
+  PRIMARY KEY (room_id, cycle_id)
 );
 
 CREATE TABLE IF NOT EXISTS user_effects (
