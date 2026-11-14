@@ -137,7 +137,10 @@ describe('защита от читов (как в cheat-check)', () => {
   });
 
   test('повтор requestId постройки (последовательно и параллельно) списывает монеты один раз; цена — из каталога', async () => {
-    const c0 = (await H.progress()).coins;
+    // башни оплачивает казна команды (Tower Wars), личные монеты не трогаются
+    const treasury = async () => (await H.get(A.path('/td'))).body.treasuryCoins;
+    const c0 = await treasury();
+    const personal = (await H.progress()).coins;
     const id = reqId();
     const first = await H.post(A.path('/td/build'), { slotId: 's1', type: 'arrow', requestId: id, cost: 0, price: 0 });
     assert.equal(first.status, 201);
@@ -146,8 +149,9 @@ describe('защита от читов (как в cheat-check)', () => {
     assert.equal(again.body.replayed, true);
     const par = await Promise.all(Array.from({ length: 5 }, () => H.post(A.path('/td/build'), { slotId: 's1', type: 'arrow', requestId: id })));
     assert.ok(par.every((x) => x.body.replayed === true));
-    assert.equal((await H.progress()).coins, c0 - 15);
-    assert.equal((await txOf(H, 'td_build')).length, 1);
+    assert.equal(await treasury(), c0 - 15);
+    assert.equal((await H.progress()).coins, personal);
+    assert.equal(w.app.db.get("SELECT COUNT(*) c FROM td_actions WHERE user_id = ? AND kind = 'build'", H.id).c, 1);
   });
 
   test('повтор покупки улучшения с тем же expectedLevel не списывает дважды; подменённая цена игнорируется', async () => {

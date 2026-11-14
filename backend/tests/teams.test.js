@@ -28,7 +28,7 @@ describe('командный режим Team A / Team B', () => {
       assert.deepEqual(snap.members.map((m) => m.team), ['A', 'B', 'A', 'B']);
       assert.equal(snap.me.team, 'A');
       assert.ok(snap.me.allowedActions.includes('set_team'));
-      assert.deepEqual(snap.challenge.teams.map((t) => t.key), ['A', 'B']);
+      assert.deepEqual(snap.challenge.teams.map((t) => [t.key, t.treasuryCoins]), [['A', 30], ['B', 30]], 'у каждой команды стартовая казна');
 
       const [lotti, anya] = L.users;
       assert.equal((await anya.post(L.path('/team'), { team: 'A' })).status, 200);
@@ -44,7 +44,7 @@ describe('командный режим Team A / Team B', () => {
     } finally { await w.close(); }
   });
 
-  test('очки и этапы считаются раздельно по командам; у каждого зрителя «своя» команда на верхнем уровне', async () => {
+  test('очки вклада, казна и узлы считаются раздельно по командам; у каждого зрителя «своя» команда на верхнем уровне', async () => {
     const w = await boot();
     try {
       const L = await teamsLobby(w, ['Лотти', 'Аня', 'Боря']); // A: Лотти, Боря; B: Аня
@@ -56,9 +56,11 @@ describe('командный режим Team A / Team B', () => {
 
       const a = await road(L, lotti), b = await road(L, anya);
       assert.equal(a.teamKey, 'A'); assert.equal(b.teamKey, 'B');
-      assert.deepEqual(a.teams.map((t) => [t.key, t.points]), [['A', 1], ['B', 1]]);
-      assert.deepEqual(b.teams.map((t) => [t.key, t.points]), [['A', 1], ['B', 1]]);
-      assert.equal(a.points, 1); assert.equal(b.points, 1);
+      assert.deepEqual(a.teams.map((t) => [t.key, t.focusPoints, t.points, t.treasuryCoins]), [['A', 1, 1, 50], ['B', 1, 1, 50]]);
+      assert.deepEqual(b.teams, a.teams);
+      assert.equal(a.focusPoints, 1); assert.equal(b.focusPoints, 1);
+      assert.equal(a.points, 1); assert.equal(b.points, 1); // обе команды сделали шаг первым качественным циклом
+      assert.equal(a.treasuryCoins, 50); assert.equal(b.treasuryCoins, 50);
 
       assert.equal(a.nodes.find((n) => n.id === 'stop-1').reachedAt > 0, true);
       assert.equal(b.nodes.find((n) => n.id === 'stop-1').reachedAt > 0, true, 'этап B фиксируется отдельно');
@@ -72,11 +74,12 @@ describe('командный режим Team A / Team B', () => {
       assert.equal((await kinds(anya, 'team_node')).length, 2);
       assert.equal((await kinds(lotti, 'team_node')).length, 1);
       assert.notEqual((await kinds(anya, 'team_node'))[0].key, (await kinds(lotti, 'team_node'))[0].key);
-      assert.ok(a2.contributions.every((c) => c.team === 'A' || c.team === 'B'));
+      const a3 = await road(L, lotti);
+      assert.ok(a3.contributions.every((c) => c.team === 'A' || c.team === 'B'));
     } finally { await w.close(); }
   });
 
-  test('гонка: побеждает команда, первой набравшая цель; награда победителям один раз; проигравшая её не получает', async () => {
+  test('гонка: побеждает команда, первой взявшая крепость; награда победителям один раз; проигравшая её не получает', async () => {
     const w = await boot();
     try {
       const L = await teamsLobby(w, ['Лотти', 'Аня', 'Боря'], { cycles: 3 }); // A: Лотти, Боря; B: Аня
@@ -101,12 +104,14 @@ describe('командный режим Team A / Team B', () => {
       for (let i = 0; i < 2; i++) await cycle(w, L);
       const rb = await road(L, anya);
       assert.equal(rb.finished, true);
+      assert.equal(rb.points, 3, 'шаги команды B ограничены целью (3)');
       assert.equal(rb.completed, false);
       assert.equal(rb.winner, 'A');
       assert.equal((await kinds(anya, 'team_challenge')).length, 0);
       assert.equal((await kinds(lotti, 'team_challenge')).length, 1, 'повторно победители не награждаются');
-      assert.equal((await kinds(anya, 'team_node')).length, 2, 'этапные награды команда B получила в пути');
+      assert.equal((await kinds(anya, 'team_node')).length, 2, 'этапные награды команда B получила в пути (две остановки, крепость без награды)');
       assert.equal(events.filter((e) => e.type === 'challenge_completed').length, 1, 'победа объявляется один раз');
+      assert.ok(!(await anya.progress()).achievements.find((a) => a.id === 'team_victory').unlocked);
     } finally { await w.close(); }
   });
 
@@ -135,12 +140,15 @@ describe('командный режим Team A / Team B', () => {
     try {
       const L = await teamsLobby(w, ['Лотти', 'Аня']); // по одному в команде
       const [lotti, anya] = L.users;
+      const events = [];
+      w.app.db.sink = (e) => events.push(...e);
       for (let i = 0; i < 4; i++) await cycle(w, L); // план по умолчанию — 4 цикла
       const r = await road(L, lotti);
       assert.equal(r.winner, 'draw');
       assert.equal((await kinds(lotti, 'team_challenge')).length, 1);
       assert.equal((await kinds(anya, 'team_challenge')).length, 1);
       assert.ok((await road(L, anya)).completed);
+      assert.deepEqual(events.filter((e) => e.type === 'challenge_completed').map((e) => [e.data.team, e.data.draw]).sort(), [['A', true], ['B', true]]); // порядок команд в событиях не задан
     } finally { await w.close(); }
   });
 
@@ -157,7 +165,7 @@ describe('командный режим Team A / Team B', () => {
     } finally { await w.close(); }
   });
 
-  test('сохранение: команды, очки и победитель переживают перезапуск; награды не дублируются', async () => {
+  test('сохранение: команды, очки, казна и победитель переживают перезапуск; награды не дублируются', async () => {
     const dbPath = tmpDbPath();
     const clock = new FakeClock();
     let w = await boot({ dbPath, clock });
@@ -172,6 +180,7 @@ describe('командный режим Team A / Team B', () => {
     const after = (await w.call('GET', L.path('/roadmap'), undefined, tokens[0])).body;
     assert.deepEqual(after, before);
     assert.equal(after.winner, 'draw');
+    assert.deepEqual(after.teams.map((t) => t.treasuryCoins), [110, 110]); // 30 старт + 4 цикла по 20
     const room = (await w.call('GET', `/api/rooms/${L.room.id}`, undefined, tokens[1])).body;
     assert.equal(room.me.team, 'B');
     for (let i = 0; i < 3; i++) w.app.tick();
@@ -192,7 +201,7 @@ describe('командный режим Team A / Team B', () => {
     try {
       assert.equal(w.app.db.get("SELECT mode FROM rooms WHERE id = 'r1'").mode, 'shared');
       assert.equal(w.app.db.get("SELECT cycles FROM rooms WHERE id = 'r1'").cycles, 4, 'v5: план циклов по умолчанию');
-      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '5');
+      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '6');
     } finally { await w.close(); }
   });
 });

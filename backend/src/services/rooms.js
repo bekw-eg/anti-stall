@@ -105,7 +105,7 @@ export function createRoomsService(ctx, game, users, td) {
         id, code, name, user.id, 'waiting', s.focusSec, s.breakSec, s.cycles, s.demo, mode, t, t,
       );
       db.run('INSERT INTO room_members(room_id, user_id, role, team_key, joined_at) VALUES (?,?,?,?,?)', id, user.id, 'host', mode === 'teams' ? 'A' : 'shared', t);
-      for (const key of mode === 'teams' ? ['A', 'B'] : ['shared']) db.run('INSERT INTO team_progress(room_id, team_key) VALUES (?,?)', id, key);
+      game.ensureTeams({ id, mode }); // команды сразу получают стартовый капитал казны
       return snapshot(id, user.id);
     });
   }
@@ -128,6 +128,7 @@ export function createRoomsService(ctx, game, users, td) {
       }
       if (existing) db.run('UPDATE room_members SET left_at = NULL, joined_at = ?, team_key = ?, is_ready = 0 WHERE room_id = ? AND user_id = ?', t, team, room.id, user.id);
       else db.run('INSERT INTO room_members(room_id, user_id, team_key, joined_at) VALUES (?,?,?,?)', room.id, user.id, team, t);
+      game.ensureTeams(room);
       db.emit({ scope: 'room', roomId: room.id, type: 'player_joined', data: { user: users.publicUser(user) } });
       db.emit(stateEvent(room.id));
       return snapshot(room.id, user.id);
@@ -201,6 +202,7 @@ export function createRoomsService(ctx, game, users, td) {
       if (room.mode !== 'teams') throw E.conflict('NOT_TEAM_MODE', 'Комната не в командном режиме');
       requirePhase(room, 'waiting');
       db.run('UPDATE room_members SET team_key = ? WHERE room_id = ? AND user_id = ?', b.team, room.id, user.id);
+      game.ensureTeams(room);
       db.emit({ scope: 'room', roomId: room.id, type: 'team_changed', data: { userId: user.id, team: b.team } });
       db.emit(stateEvent(room.id));
       return snapshot(room.id, user.id);
@@ -287,6 +289,7 @@ export function createRoomsService(ctx, game, users, td) {
        WHERE m.room_id = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.rowid`, room.id,
     );
     db.run("UPDATE rooms SET phase = 'focus', cycle_id = ?, cycle_no = ?, phase_started_at = ?, phase_ends_at = ? WHERE id = ?", cycleId, cycleNo, t, endsAt, room.id);
+    game.ensureTeams(room); // у каждой команды есть строка прогресса и стартовая казна
     db.run('UPDATE room_members SET is_ready = 0 WHERE room_id = ?', room.id);
 
     const participants = [];
@@ -433,6 +436,7 @@ export function createRoomsService(ctx, game, users, td) {
 
   function finishFocus(room) {
     const endAt = room.phase_ends_at;
+    game.ensureTeams(room); // до перерыва: у каждой команды есть казна для Tower Defense
     const active = db.all("SELECT * FROM focus_sessions WHERE room_id = ? AND cycle_id = ? AND status = 'active' ORDER BY rowid", room.id, room.cycle_id);
     const rewardedUsers = [];
     for (const s of active) {

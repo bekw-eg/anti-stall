@@ -112,12 +112,62 @@ export function createGame(ctx) {
          quality = ?, away_ms = ?, away_since = NULL, away_kind = NULL WHERE id = ? AND status = 'active'`,
       endAt, capped ? 'daily_cap' : 'finished', granted ? 1 : 0, granted ? xp : 0, granted ? coins : 0, quality, awayMs, session.id,
     );
+    if (granted) creditTreasury(room.id, teamOfMember(room, session.user_id), coins); // фокус-монеты уходят в казну команды
     const summary = {
       sessionId: session.id, roomId: room.id, status: 'completed', rewarded: granted, capped, xp: granted ? xp : 0, coins: granted ? coins : 0, boostPct,
       quality, awaySec: Math.round(awayMs / 1000), countsForTeam: quality >= eco.quality.teamMin,
     };
     db.emit({ scope: 'user', userId: session.user_id, type: 'session_completed', data: summary });
     return summary;
+  }
+
+  // ------------------------------------------------------------------ казна команды (Tower Defense)
+  const progressRow = (roomId, teamKey) => db.get('SELECT * FROM team_progress WHERE room_id = ? AND team_key = ?', roomId, teamKey);
+
+  /** Команда игрока в комнате: 'shared' или 'A'/'B' (по room_members.team_key; неизвестное → 'A'). */
+  function teamOfMember(room, userId) {
+    if (room.mode !== 'teams') return 'shared';
+    const key = db.get('SELECT team_key FROM room_members WHERE room_id = ? AND user_id = ?', room.id, userId)?.team_key;
+    return key === 'B' ? 'B' : 'A';
+  }
+
+  /** Строка команды со стартовым капиталом казны; существующую не трогает. */
+  function ensureTeamProgress(roomId, teamKey) {
+    db.run('INSERT OR IGNORE INTO team_progress(room_id, team_key, treasury_coins) VALUES (?,?,?)', roomId, teamKey, eco.treasuryStart);
+  }
+
+  /** Все команды комнаты: 'shared' или 'A' + 'B'. */
+  function ensureTeams(room) {
+    const mode = room.mode ?? db.get('SELECT mode FROM rooms WHERE id = ?', room.id)?.mode;
+    for (const key of mode === 'teams' ? ['A', 'B'] : ['shared']) ensureTeamProgress(room.id, key);
+  }
+
+  function treasuryOf(roomId, teamKey) {
+    return progressRow(roomId, teamKey)?.treasury_coins ?? 0;
+  }
+
+  /**
+   * Списать монеты из казны команды. Атомарно: условие в UPDATE (+ CHECK в схеме) не даёт уйти в минус,
+   * даже если несколько игроков жмут одновременно — кто первый, тот и купил. Возвращает новый баланс.
+   */
+  function spendTreasury(roomId, teamKey, amount) {
+    if (!Number.isInteger(amount) || amount <= 0) throw E.badRequest('INVALID_AMOUNT', 'Сумма должна быть положительной');
+    const upd = db.run(
+      'UPDATE team_progress SET treasury_coins = treasury_coins - ? WHERE room_id = ? AND team_key = ? AND treasury_coins >= ?',
+      amount, roomId, teamKey, amount,
+    );
+    if (upd.changes === 0) {
+      throw E.conflict('INSUFFICIENT_TEAM_FUNDS', 'В казне команды недостаточно монет', { required: amount, treasuryCoins: treasuryOf(roomId, teamKey) });
+    }
+    return treasuryOf(roomId, teamKey);
+  }
+
+  /** Зачислить монеты в казну команды (строка команды создаётся при необходимости). Возвращает новый баланс. */
+  function creditTreasury(roomId, teamKey, amount) {
+    if (!Number.isInteger(amount) || amount <= 0) throw new Error('creditTreasury: сумма должна быть положительным целым');
+    ensureTeamProgress(roomId, teamKey);
+    db.run('UPDATE team_progress SET treasury_coins = treasury_coins + ? WHERE room_id = ? AND team_key = ?', amount, roomId, teamKey);
+    return treasuryOf(roomId, teamKey);
   }
 
   // ------------------------------------------------------------------ командное испытание / Road Map
@@ -235,6 +285,7 @@ export function createGame(ctx) {
     const winner = winnersList.length === 0 ? null : winnersList.length === 1 ? winnersList[0] : 'draw';
 
     const prog = rows.get(teamKey);
+    const focusOf = (k) => db.get('SELECT COALESCE(SUM(points), 0) s FROM team_contributions WHERE room_id = ? AND team_key = ?', roomId, k).s; // очки вклада за качественные фокусы
     const reachedAt = new Map(db.all('SELECT node_id, reached_at FROM team_nodes WHERE room_id = ? AND team_key = ?', roomId, teamKey).map((r) => [r.node_id, r.reached_at]));
     const reachedIdx = posIdx(prog.points);
     const nextIdx = Math.min(reachedIdx + 1, lastIdx);
@@ -260,6 +311,8 @@ export function createGame(ctx) {
       mode: room.mode,
       teamKey,
       points: prog.points,
+      focusPoints: focusOf(teamKey),
+      treasuryCoins: prog.treasury_coins ?? 0,
       goal,
       // План: сколько циклов (= перерывов = шагов карты) задумано и сколько уже начато
       cycles: { planned: goal, started: room.cycle_no ?? 0 },
@@ -273,7 +326,7 @@ export function createGame(ctx) {
       next: finished || from.id === to.id ? null : { nodeId: to.id, title: to.title, pointsNeeded: to.requiredPoints - prog.points },
       segment: finished || from.id === to.id ? null : { from: from.id, to: to.id, progress: 0 },
       teams: keys.map((k) => ({
-        key: k, name: teamName(k), points: rows.get(k).points, positionNodeId: map.nodes[posIdx(rows.get(k).points)].id,
+        key: k, name: teamName(k), points: rows.get(k).points, focusPoints: focusOf(k), treasuryCoins: rows.get(k).treasury_coins ?? 0, positionNodeId: map.nodes[posIdx(rows.get(k).points)].id,
         finished: rows.get(k).points >= goal, completed: Boolean(rows.get(k).completed_at),
       })),
       nodes,
@@ -484,7 +537,7 @@ export function createGame(ctx) {
     const teams = road.teams.map((tm) => {
       const list = members.filter((m) => room.mode !== 'teams' || m.team === tm.key);
       return {
-        key: tm.key, name: tm.name, points: tm.points, goal: road.goal, finished: tm.finished, completed: tm.completed,
+        key: tm.key, name: tm.name, points: tm.points, focusPoints: tm.focusPoints, treasuryCoins: tm.treasuryCoins, goal: road.goal, finished: tm.finished, completed: tm.completed,
         positionNodeId: tm.positionNodeId,
         completedSessions: list.reduce((a, m) => a + m.completedSessions, 0),
         focusSeconds: list.reduce((a, m) => a + m.focusSeconds, 0),
@@ -517,5 +570,6 @@ export function createGame(ctx) {
     levelInfo, grant, spend, completeSession, scoreCycle, addTeamSteps, roadmapView, gameView,
     listUpgrades, purchaseUpgrade, upgradeLevel, checkAchievements, listAchievements, progress, effects, stats,
     studyStats, roomStats,
+    ensureTeamProgress, ensureTeams, treasuryOf, spendTreasury, creditTreasury, teamOfMember,
   };
 }

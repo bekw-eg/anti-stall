@@ -9,6 +9,9 @@ const td = async (L, u = L.host) => (await u.get(L.path('/td'))).body;
 const post = (L, u, p, b) => u.post(L.path(`/td/${p}`), b);
 const build = (L, u, slotId, type = 'arrow', requestId = R()) => post(L, u, 'build', { slotId, type, requestId });
 const fund = (w, u, coins) => w.app.db.run('UPDATE users SET coins = coins + ? WHERE id = ?', coins, u.id);
+/** Казна команды: башни, наёмники и заклинания оплачиваются из неё. */
+const setTreasury = (w, L, team, coins) => w.app.db.run('UPDATE team_progress SET treasury_coins = ? WHERE room_id = ? AND team_key = ?', coins, L.room.id, team);
+const treasury = async (L, u = L.host) => (await td(L, u)).treasuryCoins;
 const coinsOf = async (u) => (await u.progress()).coins;
 const kinds = async (u, kind) => (await u.get('/api/users/me/transactions?limit=200')).body.transactions.filter((t) => t.kind === kind);
 /** Комната, прошедшая Focus и находящаяся на перерыве. */
@@ -46,6 +49,7 @@ describe('Tower Defense: доступность и права', () => {
       assert.equal(v.phase, 'break');
       assert.ok(v.breakEndsAt > v.serverTime);
       assert.equal(v.map.slots.length, 10);
+      // фокус-сессии больше не двигают карту: открыт только лагерь, «Лес» откроет победа в лагере
       assert.deepEqual(v.stages.map((s) => [s.id, s.unlocked]), [['camp', true], ['forest', true], ['bridge', false], ['fortress', false]]);
       assert.deepEqual(v.towerTypes.map((t) => t.id), ['arrow', 'cannon', 'frost']);
     } finally { await w.close(); }
@@ -72,18 +76,21 @@ describe('Tower Defense: доступность и права', () => {
 });
 
 describe('Tower Defense: строительство и улучшение', () => {
-  test('баланс, цена, место: списание ровно по каталогу; недостаток монет, занятое и несуществующее место отклоняются', async () => {
+  test('казна команды платит по каталогу; личные монеты не тратятся; нехватка, занятое и несуществующее место отклоняются', async () => {
     const w = await boot();
     try {
       const L = await onBreak(w);
-      const u = L.host;
-      const before = await coinsOf(u);
-      assert.ok(before >= 15);
+      const [u, anya] = L.users;
+      const personal = await coinsOf(u);
+      // стартовый капитал 30 + монеты обеих фокус-сессий ушли в казну
+      const before = await treasury(L);
+      assert.equal(before, 30 + 2 * 20);
       const ok = await build(L, u, 's1', 'arrow');
       assert.equal(ok.status, 201);
-      assert.equal(ok.body.cost, 15);
-      assert.equal(await coinsOf(u), before - 15);
-      assert.equal((await kinds(u, 'td_build'))[0].coins, -15);
+      assert.deepEqual([ok.body.action, ok.body.slotId, ok.body.type, ok.body.level, ok.body.cost, ok.body.treasuryCoins], ['build', 's1', 'arrow', 1, 15, before - 15]);
+      assert.equal(await treasury(L, anya), before - 15, 'казна общая для команды');
+      assert.equal(await coinsOf(u), personal, 'личные монеты — только для магазина улучшений');
+      assert.equal((await kinds(u, 'td_build')).length, 0);
       const v = await td(L);
       assert.deepEqual(v.towers.map((t) => [t.slot, t.type, t.level]), [['s1', 'arrow', 1]]);
 
@@ -91,70 +98,72 @@ describe('Tower Defense: строительство и улучшение', () =
       assert.equal((await build(L, u, 's99')).body.error.code, 'INVALID_SLOT');
       assert.equal((await build(L, u, 's2', 'laser')).body.error.code, 'UNKNOWN_TOWER');
       assert.equal((await post(L, u, 'build', { slotId: 's2', type: 'arrow', requestId: 'short' })).body.error.code, 'INVALID_FIELD');
-      assert.equal((await post(L, u, 'build', { slotId: 's2', type: 'arrow', requestId: R(), cost: 0, price: -5 })).status, 201);
-      assert.equal(await coinsOf(u), before - 30, 'цена берётся только из каталога');
+      assert.equal((await post(L, anya, 'build', { slotId: 's2', type: 'arrow', requestId: R(), cost: 0, price: -5, treasuryCoins: 9999 })).status, 201);
+      assert.equal(await treasury(L), before - 30, 'цена берётся только из каталога');
 
-      // «нет денег»
-      w.app.db.run('UPDATE users SET coins = 10 WHERE id = ?', u.id);
+      // «нет денег в казне»
+      setTreasury(w, L, 'shared', 10);
       const poor = await build(L, u, 's3', 'cannon');
-      assert.equal(poor.body.error.code, 'INSUFFICIENT_FUNDS');
-      assert.equal(await coinsOf(u), 10);
+      assert.equal(poor.status, 409);
+      assert.equal(poor.body.error.code, 'INSUFFICIENT_TEAM_FUNDS');
+      assert.deepEqual(poor.body.error.details, { required: 30, treasuryCoins: 10 });
+      assert.equal(await treasury(L), 10);
       assert.equal((await td(L)).towers.length, 2, 'башня не появилась');
     } finally { await w.close(); }
   });
 
-  test('повторные и одновременные запросы: монеты списываются один раз, место занимает одна башня', async () => {
+  test('повторные и одновременные запросы: казна списывается один раз, место занимает одна башня', async () => {
     const w = await boot();
     try {
       const L = await onBreak(w);
       const u = L.host;
-      fund(w, u, 200);
-      const start = await coinsOf(u);
+      setTreasury(w, L, 'shared', 200);
       const id = R();
       const first = await build(L, u, 's1', 'arrow', id);
       const again = await build(L, u, 's1', 'arrow', id); // тот же requestId — повтор (двойной клик, ретрай)
       assert.equal(first.status, 201);
       assert.equal(again.body.replayed, true);
-      assert.equal(await coinsOf(u), start - 15);
-      assert.equal((await kinds(u, 'td_build')).length, 1);
+      assert.equal(again.body.treasuryCoins, 185);
+      assert.equal(await treasury(L), 185);
 
       // 8 параллельных запросов на одно место с разными requestId
       const par = await Promise.all(Array.from({ length: 8 }, () => build(L, u, 's2', 'cannon')));
       assert.equal(par.filter((r) => r.status === 201).length, 1);
       assert.ok(par.filter((r) => r.status !== 201).every((r) => r.body.error.code === 'SLOT_TAKEN'));
-      assert.equal(await coinsOf(u), start - 15 - 30);
+      assert.equal(await treasury(L), 155);
       // 8 параллельных повторов одного requestId
       const same = R();
       const par2 = await Promise.all(Array.from({ length: 8 }, () => build(L, u, 's3', 'frost', same)));
       assert.ok(par2.every((r) => r.status === 201 || r.body.replayed));
-      assert.equal(await coinsOf(u), start - 15 - 30 - 20);
+      assert.equal(await treasury(L), 135);
       assert.equal((await td(L)).towers.length, 3);
     } finally { await w.close(); }
   });
 
-  test('улучшение: цена по уровню, максимум, устаревший уровень, нехватка монет', async () => {
+  test('улучшение: цена по уровню из казны, максимум, устаревший уровень, нехватка монет', async () => {
     const w = await boot();
     try {
       const L = await onBreak(w);
       const u = L.host;
-      fund(w, u, 300);
+      setTreasury(w, L, 'shared', 300);
       await build(L, u, 's1', 'arrow');
-      const c0 = await coinsOf(u);
+      const c0 = await treasury(L);
       const up2 = await post(L, u, 'upgrade', { slotId: 's1', requestId: R(), expectedLevel: 1 });
       assert.equal(up2.status, 200);
-      assert.deepEqual([up2.body.level, up2.body.cost], [2, 12]); // 15 × 0.8
+      assert.deepEqual([up2.body.level, up2.body.cost, up2.body.treasuryCoins], [2, 12, c0 - 12]); // 15 × 0.8
       assert.equal((await post(L, u, 'upgrade', { slotId: 's1', requestId: R(), expectedLevel: 1 })).body.error.code, 'STALE_LEVEL');
       const up3 = await post(L, u, 'upgrade', { slotId: 's1', requestId: R() });
       assert.deepEqual([up3.body.level, up3.body.cost], [3, 18]); // 15 × 1.2
       assert.equal((await post(L, u, 'upgrade', { slotId: 's1', requestId: R() })).body.error.code, 'MAX_LEVEL');
       assert.equal((await post(L, u, 'upgrade', { slotId: 's2', requestId: R() })).body.error.code, 'NO_TOWER');
-      assert.equal(await coinsOf(u), c0 - 12 - 18);
+      assert.equal(await treasury(L), c0 - 12 - 18);
       // параллельное улучшение одним и тем же ожидаемым уровнем — проходит одно
       await build(L, u, 's2', 'cannon');
       const par = await Promise.all(Array.from({ length: 6 }, () => post(L, u, 'upgrade', { slotId: 's2', requestId: R(), expectedLevel: 1 })));
       assert.equal(par.filter((r) => r.status === 200).length, 1);
-      w.app.db.run('UPDATE users SET coins = 1 WHERE id = ?', u.id);
-      assert.equal((await post(L, u, 'upgrade', { slotId: 's2', requestId: R() })).body.error.code, 'INSUFFICIENT_FUNDS');
+      setTreasury(w, L, 'shared', 1);
+      assert.equal((await post(L, u, 'upgrade', { slotId: 's2', requestId: R() })).body.error.code, 'INSUFFICIENT_TEAM_FUNDS');
+      assert.equal(await treasury(L), 1);
     } finally { await w.close(); }
   });
 });
@@ -220,16 +229,50 @@ describe('Tower Defense: раунд, результат и награды', () =
     } finally { await w.close(); }
   });
 
-  test('этапы открываются узлами Road Map; старт закрытого этапа отклоняется', async () => {
+  test('этапы открывает шаг команды по карте (качественный цикл), победа в бою карту не двигает', async () => {
     const w = await boot();
     try {
-      const L = await onBreak(w, ['Лотти', 'Аня']); // 2 очка → «Лес знаний»
-      assert.equal((await post(L, L.host, 'start', { stageId: 'bridge' })).body.error.code, 'STAGE_LOCKED');
-      assert.equal((await post(L, L.host, 'start', { stageId: 'fortress' })).body.error.code, 'STAGE_LOCKED');
-      assert.equal((await post(L, L.host, 'start', { stageId: 'nope' })).body.error.code, 'STAGE_NOT_FOUND');
-      assert.equal((await td(L)).defaultStageId, 'forest');
-      const s = await post(L, L.host, 'start', {});
-      assert.equal(s.body.round.stageId, 'forest', 'по умолчанию — самый дальний открытый этап');
+      const L = await onBreak(w, ['Лотти', 'Аня']); // один качественный цикл = один шаг: «Лес» открыт, «Мост» — нет
+      let v = await td(L);
+      assert.equal(v.stages.find((x) => x.id === 'forest').unlocked, true);
+      assert.equal(v.stages.find((x) => x.id === 'bridge').unlocked, false);
+      assert.equal(v.defaultStageId, 'forest');
+      const before = (await L.host.get(L.path('/roadmap'))).body;
+      assert.equal(before.points, 1);
+      // победа в лагере не двигает карту: шаги по-прежнему 1, новых узлов нет
+      await build(L, L.host, 's1', 'arrow'); await build(L, L.users[1], 's3', 'arrow');
+      const s = await post(L, L.host, 'start', { stageId: 'camp' });
+      assert.equal(s.body.round.stageId, 'camp');
+      await solid(w, L);
+      v = await td(L);
+      assert.equal(v.round.status, 'won');
+      const after = (await L.host.get(L.path('/roadmap'))).body;
+      assert.equal(after.points, 1, 'победа в бою не добавляет шаг карты');
+      assert.equal(after.positionNodeId, before.positionNodeId);
+    } finally { await w.close(); }
+  });
+
+  test('поражение и истечение раунда ничего не забирают: башни, hpMax и узел остаются', async () => {
+    const w = await boot();
+    try {
+      const L = await onBreak(w, ['Лотти']);
+      fund(w, L.host, 100);
+      await L.host.post('/api/users/me/upgrades/base_walls/purchase', { expectedLevel: 0 });
+      await build(L, L.host, 's1', 'frost');
+      await post(L, L.host, 'start', { stageId: 'camp' });
+      await w.advance(80_000, L.users);
+      let v = await td(L);
+      assert.equal(v.round.status, 'lost');
+      assert.equal(v.round.hpMax, 125);
+      assert.deepEqual(v.towers.map((t) => t.slot), ['s1']);
+      assert.equal((await L.host.get(L.path('/roadmap'))).body.points, 1, 'поражение не меняет шаг карты (он дан циклом)');
+      // следующий перерыв: всё на месте
+      await w.advance(4 * 60_000, L.users);
+      await runFocus(w, L);
+      v = await td(L);
+      assert.equal(v.base.hpMax, 125);
+      assert.deepEqual(v.towers.map((t) => [t.slot, t.level]), [['s1', 1]]);
+      assert.equal(v.stages.find((x) => x.id === 'forest').unlocked, true, 'Лес открыт шагом первого цикла и не закрывается поражением');
     } finally { await w.close(); }
   });
 
@@ -439,23 +482,31 @@ describe('Tower Defense: командный режим Team A / Team B', () => {
     } finally { await w.close(); }
   });
 
-  test('этапы открываются по узлам своей команды; ничья без наград при двух поражениях', async () => {
+  test('ничья без наград при двух поражениях; реванш идёт на том же шаге карты', async () => {
     const w = await boot();
     try {
-      // A — двое, B — один. В первом цикле Аня (B) сдаётся: A делает шаг (Лес знаний), B остаётся в лагере
-      const L = await lobby(w, ['Лотти', 'Аня', 'Боря'], { teamMode: true });
+      const L = await onBreak(w, ['Лотти', 'Аня', 'Боря'], { teamMode: true }); // A: Лотти, Боря; B: Аня
       const [lotti, anya] = L.users;
-      await lotti.post(L.path('/start'));
-      await anya.post(L.path('/session/abort'));
-      await w.advance(25 * 60_000 + 1000, L.users);
-      assert.equal((await td(L, lotti)).stages.find((s) => s.id === 'forest').unlocked, true);
-      assert.equal((await td(L, anya)).stages.find((s) => s.id === 'forest').unlocked, false);
-      assert.equal((await post(L, anya, 'start', { stageId: 'forest' })).body.error.code, 'STAGE_LOCKED');
       await post(L, lotti, 'start', { stageId: 'camp' });
       await post(L, anya, 'start', { stageId: 'camp' });
       await solid(w, L);
-      assert.equal((await td(L, lotti)).duel.winner, 'draw'); // обе без башен — обе проиграли
+      const d1 = await td(L, lotti);
+      assert.equal(d1.duel.winner, 'draw'); // обе без башен — обе проиграли
+      assert.equal(d1.duel.roundNo, 1);
+      assert.equal(d1.rematch.bonusTeam, null, 'при ничьей «Контратаки» нет');
       assert.equal((await kinds(lotti, 'td_duel')).length + (await kinds(anya, 'td_duel')).length, 0);
+      // реванш: A строится и выигрывает лагерь, B снова без башен
+      const tA = await treasury(L, lotti);
+      assert.equal((await post(L, lotti, 'rematch', {})).status, 200);
+      assert.equal(await treasury(L, lotti), tA, 'без бонуса');
+      await build(L, lotti, 's1', 'arrow'); await build(L, lotti, 's3', 'arrow');
+      await solid(w, L);
+      const a = await td(L, lotti), b = await td(L, anya);
+      assert.deepEqual([a.round.roundNo, a.round.status, b.round.roundNo, b.round.status], [2, 'won', 2, 'lost']);
+      assert.equal(a.stages.find((s) => s.id === 'forest').unlocked, true);
+      assert.equal(b.stages.find((s) => s.id === 'forest').unlocked, true, 'каждая команда сделала шаг качественным циклом');
+      assert.deepEqual([a.duel.roundNo, a.duel.winner], [2, 'A']);
+      assert.equal((await kinds(lotti, 'td_duel')).length, 1);
     } finally { await w.close(); }
   });
 });

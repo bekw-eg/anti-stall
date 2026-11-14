@@ -62,12 +62,14 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
       dailyRewardedSessions: 16, // потолок наград за сутки (анти-накрутка) — для обычных комнат, в т.ч. на демо-сервере
       demoDailyRewardedSessions: 500, // только для демо-комнат (room.demo): за показ проходят десятки 25-секундных циклов
       challengeReward: { xp: 150, coins: 60 },
+      treasuryStart: 30, // стартовый капитал казны каждой команды (Tower Defense); фокус-монеты тоже идут в казну
       td: {
         dailyRewardedRounds: 8,
         demoDailyRewardedRounds: 500, // только для демо-комнат
         duelReward: { xp: 15, coins: 10 }, firstClearMultiplier: 1.5, minRemainingSec: 6,
+        counterattackCoins: 40, // «Контратака»: проигравшая дуэль раунда 1 команда получает в казну перед реваншем (один раз)
       },
-      nodeReward: { xp: 25, coins: 10 }, // за каждый промежуточный этап карты, один раз на участника с вкладом
+      nodeReward: { xp: 25, coins: 10 }, // за каждый новый узел карты (победа в этапе TD), один раз на участника раунда
     },
 
     // Голос: WebRTC mesh внутри комнаты. Сервер только передаёт сигналы и выдаёт ICE-серверы,

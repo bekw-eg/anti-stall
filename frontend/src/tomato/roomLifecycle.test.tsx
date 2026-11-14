@@ -5,6 +5,7 @@ import {
   FakeWebSocket, apiError, booted, health, me, mockServer, renderHook, roomRoutes, settle, snapshot, toastTexts, type Routes,
 } from "./hookTestUtils";
 import { StatsPanel } from "./StatsPanel";
+import { makeTd, makeTdRound } from "./testFixtures";
 import { client, type Tomato } from "./useTomato";
 
 const ROOM_KEY = "tomato2.roomId";
@@ -167,6 +168,81 @@ describe("жизненный цикл комнаты", () => {
     expect(ref.current!.conn).toBe("offline");
     act(() => { window.dispatchEvent(new Event("online")); });
     expect(ref.current!.conn).toBe("online");
+    unmount();
+  });
+});
+
+describe("Tower Wars: состояние игры в хуке", () => {
+  it("td_state своей команды и соперника обновляет казну; наёмник, заклинание и реванш уходят на сервер с новым requestId", async () => {
+    const td = makeTd({ mode: "teams", team: "A", treasuryCoins: 30, rival: { team: "B", towers: 0, treasuryCoins: 30, round: null } });
+    const { srv, ref, ws, unmount } = await inRoom({
+      "GET /api/rooms/r1/td": { status: 200, body: td },
+      "POST /api/rooms/r1/td/send-unit": { status: 200, body: { action: "send_unit", type: "cherry", cost: 2, target: "B", queued: true, treasuryCoins: 28 } },
+      "POST /api/rooms/r1/td/spell": apiError(409, "RIVAL_NOT_IN_BATTLE"),
+      "POST /api/rooms/r1/td/rematch": { status: 200, body: { ...td, round: makeTdRound({ team: "A", roundNo: 2 }) } },
+    });
+    act(() => ws.hello());
+    await act(async () => { await ref.current!.loadTd(); });
+    expect(ref.current!.td?.treasuryCoins).toBe(30);
+
+    const round = makeTdRound({ team: "A" });
+    act(() => ws.message("td_state", { team: "A", towers: [], round, treasuryCoins: 44 }, { roomId: "r1" }));
+    expect(ref.current!.td?.treasuryCoins).toBe(44);
+    expect(ref.current!.td?.round?.id).toBe(round.id);
+    act(() => ws.message("td_state", { team: "B", towers: [], round: null, treasuryCoins: 12 }, { roomId: "r1" }));
+    expect(ref.current!.td?.rival?.treasuryCoins).toBe(12);
+    expect(ref.current!.td?.treasuryCoins).toBe(44);
+
+    await act(async () => { await ref.current!.tdSendUnit("cherry"); });
+    await act(async () => { await ref.current!.tdSendUnit("cherry"); });
+    const sends = srv.calls.filter((c) => c.path === "/api/rooms/r1/td/send-unit").map((c) => c.body as { type: string; requestId: string });
+    expect(sends.map((b) => b.type)).toEqual(["cherry", "cherry"]);
+    expect(sends[0].requestId).not.toBe(sends[1].requestId);
+    expect(ref.current!.td?.treasuryCoins).toBe(28);
+
+    await act(async () => { await ref.current!.tdCastSpell("slow_towers"); });
+    expect(srv.body("POST /api/rooms/r1/td/spell")).toMatchObject({ spell: "slow_towers" });
+    expect(toastTexts(ref.current)).toContain("Соперник уже не в бою — его раунд закончился");
+
+    await act(async () => { await ref.current!.tdRematch("forest"); });
+    expect(srv.body("POST /api/rooms/r1/td/rematch")).toEqual({ stageId: "forest" });
+    expect(ref.current!.td?.round?.roundNo).toBe(2);
+    unmount();
+  });
+});
+
+describe("Tower Wars: события комнаты в хуке", () => {
+  it("наёмник и заклинание соперника — предупреждение; свои действия без тостов; частые события не перезагружают GET /td, а раунд и реванш — да", async () => {
+    const td = makeTd({ mode: "teams", team: "A", rival: { team: "B", towers: 0, treasuryCoins: 30, round: null } });
+    const { srv, ref, ws, unmount } = await inRoom({ "GET /api/rooms/r1/td": { status: 200, body: td } });
+    act(() => ws.hello());
+    await act(async () => { await ref.current!.loadTd(); });
+    const tdLoads = () => srv.count("GET /api/rooms/r1/td");
+    const loads0 = tdLoads();
+    const toasts = () => ref.current!.toasts.map((t) => [t.text, t.tone]);
+
+    act(() => ws.message("td_unit_sent", { team: "B", target: "A", type: "armored", queued: false, by: "u2" }, { roomId: "r1" }));
+    act(() => ws.message("td_spell_cast", { team: "B", target: "A", spell: "slow_towers", targetSlot: null, by: "u2" }, { roomId: "r1" }));
+    expect(toasts()).toEqual([
+      ["Соперник прислал наёмника: Броне-томат в каске!", "warning"],
+      ["Соперник наложил на вас «Сонная пыльца»!", "warning"],
+    ]);
+    // свои действия игрок видит в самой игре; действия товарища по команде — обычное уведомление
+    act(() => ws.message("td_unit_sent", { team: "A", target: "B", type: "cherry", queued: true, by: "u1" }, { roomId: "r1" }));
+    act(() => ws.message("td_spell_cast", { team: "A", target: "A", spell: "haste", targetSlot: null, by: "u3" }, { roomId: "r1" }));
+    expect(toasts().at(-1)).toEqual(["Команда усилила оборону: «Гипер-жабры»", "info"]);
+    expect(toasts().map(([t]) => t)).not.toContain("Команда отправила сопернику: Черри-бегун");
+    act(() => ws.message("td_tower_built", { team: "A", slotId: "s1", type: "arrow", level: 1, by: "u3" }, { roomId: "r1" }));
+    await wait(30);
+    expect(tdLoads()).toBe(loads0); // эти события приходят вместе с td_state — полный GET не нужен
+
+    act(() => ws.message("td_rematch_started", { roundNo: 2, bonusTeam: "A", counterattackCoins: 40, startedBy: "u2", teams: ["A", "B"] }, { roomId: "r1" }));
+    await wait(30);
+    expect(tdLoads()).toBe(loads0 + 1);
+    expect(toasts().at(-1)).toEqual(["Смена ролей! Начался раунд 2 — реванш · «Контратака»: +40 в казну", "info"]);
+    act(() => ws.message("td_round_started", { team: "B", roundNo: 1, stageId: "camp" }, { roomId: "r1" }));
+    await wait(30);
+    expect(tdLoads()).toBe(loads0 + 2);
     unmount();
   });
 });

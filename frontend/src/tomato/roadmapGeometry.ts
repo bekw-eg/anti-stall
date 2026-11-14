@@ -24,3 +24,6 @@ export const NODE_STATUS_LABEL: Record<RoadmapNode["status"], string> = {
   next: "следующий этап",
   locked: "закрыт",
 };
+
+/** Новые правила Tower Wars: узлы открывают победы в Tower Defense (сервер присылает challenge.kind = "td_stage_win"). */
+export const isTdRoad = (road: Roadmap) => road.nodes.some((n) => n.challenge?.kind === "td_stage_win") || Boolean(road.next?.stageId);

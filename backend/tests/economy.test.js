@@ -200,6 +200,11 @@ describe('игровая экономика и защита от накрутк�
       await runFocus(w, L);
       await w.advance(5 * 60_000, L.users);
     }
+    // победы в Tower Defense проводят команду по карте до крепости (так их фиксирует сервис TD)
+    const room = w.app.db.get('SELECT * FROM rooms WHERE id = ?', L.room.id);
+    for (const stage of ['camp', 'forest', 'bridge', 'fortress', 'fortress']) {
+      w.app.db.tx(() => w.app.services.game.addTeamSteps(room, new Map([['shared', [L.host.id]]])));
+    }
     const p = await L.host.progress();
     // 6 сессий + 3 промежуточные остановки плана из 4 циклов (по 25) + командная награда за крепость
     assert.equal(p.xp, 600 + 75 + 150);

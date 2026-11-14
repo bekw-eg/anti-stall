@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RoadMap } from "./RoadMap";
-import { makeRoad, makeTeam } from "./testFixtures";
+import { makeRoad, makeTdRoad, makeTeam } from "./testFixtures";
 import type { Roadmap } from "@/api/tomato";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -96,5 +96,19 @@ describe("RoadMap: командный режим A/B", () => {
     expect(host.textContent).not.toContain("это вы");
     render(teamsRoad("B", { winner: "draw" }));
     expect(host.textContent).toContain("Ничья");
+  });
+});
+
+describe("RoadMap: новые правила — узлы открывают победы в Tower Defense", () => {
+  it("условие узла — победа на этапе предыдущего узла; фокус-сессии дают вклад и казну", () => {
+    render(makeTdRoad(1));
+    expect(nodeBtn("Мост дедлайнов").getAttribute("aria-label")).toContain("победа в обороне «Лес знаний»");
+    expect(host.textContent).toContain("До «Мост дедлайнов»: победа на этапе «Лес знаний»");
+    expect(host.querySelector("aside")!.textContent).toContain("Откроет победа в Tower Defense на этапе «Лес знаний»");
+    expect(host.textContent).toContain("1/4");
+    expect(host.textContent).toContain("Узлы карты открывают победы в Tower Defense");
+    expect(host.textContent).not.toContain("Очко команде даёт каждая завершённая фокус-сессия");
+    expect(q('[data-testid="road-team-stats"]')!.textContent).toContain("Очки вклада: 7");
+    expect(q('[data-testid="road-team-stats"]')!.textContent).toContain("Казна: 42🪙");
   });
 });

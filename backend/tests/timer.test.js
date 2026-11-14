@@ -69,7 +69,7 @@ describe('синхронизированный Pomodoro', () => {
     await w.advance(20 * 60_000 + 1000, L.users);
     assert.equal((await anya.progress()).xp, 0);
     assert.equal((await anya.progress()).coins, 0);
-    assert.equal((await boris.progress()).xp, 125); // 100 + 25 за этап карты (2 очка команды)
+    assert.equal((await boris.progress()).xp, 125); // 100 за сессию + 25 за первую остановку карты (шаг команды)
     assert.equal((await lotti.progress()).xp, 125);
     const sess = (await anya.get('/api/users/me/sessions')).body.sessions[0];
     assert.equal(sess.status, 'aborted');

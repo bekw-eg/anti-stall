@@ -2,6 +2,12 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { boot, lobby, runBreak, runFocus } from './helpers.js';
 
+/** Победа команды в этапе TD (так её фиксирует сервис Tower Defense). */
+function win(w, L, team, stageId, users) {
+  const room = w.app.db.get('SELECT * FROM rooms WHERE id = ?', L.room.id);
+  return w.app.db.tx(() => w.app.services.game.addTeamSteps(room, new Map([[team, users.map((u) => u.id)]])));
+}
+
 describe('командное испытание и Road Map', () => {
   let w;
   before(async () => { w = await boot(); });
@@ -44,7 +50,7 @@ describe('командное испытание и Road Map', () => {
     assert.equal(road.completed, true);
     assert.equal(road.positionNodeId, 'fortress');
 
-    // награда: все, у кого вклад > 0, получили её ровно один раз; Аня вкладывалась в циклах 2–3
+    // награда: каждый участник победного штурма получил её ровно один раз
     for (const u of L.users) {
       const tx = (await u.get('/api/users/me/transactions?limit=200')).body.transactions;
       assert.equal(tx.filter((t) => t.kind === 'team_challenge').length, 1, u.name);
@@ -54,6 +60,7 @@ describe('командное испытание и Road Map', () => {
     await runBreak(w, L);
     assert.equal((await lotti.get(L.path())).body.room.phase, 'waiting');
     await runFocus(w, L);
+    win(w, L, 'shared', 'fortress', L.users);
     for (const u of L.users) {
       const tx = (await u.get('/api/users/me/transactions?limit=200')).body.transactions;
       assert.equal(tx.filter((t) => t.kind === 'team_challenge').length, 1);
@@ -63,8 +70,10 @@ describe('командное испытание и Road Map', () => {
   test('командный прогресс независим между комнатами', async () => {
     const A = await lobby(w, ['A1']);
     const B = await lobby(w, ['B1']);
-    await runFocus(w, A);
-    assert.equal((await A.host.get(A.path('/roadmap'))).body.points, 1);
-    assert.equal((await B.host.get(B.path('/roadmap'))).body.points, 0);
+    await runFocus(w, A); // качественный цикл: шаг карты и очко вклада
+    const ra = (await A.host.get(A.path('/roadmap'))).body;
+    const rb = (await B.host.get(B.path('/roadmap'))).body;
+    assert.deepEqual([ra.points, ra.focusPoints, ra.treasuryCoins], [1, 1, 50]);
+    assert.deepEqual([rb.points, rb.focusPoints, rb.treasuryCoins], [0, 0, 30]);
   });
 });

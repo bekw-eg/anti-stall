@@ -36,6 +36,13 @@ export const API_ERROR_TEXT: Record<string, string> = {
   SANDBOX_DEMO_ONLY: "В демо-песочнице доступны только демо-комнаты",
   DEMO_SANDBOX_ONLY: "Это демо-комната: войти в неё можно только из демо-песочницы",
   DEMO_DISABLED: "Демо-режим на этом сервере выключен",
+  // Tower Wars
+  INSUFFICIENT_TEAM_FUNDS: "В казне команды не хватает монет",
+  RIVAL_NOT_IN_BATTLE: "Соперник уже не в бою — его раунд закончился",
+  NO_ACTIVE_ROUND: "Сейчас нет идущего раунда",
+  NO_RIVAL: "Соперника нет: в общем режиме доступны только свои заклинания",
+  MERC_COOLDOWN: "Наёмники ещё собираются — подождите секунду",
+  REMATCH_USED: "Реванш в этом перерыве уже был",
 };
 export const apiErrorText = (e: { code: string; message?: string }) => API_ERROR_TEXT[e.code] ?? (e.message || "Что-то пошло не так");
 

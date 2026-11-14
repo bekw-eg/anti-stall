@@ -38,8 +38,32 @@ export function makeRoad(points: number, over: Partial<Roadmap> = {}): Roadmap {
   };
 }
 
+/**
+ * Карта по новым правилам Tower Wars: узлы открывают победы в TD (requiredPoints = число побед),
+ * points — пройденные узлы, goal = 4; у сервера есть очки вклада и казна команды.
+ */
+export function makeTdRoad(wins: number, over: Partial<Roadmap> = {}): Roadmap {
+  const nodes = BASE_NODES.map((n, i) => ({
+    ...n,
+    requiredPoints: i,
+    challenge: i === 0 ? null : { kind: "td_stage_win" as const, stageId: BASE_NODES[i - 1].id },
+    status: (i < wins ? "completed" : i === wins ? "current" : i === wins + 1 ? "next" : "locked") as RoadmapNode["status"],
+  }));
+  const next = nodes[wins + 1];
+  return makeRoad(0, {
+    points: wins, goal: 4, focusPoints: 7, treasuryCoins: 42, positionNodeId: nodes[Math.min(wins, 3)].id, nodes,
+    teams: [{ key: "shared", name: "Команда", points: wins, positionNodeId: nodes[Math.min(wins, 3)].id, finished: wins >= 4, completed: false }],
+    next: next ? { nodeId: next.id, title: next.title, pointsNeeded: 1, stageId: nodes[wins].id } : null,
+    ...over,
+  });
+}
+
 // ---------------------------------------------------------------------------- Tower Defense
-import type { TdRound, TdView } from "@/api/tomato";
+import type { TdEnemy, TdRound, TdView } from "@/api/tomato";
+
+export function makeEnemy(over: Partial<TdEnemy> & Pick<TdEnemy, "id">): TdEnemy {
+  return { type: "runner", x: 1, y: 1.5, s: 0.5, hp: 36, maxHp: 36, speed: 1.4, slowed: false, hasted: false, armor: 0, isMerc: false, ...over };
+}
 
 export const TD_SLOTS = [
   { id: "s1", x: 2.5, y: 2.5 }, { id: "s2", x: 2.5, y: 0.5 }, { id: "s3", x: 5.5, y: 2.5 }, { id: "s4", x: 3.5, y: 3.5 },
@@ -47,8 +71,8 @@ export const TD_SLOTS = [
 
 export function makeTdRound(over: Partial<TdRound> = {}): TdRound {
   return {
-    id: "r1", team: "shared", stageId: "camp", status: "running", current: true, startedAt: 0, endsAt: 300_000, finishedAt: null, speed: 1,
-    t: 10, wave: 1, waves: 2, spawned: 3, total: 7, hp: 100, hpMax: 100, kills: 1, leaked: 0, enemies: [], result: null, ...over,
+    id: "r1", team: "shared", roundNo: 1, stageId: "camp", status: "running", current: true, startedAt: 0, endsAt: 300_000, finishedAt: null, speed: 1,
+    t: 10, wave: 1, waves: 2, spawned: 3, total: 7, hp: 100, hpMax: 100, kills: 1, leaked: 0, enemies: [], shots: [], effects: [], result: null, ...over,
   };
 }
 
@@ -72,7 +96,23 @@ export function makeTd(over: Partial<TdView> = {}): TdView {
     base: { hpMax: 100, damageMult: 1, wallLevels: 0, powerLevels: 0 },
     towers: [{ slot: "s3", type: "arrow", level: 1, ownerId: "u2", ownerName: "Аня" }],
     round: null, rival: null, duel: null,
-    me: { userId: "me", coins: 40, participated: false },
+    me: { userId: "me", coins: 3, participated: false }, // личные монеты — не для игры: платит казна
+    treasuryCoins: 40,
+    mercenaries: [
+      { id: "cherry", title: "Черри-бегун", description: "Крошечный и шустрый", cost: 2, hp: 30, speed: 1.6, damage: 3, armor: 0 },
+      { id: "ripe", title: "Спелый томат", description: "Давит числом", cost: 5, hp: 95, speed: 1.05, damage: 7, armor: 0 },
+      { id: "armored", title: "Броне-томат в каске", description: "Каска гасит четверть урона", cost: 12, hp: 280, speed: 0.65, damage: 15, armor: 0.25 },
+      { id: "king", title: "Томат-Дредноут", description: "Ходячая крепость", cost: 25, hp: 900, speed: 0.5, damage: 30, armor: 0.35 },
+    ],
+    spells: [
+      { id: "haste", title: "Гипер-жабры", description: "Башни стреляют чаще", cost: 10, duration: 6, target: "self" },
+      { id: "repair", title: "Регенерация базы", description: "+20 HP и щит", cost: 12, duration: 5, target: "self" },
+      { id: "slow_towers", title: "Сонная пыльца", description: "Башни соперника медленнее", cost: 10, duration: 6, target: "rival" },
+      { id: "disable_tower", title: "Кетчуп-заморозка", description: "Лучшая башня соперника молчит", cost: 14, duration: 5, target: "rival" },
+      { id: "enrage_horde", title: "Ярость Томатов", description: "Враги соперника быстрее", cost: 12, duration: 5, target: "rival" },
+    ],
+    mercCooldownSec: 0.8,
+    rematch: { available: false, reason: null, roundNo: 1, counterattackCoins: 40, bonusTeam: null },
     ...over,
   };
 }

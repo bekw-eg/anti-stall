@@ -129,10 +129,14 @@ export function StatsPanel({ t }: { t: Tomato }) {
               <div key={tm.key} className="rounded-2xl bg-[var(--card)] p-4" data-team={tm.key}>
                 <div className="mb-2 flex items-baseline justify-between text-sm">
                   <span className="font-medium">{tm.name}{me?.team === tm.key && room.mode === "teams" && <span className="ml-2 text-xs text-[var(--muted)]">ваша</span>}</span>
-                  <span className="text-xs tabular-nums text-[var(--muted)]" data-testid={`team-points-${tm.key}`}>{tm.points} / {tm.goal} очков</span>
+                  <span className="text-xs tabular-nums text-[var(--muted)]" data-testid={`team-points-${tm.key}`}>карта: {tm.points} / {tm.goal}</span>
                 </div>
-                <Bar value={tm.points} max={tm.goal} label={`Прогресс: ${tm.name}`} />
-                <p className="mt-2 text-xs text-[var(--muted)]">сессий: {tm.completedSessions} · время: {formatDuration(tm.focusSeconds)}</p>
+                <Bar value={tm.points} max={tm.goal} label={`Прогресс по карте: ${tm.name}`} />
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  сессий: {tm.completedSessions} · время: {formatDuration(tm.focusSeconds)}
+                  {typeof tm.focusPoints === "number" && <> · очки вклада: {tm.focusPoints}</>}
+                  {typeof tm.treasuryCoins === "number" && <> · казна: {tm.treasuryCoins}</>}
+                </p>
                 <table className="mt-3 w-full text-xs">
                   <thead className="text-left text-[var(--muted)]">
                     <tr><th className="pb-1 font-normal">Участник</th><th className="pb-1 text-right font-normal">Сессий</th><th className="pb-1 text-right font-normal">Время</th><th className="pb-1 text-right font-normal">Вклад</th></tr>

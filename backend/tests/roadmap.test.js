@@ -6,8 +6,14 @@ import { boot, lobby, runBreak, runFocus, tmpDbPath } from './helpers.js';
 const ledger = async (u) => (await u.get('/api/users/me/transactions?limit=200')).body.transactions;
 const roadOf = async (L, u = L.host) => (await u.get(L.path('/roadmap'))).body;
 
-describe('Road Map: этапы, награды, синхронизация', () => {
-  test('сервер отдаёт связанную карту: позиция, следующий этап, доля пути, команды', async () => {
+/** Победа команды в этапе TD — так её фиксирует сервис Tower Defense (сервер, не клиент). */
+function win(w, L, team, stageId, users = L.users) {
+  const room = w.app.db.get('SELECT * FROM rooms WHERE id = ?', L.room.id);
+  return w.app.db.tx(() => w.app.services.game.addTeamSteps(room, new Map([[team, users.map((u) => u.id)]])));
+}
+
+describe('Road Map: узлы открывают победы в Tower Defense', () => {
+  test('сервер отдаёт связанную карту: позиция, следующий этап TD, доля пути, команды, казна', async () => {
     const w = await boot();
     try {
       const L = await lobby(w, ['Хост']);
@@ -50,7 +56,7 @@ describe('Road Map: этапы, награды, синхронизация', () 
     } finally { await w.close(); }
   });
 
-  test('этап засчитывается и награждается сервером ровно один раз; повторы и ещё сессии не дублируют', async () => {
+  test('лагерь → лес → мост → крепость → победа: события, награды, статусы', async () => {
     const w = await boot();
     try {
       const L = await lobby(w, ['Хост']);
@@ -82,8 +88,10 @@ describe('Road Map: этапы, награды, синхронизация', () 
     } finally { await w.close(); }
   });
 
-  test('финальный узел выдаёт командную награду, а не «этапную»; прогресс не идёт дальше цели', async () => {
+  test('идемпотентность: повторные победы на пройденных этапах и закрытые этапы ничего не дают', async () => {
     const w = await boot();
+    const events = [];
+    w.app.db.sink = (evs) => events.push(...evs);
     try {
       const L = await lobby(w, ['Хост']);
       for (let i = 0; i < 7; i++) { await runFocus(w, L); await runBreak(w, L); } // 4 цикла плана + 3 сверх плана вручную
@@ -95,10 +103,13 @@ describe('Road Map: этапы, награды, синхронизация', () 
       const tx = await ledger(L.host);
       assert.equal(tx.filter((t) => t.kind === 'team_node').length, 3, 'только промежуточные остановки');
       assert.equal(tx.filter((t) => t.kind === 'team_challenge').length, 1);
+      assert.equal(events.filter((e) => e.type === 'node_reached').length, 4, '3 остановки + крепость, каждый узел — один раз');
+      assert.equal(events.filter((e) => e.type === 'challenge_completed').length, 1);
+      assert.equal((await roadOf(L)).points, 4, 'прогресс не идёт дальше цели');
     } finally { await w.close(); }
   });
 
-  test('синхронизация: все участники видят один прогресс; награды получают только участники с вкладом', async () => {
+  test('награды за узел получают только участники победного раунда; все видят один прогресс', async () => {
     const w = await boot();
     try {
       const L = await lobby(w, ['Лотти', 'Аня', 'Боря']);
@@ -149,7 +160,7 @@ describe('Road Map: этапы, награды, синхронизация', () 
       await c.connect();
       c.send({ type: 'subscribe', roomId: L.room.id });
       await c.wait((m) => m.type === 'room_state');
-      await runFocus(w, L);
+      win(w, L, 'shared', 'camp');
       const reached = await c.wait((m) => m.type === 'node_reached');
       assert.equal(reached.data.nodeId, 'stop-1');
       assert.equal(reached.data.reward.coins, 10);
@@ -164,16 +175,17 @@ describe('Road Map: этапы, награды, синхронизация', () 
     try {
       const L = await lobby(w, ['Хост']);
       for (const [m, p] of [['POST', '/roadmap'], ['PATCH', '/roadmap'], ['POST', '/roadmap/advance'], ['POST', '/progress']]) {
-        const r = await L.host.call?.(m, p) ?? await w.call(m, L.path(p), { points: 99, nodeId: 'fortress' }, L.host.token);
+        const r = await w.call(m, L.path(p), { points: 99, nodeId: 'fortress' }, L.host.token);
         assert.ok([404, 405].includes(r.status), `${m} ${p} → ${r.status}`);
       }
-      await L.host.post(L.path('/start'), { points: 99, positionNodeId: 'fortress' });
+      await L.host.post(L.path('/start'), { points: 99, positionNodeId: 'fortress', treasuryCoins: 9999 });
       assert.equal((await roadOf(L)).points, 0);
       assert.equal((await roadOf(L)).positionNodeId, 'camp');
+      assert.equal((await roadOf(L)).treasuryCoins, 30);
     } finally { await w.close(); }
   });
 
-  test('сохранение: пройденные этапы, вклад и позиция переживают перезапуск и не награждаются повторно', async () => {
+  test('сохранение: пройденные узлы, вклад, казна и позиция переживают перезапуск и не награждаются повторно', async () => {
     const dbPath = tmpDbPath();
     const clock = new FakeClock();
     let w = await boot({ dbPath, clock });
