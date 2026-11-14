@@ -72,7 +72,7 @@ describe('песочница демо-режима: регистрация и а
     try {
       const row = w.app.db.get("SELECT sandbox, xp, coins FROM users WHERE id = 'u1'");
       assert.deepEqual({ ...row }, { sandbox: 0, xp: 300, coins: 40 }, 'данные сохранены, колонка добавлена');
-      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '4');
+      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '5');
     } finally { await w.close(); }
   });
 
@@ -157,7 +157,7 @@ describe('песочница демо-режима: доступ к комнат
     const dbPath = tmpDbPath();
     const clock = new FakeClock();
     let w = await boot({ ...DEMO, dbPath, clock });
-    const L = await lobby(w, ['Лотти'], demoRoom());
+    const L = await lobby(w, ['Лотти'], demoRoom({ cycles: 1 })); // план из 1 цикла: после перерыва комната ждёт хоста
     const legacy = await w.user('Старый');
     // как будто обычный игрок попал в демо-комнату до появления песочницы
     w.app.db.run('INSERT INTO room_members(room_id, user_id, team_key, joined_at) VALUES (?,?,?,?)', L.room.id, legacy.id, 'shared', clock.now());
@@ -185,15 +185,15 @@ describe('песочница демо-режима: потолки и кулда
   test('суточный потолок сессий: демо-комната — demoDailyRewardedSessions, обычная комната на демо-сервере — обычный', async () => {
     const w = await boot({ ...DEMO, config: { economy: { dailyRewardedSessions: 1, demoDailyRewardedSessions: 3 } } });
     try {
-      const D = await lobby(w, ['Демо'], demoRoom({ breakSeconds: 5 }));
-      for (let i = 0; i < 4; i++) { await runFocus(w, D, D.users, 0.5); await w.advance(6_000, D.users); }
+      const D = await lobby(w, ['Демо'], demoRoom({ breakSeconds: 10 })); // перерыв — минимум 10 с
+      for (let i = 0; i < 4; i++) { await runFocus(w, D, D.users, 0.5); await w.advance(11_000, D.users); }
       const ds = (await D.host.get('/api/users/me/sessions')).body.sessions;
       assert.deepEqual(ds.map((x) => x.rewarded), [false, true, true, true], 'демо-потолок 3, а не 1');
       assert.equal(ds[0].endReason, 'daily_cap');
 
       const N = await lobby(w, ['Обычный'], { focusMinutes: 10, breakMinutes: 3 });
       for (let i = 0; i < 2; i++) { await runFocus(w, N, N.users, 10); await w.advance(3 * 60_000, N.users); }
-      const ns = (await N.host.get('/api/users/me/sessions')).body.sessions;
+      const ns = (await N.host.get('/api/users/me/sessions')).body.sessions.filter((x) => x.status !== 'active'); // 3-й фокус плана уже идёт
       assert.deepEqual(ns.map((x) => x.rewarded), [false, true], 'обычная комната: потолок production (1)');
     } finally { await w.close(); }
   });

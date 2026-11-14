@@ -29,11 +29,10 @@ describe('синхронизированный Pomodoro', () => {
 
     await w.advance(5 * 60_000, L.users);
     v = (await L.host.get(L.path())).body.room;
-    assert.equal(v.phase, 'waiting');
-    // «после Break можно начать следующий цикл»
-    const next = await L.host.post(L.path('/start'));
-    assert.equal(next.body.room.phase, 'focus');
-    assert.equal(next.body.room.cycleNo, 2);
+    // после Break следующий цикл плана начинается сам — перерыв не ведёт «в никуда»
+    assert.equal(v.phase, 'focus');
+    assert.equal(v.cycleNo, 2);
+    assert.equal((await L.host.post(L.path('/start'))).body.error.code, 'WRONG_PHASE', 'второй старт не нужен');
   });
 
   test('фаза определяется метками времени, даже если тик не вызывался (ленивое догоняние)', async () => {
@@ -87,7 +86,8 @@ describe('синхронизированный Pomodoro', () => {
     await w.advance(20_000, [lotti, boris]);
     await w.advance(5_000, [lotti, anya]);
     await w.advance(25 * 60_000, [lotti, anya]);
-    assert.equal((await anya.progress()).xp, 125, 'короткий обрыв не лишает награды (100 + 25 за этап карты)');
+    // короткий обрыв не прерывает сессию, но 25 с отлучки из 1500 снижают качество до 0.98: 98 + 25 за остановку карты
+    assert.equal((await anya.progress()).xp, 123);
     assert.equal((await boris.progress()).xp, 0, 'долгое отсутствие — награды нет');
     const s = (await boris.get('/api/users/me/sessions')).body.sessions[0];
     assert.equal(s.status, 'abandoned');
@@ -119,6 +119,6 @@ describe('синхронизированный Pomodoro', () => {
     await late.post('/api/rooms/join', { code: L.room.code });
     await w.advance(25 * 60_000 + 1000, [L.host, late]);
     assert.equal((await late.progress()).xp, 0);
-    assert.equal((await L.host.progress()).xp, 100);
+    assert.equal((await L.host.progress()).xp, 125); // 100 за фокус + 25 за остановку карты
   });
 });

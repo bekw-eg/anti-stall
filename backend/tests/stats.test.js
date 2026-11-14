@@ -69,7 +69,9 @@ describe('статистика занятий', () => {
     assert.equal(st.body.totals.focusSeconds, 3 * 25 * 60);
     for (const t of st.body.teams) {
       assert.ok(t.members.every((m) => teamOf.get(m.userId) === t.key), 'участник посчитан в своей команде');
-      assert.equal(t.points, t.members.reduce((a, m) => a + m.points, 0));
+      // шаг карты — один на команду за качественный цикл; вклад — у каждого, кто отфокусировался качественно
+      assert.equal(t.points, 1);
+      assert.ok(t.members.every((m) => m.points === 1));
       assert.equal(t.completedSessions, t.members.length);
     }
     assert.equal((await outsider.get(L.path('/stats'))).status, 403);

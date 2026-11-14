@@ -55,8 +55,9 @@ export function createRoomsService(ctx, game, users, td) {
   function secondsField(body, secKey, minKey, fallback, [min, max]) {
     if (body[secKey] !== undefined) return reqInt(body[secKey], secKey, { min, max });
     if (body[minKey] !== undefined) {
-      const sec = Number(body[minKey]) * 60;
-      return reqInt(Number.isFinite(sec) ? Math.round(sec) : body[minKey], minKey, { min, max });
+      // строгая типизация как раньше: «25» строкой — ошибка, а не 25 минут
+      if (typeof body[minKey] !== 'number' || !Number.isFinite(body[minKey])) return reqInt(body[minKey], minKey, { min, max });
+      return reqInt(Math.round(body[minKey] * 60), minKey, { min, max });
     }
     return reqInt(fallback, secKey, { min, max });
   }

@@ -130,10 +130,10 @@ describe('защита от читов (как в cheat-check)', () => {
     assert.equal((await txOf(G3, 'focus_session')).length, 1);
   });
 
-  test('пакость игроку с отключёнными пакостями отклоняется', async () => {
+  test('старый флаг prankEnabled=false шутки не отключает: это игровая механика перерыва', async () => {
     const r = await H.post(A.path('/social/prank'), { targetUserId: G3.id, type: 'fog' });
-    assert.equal(r.status, 409);
-    assert.equal(r.body.error.code, 'PRANKS_DISABLED');
+    assert.notEqual(r.body.error?.code, 'PRANKS_DISABLED');
+    assert.equal(r.status, 201);
   });
 
   test('повтор requestId постройки (последовательно и параллельно) списывает монеты один раз; цена — из каталога', async () => {
@@ -163,13 +163,13 @@ describe('защита от читов (как в cheat-check)', () => {
 
   test('10 параллельных HTTP-покупок при деньгах на одну: успешна ровно одна, баланс не уходит в минус', async () => {
     const coins = (await P.progress()).coins;
-    assert.equal(coins, 45, '20 за сессию + 10 «Первый фокус» + 15 «Командный игрок»');
+    assert.equal(coins, 55, '20 за сессию + 10 «Первый фокус» + 15 «Командный игрок» + 10 за остановку карты');
     const results = await Promise.all(Array.from({ length: 10 }, () => P.post('/api/users/me/upgrades/base_walls/purchase', {})));
     assert.equal(results.filter((x) => x.status === 200).length, 1);
     assert.ok(results.filter((x) => x.status !== 200).every((x) => x.body.error.code === 'INSUFFICIENT_FUNDS'));
     const after = await P.progress();
     assert.ok(after.coins >= 0);
-    assert.equal(after.coins, 45 - 30 + 15);
+    assert.equal(after.coins, 55 - 30 + 15);
     assert.equal(after.upgrades.find((u) => u.id === 'base_walls').level, 1);
     assert.equal((await txOf(P, 'upgrade_purchase')).length, 1);
   });
@@ -177,8 +177,8 @@ describe('защита от читов (как в cheat-check)', () => {
   test('изоляция комнат: прогресс, башни, задачи и соц-действия A не видны и не влияют на B', async () => {
     const ra = (await H.get(A.path('/roadmap'))).body;
     const rb = (await P.get(B.path('/roadmap'))).body;
-    assert.equal(ra.points, 2, 'в A наградили двоих');
-    assert.equal(rb.points, 1, 'в B — только покупателя');
+    assert.equal(ra.points, 1, 'в A качественно отфокусировались двое из четырёх — команда сделала шаг');
+    assert.equal(rb.points, 1, 'в B — покупатель, команда сделала шаг');
     assert.deepEqual(rb.contributions.map((c) => c.userId), [P.id]);
     assert.equal((await H.get(A.path('/td'))).body.towers.length, 1);
     assert.equal((await P.get(B.path('/td'))).body.towers.length, 0);

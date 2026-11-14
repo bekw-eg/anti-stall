@@ -8,7 +8,9 @@ describe('демо-режим для жюри', () => {
     try {
       const u = await w.user('Юзер');
       assert.equal((await u.post('/api/rooms', { demo: true, focusSeconds: 25 })).body.error.code, 'DEMO_DISABLED');
-      assert.equal((await u.post('/api/rooms', { focusSeconds: 25 })).body.room.settings.focusSec, 1500, 'поле focusSeconds игнорируется вне демо');
+      // Вне демо длительность тоже вводится в секундах, но действуют обычные границы (фокус от 1 минуты)
+      assert.equal((await u.post('/api/rooms', { focusSeconds: 25 })).body.error.code, 'INVALID_FIELD');
+      assert.equal((await u.post('/api/rooms', { focusSeconds: 90 })).body.room.settings.focusSec, 90);
       assert.equal((await w.call('GET', '/api/health')).body.demoMode, false);
     } finally { await w.close(); }
   });
@@ -23,13 +25,14 @@ describe('демо-режим для жюри', () => {
       await L.rest[0].post(L.path('/session/abort')); // досрочно — награды нет и в демо
       await w.advance(16_000, L.users);
       assert.equal((await L.host.get(L.path())).body.room.phase, 'break');
-      assert.equal((await L.host.progress()).xp, 100);
+      assert.equal((await L.host.progress()).xp, 125); // 100 за фокус + 25 за остановку карты (1 из 2 качественно — шаг засчитан)
       assert.equal((await L.rest[0].progress()).xp, 0);
       // та же защита от прерванных/покинутых сессий и те же границы
       assert.equal((await L.host.post('/api/rooms', { demo: true, focusSeconds: 1 })).body.error.code, 'INVALID_FIELD');
-      // обычная комната в демо-режиме остаётся обычной: минуты в границах 10–120 (и только для обычных аккаунтов)
+      // обычная комната в демо-режиме остаётся обычной: фокус от 1 минуты до 24 часов (и только для обычных аккаунтов)
       const regular = await w.user('Обычный');
-      assert.equal((await regular.post('/api/rooms', { focusMinutes: 1 })).body.error.code, 'INVALID_FIELD');
+      assert.equal((await regular.post('/api/rooms', { focusSeconds: 30 })).body.error.code, 'INVALID_FIELD');
+      assert.equal((await regular.post('/api/rooms', { focusSeconds: 24 * 3600 + 1 })).body.error.code, 'INVALID_FIELD');
       assert.equal((await L.host.post('/api/rooms', { focusMinutes: 25 })).body.error.code, 'SANDBOX_DEMO_ONLY');
       assert.equal((await regular.post('/api/rooms', { demo: true, focusSeconds: 25 })).body.error.code, 'DEMO_SANDBOX_ONLY');
       // тот же лимит наград в демо ограничен отдельным потолком, а завершение — только сервером

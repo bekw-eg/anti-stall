@@ -7,7 +7,7 @@ describe('помощь и пакости', () => {
   before(async () => { w = await boot(); });
   after(() => w.close());
 
-  test('Тест 10: помощь работает, пакость ограничена, отключается и не мешает Focus', async () => {
+  test('Тест 10: помощь работает, пакость ограничена и не мешает Focus', async () => {
     const L = await lobby(w);
     const [lotti, anya, boris] = L.users;
     await runFocus(w, L, L.users); // перерыв; у каждого ≥ 45 монет
@@ -44,11 +44,11 @@ describe('помощь и пакости', () => {
     await w.advance(25_000, L.users);
     assert.equal((await social(lotti, 'prank', { targetUserId: boris.id, type: 'fog' })).body.error.code, 'PRANK_BREAK_LIMIT');
 
-    // --- отключение пакостей
+    // --- шутки — игровая механика перерыва: старый флаг prankEnabled их больше не отключает
     await anya.patch('/api/users/me', { prankEnabled: false });
     await w.advance(25_000, L.users);
-    assert.equal((await social(boris, 'prank', { targetUserId: anya.id, type: 'fog' })).body.error.code, 'PRANKS_DISABLED');
-    assert.equal((await social(anya, 'prank', { targetUserId: boris.id, type: 'fog' })).body.error.code, 'PRANKS_DISABLED_SELF');
+    assert.equal((await social(boris, 'prank', { targetUserId: anya.id, type: 'fog' })).status, 201);
+    assert.equal((await social(anya, 'prank', { targetUserId: boris.id, type: 'fog' })).status, 201);
 
     // --- бонус реально применяется на следующей сессии, пакости не отнимают прогресс
     const xpBefore = (await anya.progress()).xp;

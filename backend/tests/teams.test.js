@@ -1,13 +1,22 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { FakeClock } from '../src/clock.js';
-import { boot, lobby, runFocus, tmpDbPath } from './helpers.js';
+import { boot, lobby, runBreak, runFocus, tmpDbPath } from './helpers.js';
 
 const ledger = async (u) => (await u.get('/api/users/me/transactions?limit=200')).body.transactions;
 const kinds = async (u, kind) => (await ledger(u)).filter((t) => t.kind === kind);
 const road = async (L, u) => (await u.get(L.path('/roadmap'))).body;
-const teamsLobby = (w, names) => lobby(w, names, { teamMode: true });
-const cycle = async (w, L) => { await runFocus(w, L); await w.advance(5 * 60_000, L.users); };
+const teamsLobby = (w, names, extra = {}) => lobby(w, names, { teamMode: true, ...extra });
+/**
+ * Один цикл «фокус → перерыв». Следующий фокус плана стартует сам; сверх плана хост запускает вручную.
+ * quitters сдаются сразу после старта — их команда может не сделать шаг.
+ */
+const cycle = async (w, L, quitters = []) => {
+  if ((await L.host.get(L.path())).body.room.phase === 'waiting') await L.host.post(L.path('/start'));
+  for (const q of quitters) await q.post(L.path('/session/abort'));
+  await runFocus(w, L);
+  await runBreak(w, L);
+};
 
 describe('командный режим Team A / Team B', () => {
   test('автобаланс команд, режим виден в снимке; смена команды только до старта и только в командном режиме', async () => {
@@ -42,7 +51,7 @@ describe('командный режим Team A / Team B', () => {
       const [lotti, anya, boris] = L.users;
       await lotti.post(L.path('/start'));
       await w.advance(60_000, L.users);
-      await boris.post(L.path('/session/abort')); // Боря выходит — команда A получает 1 очко, B — 1
+      await boris.post(L.path('/session/abort')); // Боря сдаётся — в A качественно 1 из 2 (половина), в B 1 из 1: обе делают шаг
       await w.advance(25 * 60_000, L.users);
 
       const a = await road(L, lotti), b = await road(L, anya);
@@ -51,15 +60,16 @@ describe('командный режим Team A / Team B', () => {
       assert.deepEqual(b.teams.map((t) => [t.key, t.points]), [['A', 1], ['B', 1]]);
       assert.equal(a.points, 1); assert.equal(b.points, 1);
 
-      // этапов пока нет (по 1 очку); перерыв заканчивается, следующий цикл — все трое в строю
-      await w.advance(5 * 60_000, L.users);
-      await cycle(w, L);
-      const a2 = await road(L, lotti), b2 = await road(L, anya);
-      assert.deepEqual(a2.teams.map((t) => [t.key, t.points, t.positionNodeId]), [['A', 3, 'forest'], ['B', 2, 'forest']]);
-      assert.equal(a2.nodes.find((n) => n.id === 'forest').reachedAt > 0, true);
-      assert.equal(b2.nodes.find((n) => n.id === 'forest').reachedAt > 0, true, 'этап B фиксируется отдельно');
+      assert.equal(a.nodes.find((n) => n.id === 'stop-1').reachedAt > 0, true);
+      assert.equal(b.nodes.find((n) => n.id === 'stop-1').reachedAt > 0, true, 'этап B фиксируется отдельно');
+
+      // цикл 2: вся команда A сдаётся — A стоит, B идёт дальше
+      await runBreak(w, L);
+      await cycle(w, L, [lotti, boris]);
+      const a2 = await road(L, lotti);
+      assert.deepEqual(a2.teams.map((t) => [t.key, t.points, t.positionNodeId]), [['A', 1, 'stop-1'], ['B', 2, 'stop-2']]);
       // награды за этап: каждая команда получает свою один раз, ключи разные
-      assert.equal((await kinds(anya, 'team_node')).length, 1);
+      assert.equal((await kinds(anya, 'team_node')).length, 2);
       assert.equal((await kinds(lotti, 'team_node')).length, 1);
       assert.notEqual((await kinds(anya, 'team_node'))[0].key, (await kinds(lotti, 'team_node'))[0].key);
       assert.ok(a2.contributions.every((c) => c.team === 'A' || c.team === 'B'));
@@ -69,11 +79,12 @@ describe('командный режим Team A / Team B', () => {
   test('гонка: побеждает команда, первой набравшая цель; награда победителям один раз; проигравшая её не получает', async () => {
     const w = await boot();
     try {
-      const L = await teamsLobby(w, ['Лотти', 'Аня', 'Боря']); // A: Лотти, Боря (+2/цикл); B: Аня (+1/цикл)
+      const L = await teamsLobby(w, ['Лотти', 'Аня', 'Боря'], { cycles: 3 }); // A: Лотти, Боря; B: Аня
       const [lotti, anya, boris] = L.users;
       const events = [];
       w.app.db.sink = (e) => events.push(...e);
-      for (let i = 0; i < 3; i++) await cycle(w, L); // A: 6, B: 3
+      await cycle(w, L); // обе команды на 1-й остановке
+      for (let i = 0; i < 2; i++) await cycle(w, L, [anya]); // Аня сдаётся — B стоит; A доходит до крепости (3)
       let r = await road(L, lotti);
       assert.equal(r.winner, 'A');
       assert.equal(r.completed, true);
@@ -86,8 +97,8 @@ describe('командный режим Team A / Team B', () => {
       assert.equal(done[0].data.team, 'A');
       assert.equal(done[0].data.draw, false);
 
-      // B тоже доходит до цели позже — карта у неё пройдена, но награды победителя нет
-      for (let i = 0; i < 3; i++) await cycle(w, L);
+      // B тоже доходит до цели позже (циклы сверх плана) — карта у неё пройдена, но награды победителя нет
+      for (let i = 0; i < 2; i++) await cycle(w, L);
       const rb = await road(L, anya);
       assert.equal(rb.finished, true);
       assert.equal(rb.completed, false);
@@ -102,21 +113,15 @@ describe('командный режим Team A / Team B', () => {
   test('проигравшая команда, дошедшая до цели в одиночку, награду победителя не получает', async () => {
     const w = await boot();
     try {
-      const L = await teamsLobby(w, ['Лотти', 'Аня', 'Боря']); // A: Лотти, Боря; B: Аня
+      const L = await teamsLobby(w, ['Лотти', 'Аня', 'Боря'], { cycles: 3 }); // A: Лотти, Боря; B: Аня
       const [lotti, anya, boris] = L.users;
       const events = [];
       w.app.db.sink = (e) => events.push(...e);
-      for (let i = 0; i < 3; i++) await cycle(w, L); // A выигрывает: 6 очков, B — 3
+      for (let i = 0; i < 3; i++) await cycle(w, L, [anya]); // A выигрывает: 3 шага, B — 0
       assert.equal((await road(L, lotti)).winner, 'A');
-      for (let i = 0; i < 3; i++) { // дальше очки приносит только B: игроки A выходят досрочно
-        await lotti.post(L.path('/start'));
-        await boris.post(L.path('/session/abort'));
-        await lotti.post(L.path('/session/abort'));
-        await w.advance(25 * 60_000 + 1000, L.users);
-        await w.advance(5 * 60_000, L.users);
-      }
+      for (let i = 0; i < 3; i++) await cycle(w, L, [boris, lotti]); // дальше шаги делает только B: игроки A сдаются
       const rb = await road(L, anya);
-      assert.equal(rb.points, 6);
+      assert.equal(rb.points, 3);
       assert.equal(rb.finished, true);
       assert.equal(rb.completed, false);
       assert.equal(rb.winner, 'A');
@@ -125,12 +130,12 @@ describe('командный режим Team A / Team B', () => {
     } finally { await w.close(); }
   });
 
-  test('одновременный финиш: больше очков — победитель, равенство — ничья (награда обеим)', async () => {
+  test('одновременный финиш — ничья (награда обеим)', async () => {
     const w = await boot();
     try {
       const L = await teamsLobby(w, ['Лотти', 'Аня']); // по одному в команде
       const [lotti, anya] = L.users;
-      for (let i = 0; i < 6; i++) await cycle(w, L);
+      for (let i = 0; i < 4; i++) await cycle(w, L); // план по умолчанию — 4 цикла
       const r = await road(L, lotti);
       assert.equal(r.winner, 'draw');
       assert.equal((await kinds(lotti, 'team_challenge')).length, 1);
@@ -157,7 +162,7 @@ describe('командный режим Team A / Team B', () => {
     const clock = new FakeClock();
     let w = await boot({ dbPath, clock });
     const L = await teamsLobby(w, ['Лотти', 'Аня']);
-    for (let i = 0; i < 6; i++) await cycle(w, L);
+    for (let i = 0; i < 4; i++) await cycle(w, L);
     const tokens = L.users.map((u) => u.token);
     const before = (await w.call('GET', L.path('/roadmap'), undefined, tokens[0])).body;
     const xp = (await w.call('GET', '/api/users/me/progress', undefined, tokens[1])).body.xp;
@@ -186,7 +191,8 @@ describe('командный режим Team A / Team B', () => {
     const w = await boot({ dbPath });
     try {
       assert.equal(w.app.db.get("SELECT mode FROM rooms WHERE id = 'r1'").mode, 'shared');
-      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '4');
+      assert.equal(w.app.db.get("SELECT cycles FROM rooms WHERE id = 'r1'").cycles, 4, 'v5: план циклов по умолчанию');
+      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '5');
     } finally { await w.close(); }
   });
 });

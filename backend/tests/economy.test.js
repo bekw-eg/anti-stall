@@ -11,7 +11,7 @@ describe('игровая экономика и защита от накрутк�
     const L = await lobby(w, ['Хост', 'Гость']);
     await runFocus(w, L);
     const p = await L.host.progress();
-    assert.equal(p.xp, 125, '100 за сессию + 25 за этап карты (двое участников = 2 очка)');
+    assert.equal(p.xp, 125, '100 за сессию + 25 за остановку карты (оба отфокусировались качественно — команда сделала шаг)');
     assert.equal(p.level, 2, '100 XP = 2 уровень');
     const ledger = (await L.host.get('/api/users/me/transactions')).body.transactions;
     const focusTx = ledger.find((t) => t.kind === 'focus_session');
@@ -185,10 +185,12 @@ describe('игровая экономика и защита от накрутк�
         await runFocus(w2, L);
         await w2.advance(5 * 60_000, L.users);
       }
-      const sessions = (await L.host.get('/api/users/me/sessions')).body.sessions;
+      // четвёртый фокус плана уже стартовал сам после перерыва — смотрим только завершённые
+      const sessions = (await L.host.get('/api/users/me/sessions')).body.sessions.filter((s) => s.status !== 'active');
       assert.deepEqual(sessions.map((s) => s.rewarded), [false, true, true]);
       assert.equal(sessions[0].endReason, 'daily_cap');
-      assert.equal((await L.host.progress()).xp, 225); // 2 награждённые сессии + 25 за этап карты
+      // 2 награждённые сессии + 3 остановки карты по 25: шаг команды зависит от качества, а не от лимита наград
+      assert.equal((await L.host.progress()).xp, 275);
     } finally { await w2.close(); }
   });
 
@@ -199,7 +201,8 @@ describe('игровая экономика и защита от накрутк�
       await w.advance(5 * 60_000, L.users);
     }
     const p = await L.host.progress();
-    assert.equal(p.xp, 600 + 50 + 150); // 6 сессий + 2 промежуточных этапа (по 25) + командная награда
+    // 6 сессий + 3 промежуточные остановки плана из 4 циклов (по 25) + командная награда за крепость
+    assert.equal(p.xp, 600 + 75 + 150);
     assert.ok(p.level >= 4);
     const ach = Object.fromEntries(p.achievements.map((a) => [a.id, a.unlocked]));
     assert.ok(ach.first_focus && ach.five_sessions && ach.team_player && ach.team_victory);

@@ -245,12 +245,12 @@ describe('Tower Defense: раунд, результат и награды', () =
       assert.equal((await td(L)).round.status, 'running');
       await w.advance(70_000, L.users); // перерыв закончился
       const room = (await L.host.get(L.path())).body.room;
-      assert.equal(room.phase, 'waiting');
+      assert.equal(room.phase, 'focus', 'учёба продолжается: следующий фокус плана стартовал сам');
+      assert.equal(room.cycleNo, 2);
       const v = await td(L);
       assert.equal(v.enabled, false);
       assert.equal(v.round.status, 'expired');
       assert.equal((await kinds(L.host, 'td_round')).length, 0);
-      assert.equal((await L.host.post(L.path('/start'))).status, 200, 'следующий Focus запускается без помех');
       assert.equal(v.towers.length, 1, 'башни сохранились');
     } finally { await w.close(); }
   });
@@ -442,9 +442,12 @@ describe('Tower Defense: командный режим Team A / Team B', () => {
   test('этапы открываются по узлам своей команды; ничья без наград при двух поражениях', async () => {
     const w = await boot();
     try {
-      // A — двое, B — один: на первом цикле A получает 2 очка (Лес знаний), B — 1
-      const L = await onBreak(w, ['Лотти', 'Аня', 'Боря'], { teamMode: true });
+      // A — двое, B — один. В первом цикле Аня (B) сдаётся: A делает шаг (Лес знаний), B остаётся в лагере
+      const L = await lobby(w, ['Лотти', 'Аня', 'Боря'], { teamMode: true });
       const [lotti, anya] = L.users;
+      await lotti.post(L.path('/start'));
+      await anya.post(L.path('/session/abort'));
+      await w.advance(25 * 60_000 + 1000, L.users);
       assert.equal((await td(L, lotti)).stages.find((s) => s.id === 'forest').unlocked, true);
       assert.equal((await td(L, anya)).stages.find((s) => s.id === 'forest').unlocked, false);
       assert.equal((await post(L, anya, 'start', { stageId: 'forest' })).body.error.code, 'STAGE_LOCKED');

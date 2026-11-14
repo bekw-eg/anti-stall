@@ -51,17 +51,16 @@ try {
     assert(await social(anya).locator('button[data-action="fog"]').first().isDisabled(), 'кнопка шутки активна в фокусе');
   });
 
-  await step('перерыв: Лотти даёт Ане бонус — у Ани эффект появляется сразу, в ленте у всех запись', async () => {
+  await step('перерыв сам открывает игру; Лотти даёт Ане бонус — у Ани эффект появляется сразу', async () => {
     await until(async () => (await roomPhase()) === 'break', { timeout: 20_000, msg: 'перерыв не наступил' });
-    await lotti.page.getByTestId('open-social').click();
-    await social(lotti).waitFor();
+    // перерыв не пустой: у всех сразу открыта игра (Tower Defense)
+    for (const u of [lotti, anya, borya]) await until(async () => (await u.page.getByRole('region', { name: 'Tower Defense' }).count()) > 0, { msg: `${u.name}: игра не открылась на перерыве` });
+    for (const u of [lotti, anya, borya]) { await u.page.getByTestId('open-social').click(); await social(u).waitFor(); }
+    // «Друзья» — список людей комнаты, сгруппированный по командам
+    assert((await social(lotti).locator('[data-member]').count()) === 3, 'в списке не все участники комнаты');
     await until(async () => actionBtn(lotti, 'Аня', 'Бонус к XP').isEnabled(), { msg: 'кнопка бонуса не активировалась на перерыве' });
     await actionBtn(lotti, 'Аня', 'Бонус к XP').click();
-    await until(async () => (await anya.page.getByTestId('my-effects').textContent()).includes('Бонус к XP'), { msg: 'эффект у получателя не обновился' });
-    for (const u of [lotti, anya, borya]) {
-      if (u === borya) { await borya.page.getByTestId('open-social').click(); await social(borya).waitFor(); }
-      await until(async () => (await u.page.getByTestId('social-feed').textContent()).includes('дал(а) бонус к XP'), { msg: `${u.name}: нет записи в ленте` });
-    }
+    await until(async () => ((await anya.page.getByTestId('my-effects').textContent()) ?? '').includes('бонус к XP'), { msg: 'эффект у получателя не обновился' });
     assert(await actionBtn(lotti, 'Аня', 'Бонус к XP').isDisabled(), 'повторный бонус в тот же перерыв не заблокирован');
   });
 
@@ -81,26 +80,18 @@ try {
     await until(async () => (await anya.page.getByTestId('prank-fog').count()) === 0, { msg: 'туман не убрался' });
   });
 
-  await step('стикер от Бори виден Ане', async () => {
-    await until(async () => actionBtn(borya, 'Аня', 'Стикер').isEnabled(), { msg: 'кнопка стикера недоступна' });
-    await actionBtn(borya, 'Аня', 'Стикер').click();
+  await step('липучка от Бори видна Ане', async () => {
+    await until(async () => actionBtn(borya, 'Аня', 'Липучка').isEnabled(), { msg: 'кнопка липучки недоступна' });
+    await actionBtn(borya, 'Аня', 'Липучка').click();
     await anya.page.getByTestId('prank-sticker').waitFor({ timeout: 5000 });
     await shot(anya, 'prank-sticker.png');
   });
 
-  await step('Аня выключает шутки: галочка снимается сразу, у остальных кнопки блокируются, сервер не пропускает', async () => {
-    const toggle = anya.page.getByTestId('pranks-toggle');
-    assert(await toggle.isChecked(), 'галочка изначально должна стоять');
-    await anya.page.route('**/api/users/me', async (route) => { await new Promise((r) => setTimeout(r, 800)); await route.continue(); }); // медленная сеть
-    await toggle.click();
-    assert(!(await toggle.isChecked()), 'галочка не снялась сразу (ждёт ответа сервера)');
-    await anya.page.unroute('**/api/users/me');
-    // стикер Лотти Ане ещё не отправляла — значит, кнопка заблокирована именно из-за настройки Ани
-    await until(async () => (await actionBtn(lotti, 'Аня', 'Стикер').getAttribute('title')) === 'У игрока шутки выключены', { msg: 'у Лотти не обновилось' });
-    assert(await actionBtn(lotti, 'Аня', 'Стикер').isDisabled(), 'кнопка не заблокирована');
+  await step('шутки выключить нельзя: переключателя нет, старый флаг prankEnabled сервер не учитывает', async () => {
+    assert((await anya.page.getByTestId('pranks-toggle').count()) === 0, 'переключатель шуток всё ещё есть');
+    await api(env, anya, 'PATCH', '/api/users/me', { prankEnabled: false });
     const r = await api(env, borya, 'POST', `/api/rooms/${roomId}/social/prank`, { targetUserId: anya.id, type: 'fog' });
-    assert(r.status === 409 && r.body.error.code === 'PRANKS_DISABLED', `сервер: ${JSON.stringify(r.body)}`);
-    assert((await api(env, anya, 'GET', '/api/users/me')).body.prankEnabled === false, 'настройка не сохранилась');
+    assert(r.body?.error?.code !== 'PRANKS_DISABLED', `сервер всё ещё отключает шутки: ${JSON.stringify(r.body)}`);
   });
 
   await step('статистика: сессии, время концентрации, уровень, достижения и командный прогресс из backend', async () => {
