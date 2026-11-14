@@ -171,25 +171,27 @@ export function Lobby({ t }: { t: Tomato }) {
               <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 ${isReady ? "border-olive bg-lime text-olive" : "border-line bg-white text-mute"}`} aria-hidden>
                 {isReady ? <Check size={22} strokeWidth={3} /> : <Clock size={20} />}
               </span>
-              <span className="min-w-0">
+              <span className="min-w-0 flex-1">
                 <span className={`block text-lg font-extrabold ${isReady ? "text-olive" : "text-ink"}`}>{isReady ? "Вы готовы" : "Вы ещё не готовы"}</span>
                 <span className="block text-[15px] text-mute">
-                  {isReady ? (all ? "Все готовы, можно начинать" : `Ждём остальных: готовы ${ready} из ${total}`) : "Нажмите «Я готов», когда сядете за задачу"}
+                  {isReady ? (all ? "Все готовы, можно начинать" : "Ждём остальных") : "Нажмите «Я готов», когда сядете за задачу"}
                 </span>
+              </span>
+              <span className={`shrink-0 whitespace-nowrap rounded-full border-2 px-3 py-1 text-[15px] font-extrabold ${all ? "border-olive bg-lime text-olive" : "border-line bg-white text-mute"}`} aria-live="polite" data-testid="ready-count">
+                {ready}/{total} готовы
               </span>
             </div>
 
-            <div className="flex w-full max-w-[640px] flex-col items-stretch gap-3 xs:flex-row xs:flex-wrap xs:items-center xs:justify-center">
+            <div className={`grid w-full max-w-[600px] gap-3 ${actions.includes("start_focus") && actions.includes("set_ready") ? "xs:grid-cols-2" : ""}`}>
               {actions.includes("set_ready") && (
                 <button type="button" onClick={() => t.setReady(!isReady)} aria-pressed={isReady} title={isReady ? "Нажмите, чтобы отменить готовность" : undefined}
-                  className={`as-btn ${isReady ? "as-btn-ready" : "as-btn-light"}`}>
+                  className={`as-btn whitespace-nowrap ${isReady ? "as-btn-ready" : "as-btn-light"}`}>
                   {isReady ? <><Check size={22} strokeWidth={3} aria-hidden />Вы готовы</> : "Я готов"}
                 </button>
               )}
               {actions.includes("start_focus") && (
-                <button type="button" onClick={t.startFocus} disabled={!all || t.busy} className="as-btn as-btn-primary">Начать фокус</button>
+                <button type="button" onClick={t.startFocus} disabled={!all || t.busy} className="as-btn as-btn-primary whitespace-nowrap">Начать фокус</button>
               )}
-              <p className={`text-center text-[17px] font-bold ${all ? "text-olive" : "text-mute"}`} aria-live="polite">{ready} из {total} готовы</p>
             </div>
             {!actions.includes("start_focus") && <p className="text-center text-mute">Фокус запускает создатель комнаты, когда все готовы.</p>}
           </>

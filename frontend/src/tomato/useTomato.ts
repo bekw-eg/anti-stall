@@ -120,6 +120,7 @@ export function useTomato(initialCode?: string) {
   const [user, setUser] = useState<Me | null>(null);
   const [name, setName] = useState(store.get(NAME_KEY) ?? "");
   const [roomId, setRoomId] = useState<string | null>(null);
+  const leavingRef = useRef(false); // идёт добровольный выход: снимок «вы не участник» — не ошибка
   const [snapshot, setSnapshot] = useState<RoomSnapshot | null>(null);
   const [conn, setConn] = useState<Conn>("idle");
   const [busy, setBusy] = useState(false);
@@ -282,6 +283,7 @@ export function useTomato(initialCode?: string) {
   useEffect(() => {
     if (!roomId) return;
     let alive = true;
+    leavingRef.current = false; // новая комната — флаг выхода из прошлой больше не действует
     let everOnline = false;
     let ended = false; // комната уже сброшена — повторные сигналы (REST + WS) не дублируют тосты
     setConn("connecting");
@@ -291,7 +293,7 @@ export function useTomato(initialCode?: string) {
       if (!alive || ended) return;
       ended = true;
       leaveLocal();
-      push(text, "error");
+      if (!leavingRef.current) push(text, "error"); // сам вышел — ошибки нет
     };
     /** Токен не принят сокетом (4401 / UNAUTHORIZED): разлогиниваем явно, а не молча. */
     const unauthorized = () => {
@@ -328,6 +330,7 @@ export function useTomato(initialCode?: string) {
       if (typeof g === "number" && g > 0) setGraceSec(Math.round(g / 1000));
     });
     socket.on("disconnected", (ev) => {
+      if (!alive || ended) return; // сокет закрыт нами (выход из комнаты) — это не потеря связи
       if ((ev.data as { code?: number }).code === WS_CLOSE_UNAUTHORIZED) unauthorized();
       else setConn(everOnline ? "reconnecting" : "connecting");
     });
@@ -499,14 +502,18 @@ export function useTomato(initialCode?: string) {
   /** Выход: локально — только если сервер подтвердил (или комнаты для нас уже нет: 403/404). */
   const leaveRoom = useCallback(async () => {
     if (!rid) return false;
+    // пока сервер обрабатывает выход, он ещё успевает прислать снимок «вы не участник» — это не ошибка
+    leavingRef.current = true;
     try {
       await client.leaveRoom(rid);
       setServerOk(true);
     } catch (e) {
       const gone = e instanceof TomatoApiError && (e.status === 403 || e.status === 404);
-      if (!gone) { report(e); return false; } // при 401 report уже сбросил комнату и токен
+      if (!gone) { leavingRef.current = false; report(e); return false; } // при 401 report уже сбросил комнату и токен
     }
     leaveLocal();
+    // уровень и монеты на экране входа — свежие, а не с момента входа в комнату
+    client.me().then((m) => setUser(m)).catch(() => undefined);
     return true;
   }, [leaveLocal, report, rid]);
   const startFocus = useCallback(() => call(() => client.startFocus(rid)), [call, rid]);

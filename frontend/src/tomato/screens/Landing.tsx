@@ -8,11 +8,11 @@ import { TowerPreview } from "../tdSprites";
 import { Avatar, Logo, RoadmapArt, Tag } from "./ui";
 
 const wrap = "mx-auto w-full max-w-[1488px] px-4 sm:px-8 lg:px-12";
-const h2 = "font-display text-[clamp(2rem,5vw,3.5rem)] leading-[1.05]";
-const lead = "mt-4 max-w-2xl text-lg text-mute sm:text-2xl sm:leading-snug";
+const h2 = "font-display text-[clamp(1.6rem,3.6vw,2.6rem)] leading-[1.05]";
+const lead = "mt-3 max-w-2xl text-base text-mute sm:text-lg sm:leading-snug";
 
 function Eyebrow({ children, light = false }: { children: string; light?: boolean }) {
-  return <p className={`mb-3 text-base font-bold sm:text-lg ${light ? "text-blush" : "text-rose"}`}>{children}</p>;
+  return <p className={`mb-2 text-sm font-bold sm:text-base ${light ? "text-blush" : "text-rose"}`}>{children}</p>;
 }
 
 function Bullet({ children, dark = false }: { children: string; dark?: boolean }) {
@@ -50,12 +50,12 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
 
       <main id="top">
         {/* ---------- Hero ---------- */}
-        <section className={`${wrap} pb-14 pt-8 sm:pb-20 sm:pt-12`}>
+        <section className={`${wrap} pb-10 pt-6 sm:pb-14 sm:pt-10`}>
           {demo && <DemoBadge className="mb-5" />}
-          <h1 className="font-display text-[clamp(3.25rem,11vw,8rem)] leading-[0.95] text-peach">Учимся вместе.</h1>
+          <h1 className="font-display text-[clamp(2.5rem,7.5vw,5.25rem)] leading-[0.95] text-peach">Учимся вместе.</h1>
           <div className="mt-6 h-1.5 rounded-full bg-peach sm:mt-8" aria-hidden />
           <div className="mt-6 flex flex-col gap-6 sm:mt-8 lg:flex-row lg:items-start lg:justify-between">
-            <p className="max-w-3xl text-xl leading-snug sm:text-[28px]">
+            <p className="max-w-2xl text-lg leading-snug sm:text-xl">
               Один таймер на всю комнату: 25 минут учёбы с друзьями в голосе, потом 5 минут командной tower defense.
               Пока идёт фокус, игра закрыта.
             </p>
@@ -68,7 +68,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
             </div>
           </div>
 
-          <div className="relative mx-auto mt-10 max-w-[1190px] pt-10 sm:mt-14">
+          <div className="relative mx-auto mt-10 max-w-[1190px] pt-10 sm:mt-10">
             <div className="absolute inset-x-0 top-0 flex flex-wrap justify-between gap-2 px-[4%]">
               <Tag className="-rotate-2">Лагерь пройден</Tag>
               <Tag dot="#3B2422" className="hidden rotate-1 xs:inline-flex">Команда здесь</Tag>
@@ -79,10 +79,10 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
         </section>
 
         {/* ---------- Problem ---------- */}
-        <section className="bg-paper py-14 sm:py-24">
-          <motion.div {...appear} className={`${wrap} grid gap-6 lg:grid-cols-[1.2fr_1fr] lg:items-center lg:gap-16`}>
+        <section className="bg-paper py-10 sm:py-16">
+          <motion.div {...appear} className={`${wrap} grid gap-6 lg:grid-cols-[1.2fr_1fr] lg:items-center lg:gap-10`}>
             <h2 className={h2}>Сел учиться. Сорок минут спустя смотришь <span className="text-rose">шестое видео.</span></h2>
-            <p className="text-lg text-mute sm:text-2xl sm:leading-snug">
+            <p className="text-base text-mute sm:text-lg sm:leading-snug">
               Одному легко откладывать. Рядом с друзьями сложнее: когда все уже начали, начинаешь и ты.
               Для этого и сделана комната: общий таймер, голоса на фоне и повод вернуться завтра.
             </p>
@@ -90,7 +90,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
         </section>
 
         {/* ---------- Cycle ---------- */}
-        <section id="how" className="scroll-mt-20 py-14 sm:py-24">
+        <section id="how" className="scroll-mt-20 py-10 sm:py-16">
           <div className={wrap}>
             <Eyebrow>Как это работает</Eyebrow>
             <h2 className={h2}>25 учимся, 5 играем.</h2>
@@ -99,7 +99,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
             <motion.div {...appear} className="mt-10 grid items-stretch gap-5 lg:grid-cols-[1fr_auto_1fr] lg:gap-6">
               <article className="as-card as-shadow flex flex-col gap-5 border-ink bg-ink p-6 text-cream sm:p-8">
                 <p className="text-lg font-bold text-blush">25:00 · Фокус</p>
-                <p className="font-display text-[clamp(4.5rem,14vw,9.5rem)] leading-none">18:42</p>
+                <p className="font-display text-[clamp(3rem,9vw,6rem)] leading-none">18:42</p>
                 <div className="flex -space-x-2">{["Лотти", "Айгерим", "Тимур", "Сабина"].map((n) => <Avatar key={n} name={n} id={n} ring="#FFF4EF" />)}</div>
                 <ul className="flex flex-col gap-2.5">
                   <Bullet dark>Карта размыта и закрыта</Bullet>
@@ -114,7 +114,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
               </div>
               <article className="as-card as-shadow flex flex-col gap-5 bg-lime p-6 sm:p-8">
                 <p className="text-lg font-bold text-olive">05:00 · Перерыв</p>
-                <p className="font-display text-[clamp(4.5rem,14vw,9.5rem)] leading-none">04:12</p>
+                <p className="font-display text-[clamp(3rem,9vw,6rem)] leading-none">04:12</p>
                 <ul className="flex flex-col gap-2.5">
                   <Bullet>Открываются карта и поле башен</Bullet>
                   <Bullet>Казна команды строит оборону</Bullet>
@@ -127,7 +127,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
         </section>
 
         {/* ---------- Game ---------- */}
-        <section id="game" className="scroll-mt-20 bg-paper py-14 sm:py-24">
+        <section id="game" className="scroll-mt-20 bg-paper py-10 sm:py-16">
           <div className={wrap}>
             <Eyebrow>Игра</Eyebrow>
             <h2 className={h2}>Учитесь, чтобы строить башни.</h2>
@@ -141,8 +141,8 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
               ].map(([title, text], i) => (
                 <li key={title} className="as-card flex flex-col gap-2 p-5 sm:p-6">
                   <span className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink bg-peach font-display text-2xl" aria-hidden><span className="mt-1">{i + 1}</span></span>
-                  <h3 className="font-display text-2xl sm:text-[28px]">{title}</h3>
-                  <p className="text-base text-mute sm:text-[17px]">{text}</p>
+                  <h3 className="font-display text-xl sm:text-2xl">{title}</h3>
+                  <p className="text-sm text-mute sm:text-base">{text}</p>
                 </li>
               ))}
             </motion.ol>
@@ -162,28 +162,28 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
         </section>
 
         {/* ---------- Social ---------- */}
-        <section className="py-14 sm:py-24">
+        <section className="py-10 sm:py-16">
           <div className={wrap}>
             <Eyebrow>Помощь и пакости</Eyebrow>
             <h2 className={h2}>Поддержи своих, подшути над чужими.</h2>
             <p className={lead}>На перерыве можно помочь другу или беззлобно над ним подшутить. Пакости не мешают фокусу и не трогают награды.</p>
             <motion.div {...appear} className="mt-10 grid gap-5 md:grid-cols-2">
               <article className="as-card as-shadow bg-lime p-6 sm:p-8">
-                <h3 className="font-display text-3xl sm:text-[40px]">Помочь другу</h3>
+                <h3 className="font-display text-2xl sm:text-3xl">Помочь другу</h3>
                 <dl className="mt-5 flex flex-col gap-3">
-                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-xl font-extrabold">Бонус к опыту</dt><dd className="text-mute">+25% опыта за следующую сессию друга</dd></div>
-                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-xl font-extrabold">Щит</dt><dd className="text-mute">Отражает одну шутку, направленную в друга</dd></div>
+                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-lg font-extrabold">Бонус к опыту</dt><dd className="text-mute">+25% опыта за следующую сессию друга</dd></div>
+                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-lg font-extrabold">Щит</dt><dd className="text-mute">Отражает одну шутку, направленную в друга</dd></div>
                 </dl>
               </article>
               <article className="as-card as-shadow bg-blush p-6 sm:p-8">
-                <h3 className="font-display text-3xl sm:text-[40px]">Подшутить</h3>
+                <h3 className="font-display text-2xl sm:text-3xl">Подшутить</h3>
                 <dl className="mt-5 flex flex-col gap-3">
-                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-xl font-extrabold">Туман</dt><dd className="text-mute">На несколько секунд затуманивает экран</dd></div>
-                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-xl font-extrabold">Стикер</dt><dd className="text-mute">Смешная наклейка поверх экрана</dd></div>
+                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-lg font-extrabold">Туман</dt><dd className="text-mute">На несколько секунд затуманивает экран</dd></div>
+                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-lg font-extrabold">Стикер</dt><dd className="text-mute">Смешная наклейка поверх экрана</dd></div>
                 </dl>
               </article>
             </motion.div>
-            <p className="mt-6 text-lg font-semibold text-mute">Пакости приходят только на перерыве. Если не хочется, их можно выключить в профиле.</p>
+            <p className="mt-5 text-base font-semibold text-mute">Пакости приходят только на перерыве. Если не хочется, их можно выключить в профиле.</p>
           </div>
         </section>
 
@@ -192,7 +192,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
           <div className={wrap}>
             <Eyebrow light>Честная игра</Eyebrow>
             <h2 className={h2}>Цикл не подделать.</h2>
-            <p className="mt-4 max-w-2xl text-lg text-[#D8BDB6] sm:text-2xl sm:leading-snug">Награды что-то значат, только если их нельзя накрутить. Поэтому правила живут на сервере, а не в браузере.</p>
+            <p className="mt-3 max-w-2xl text-base text-[#D8BDB6] sm:text-lg sm:leading-snug">Награды что-то значат, только если их нельзя накрутить. Поэтому правила живут на сервере, а не в браузере.</p>
             <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {[
                 ["Время считает сервер", "Таймер идёт на сервере, экран только показывает его."],
@@ -201,8 +201,8 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
                 ["Каждая трата проверяется", "Нельзя потратить больше, чем есть. Двойной клик не спишет дважды."],
               ].map(([title, text]) => (
                 <li key={title} className="border-t-2 border-cocoa pt-5">
-                  <h3 className="font-display text-2xl text-blush sm:text-[28px]">{title}</h3>
-                  <p className="mt-2 text-base text-[#E9D6D1] sm:text-[19px]">{text}</p>
+                  <h3 className="font-display text-xl text-blush sm:text-2xl">{title}</h3>
+                  <p className="mt-2 text-sm text-[#E9D6D1] sm:text-base">{text}</p>
                 </li>
               ))}
             </ul>
@@ -210,7 +210,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
         </section>
 
         {/* ---------- Progress ---------- */}
-        <section className="py-14 sm:py-24">
+        <section className="py-10 sm:py-16">
           <div className={`${wrap} grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-center`}>
             <div>
               <Eyebrow>Прогресс</Eyebrow>
@@ -219,7 +219,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
             </div>
             <motion.div {...appear} className="as-card as-shadow flex flex-col gap-6 p-6 sm:p-8">
               <div>
-                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><p className="font-display text-4xl">Уровень 4</p><p className="text-lg text-mute">340 / 500 XP</p></div>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><p className="font-display text-3xl">Уровень 4</p><p className="text-base text-mute">340 / 500 XP</p></div>
                 <div className="mt-3 h-4 overflow-hidden rounded-full border-2 border-ink bg-paper"><div className="h-full w-[68%] bg-rose" /></div>
               </div>
               <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Достижения">
@@ -235,11 +235,11 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
         </section>
 
         {/* ---------- CTA ---------- */}
-        <section className={`${wrap} pb-14 sm:pb-24`}>
+        <section className={`${wrap} pb-10 sm:pb-16`}>
           <div className="flex flex-col items-start gap-6 rounded-[32px] border-2 border-ink bg-rose p-6 text-white as-shadow sm:p-10 lg:flex-row lg:items-center lg:justify-between lg:rounded-full lg:px-16">
             <div>
-              <h2 className="font-display text-[clamp(1.9rem,4.5vw,3.25rem)] leading-tight">Создайте комнату и позовите друзей.</h2>
-              <p className="mt-2 text-lg text-blush sm:text-[22px]">Друзья заходят по ссылке или коду. Первый цикл начинается, когда все готовы.</p>
+              <h2 className="font-display text-[clamp(1.5rem,3.4vw,2.4rem)] leading-tight">Создайте комнату и позовите друзей.</h2>
+              <p className="mt-2 text-base text-blush sm:text-lg">Друзья заходят по ссылке или коду. Первый цикл начинается, когда все готовы.</p>
             </div>
             <div className="flex w-full flex-col gap-3 xs:w-auto xs:flex-row">
               <button type="button" onClick={onStart} disabled={!ready} className="as-btn as-btn-secondary">Создать комнату</button>

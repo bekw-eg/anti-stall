@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Lock, PenLine } from "lucide-react";
 import { STATUS_LABEL, formatTime } from "../format";
 import type { Tomato } from "../useTomato";
-import { StickerBoard, type Stickers } from "./Stickers";
+import { StickerBoard, StickerHint, type Stickers } from "./Stickers";
 import { MemberAvatar, RoadmapArt } from "./ui";
 
 /**
@@ -69,6 +69,7 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
 
       {/* ---------- Таймер ---------- */}
       <section aria-label="Фокус" className="order-1 flex min-w-0 flex-col items-center justify-center gap-6 py-4 sm:gap-7 lg:order-none">
+        {stickers && !watching && <StickerHint board={stickers} />}
         <p role="timer" aria-label={`Фокус: ${formatTime(remaining)}`} style={TIMER_SHADOW} className="pointer-events-none relative z-10 font-display text-[clamp(4.5rem,min(13vw,30vh),18.75rem)] leading-none pt-[0.1em] text-cream tabular-nums">
           {formatTime(remaining)}
         </p>

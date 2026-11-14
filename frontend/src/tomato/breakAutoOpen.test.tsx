@@ -89,7 +89,7 @@ describe("экраны по фазе комнаты", () => {
     const start = [...host.querySelectorAll("button")].find((b) => b.textContent === "Начать фокус") as HTMLButtonElement;
     expect(start).toBeTruthy();
     expect(start.disabled).toBe(true); // сам ещё не готов
-    expect(host.textContent).toContain("0 из 1 готовы");
+    expect(host.textContent).toContain("0/1 готовы"); // счётчик — в карточке состояния
     const status = $("my-ready")!;
     expect(status.getAttribute("data-ready")).toBe("false");
     expect(status.textContent).toContain("Вы ещё не готовы");
