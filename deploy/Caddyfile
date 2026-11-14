@@ -1,0 +1,14 @@
+# HTTPS перед приложением (нужен для голоса: браузер даёт микрофон только по HTTPS).
+# Caddy сам получает и продлевает сертификат Let's Encrypt для SITE_DOMAIN (порт 80 — проверка домена и редирект на HTTPS).
+# Порт 8443 на ВМ закрыт файрволом, поэтому демо-стенд тоже по HTTPS, но на открытом 8081.
+# WebSocket (/ws) проксируется автоматически.
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}
+
+{$SITE_DOMAIN}:8081 {
+	encode zstd gzip
+	reverse_proxy demo:3000
+}

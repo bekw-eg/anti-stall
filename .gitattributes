@@ -1,0 +1,3 @@
+# Скрипты и конфиги для Linux-ВМ — всегда с LF (с CRLF bash и caddy на ВМ не работают)
+*.sh text eol=lf
+deploy/Caddyfile text eol=lf

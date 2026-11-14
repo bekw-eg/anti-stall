@@ -18,7 +18,8 @@ stages:
 #   DEPLOY_KEY            — приватный SSH-ключ к ВМ, тип «Файл» (обязательно, секрет)
 #   SPIRIT_DOCKER_SA_KEY  — ключ сервис-аккаунта registry, тип «Файл» (обязательно, секрет)
 #   NODE_IMAGE            — базовый node-образ (≥ 22.13), если Docker Hub недоступен из сборки
-#   APP_PORT / DEMO_PORT  — порты стендов на ВМ (по умолчанию 80 и 8081)
+#   APP_PORT / DEMO_PORT  — порты стендов на ВМ в режиме HTTP (по умолчанию 80 и 8081)
+#   ENABLE_HTTPS          — 0, чтобы не поднимать HTTPS (Caddy); по умолчанию 1
 # Переменная репозитория приоритетнее значения в этом файле, поэтому всё,
 # что задано ниже, можно переопределить из Spirit без правки файла.
 variables:
@@ -121,35 +122,19 @@ deploy:vm:
       if [ -z "$SPIRIT_DOCKER_SA_KEY" ] || [ ! -f "$SPIRIT_DOCKER_SA_KEY" ]; then
         echo "Нет ключа registry: CI-переменная SPIRIT_DOCKER_SA_KEY в Spirit, тип «Файл» (см. docs/DEPLOY.md)"; exit 1
       fi
-    - echo "🚀 Запускаем деплой образа $IMAGE_NAME на $DEPLOY_HOST (основной стенд :$APP_PORT, демо :$DEMO_PORT)"
-    # кладём на ВМ compose единого образа (сервисы app и demo, тома с БД) и ключ сервис-аккаунта;
-    # параметры (образ, порты) compose берёт из ~/app/.env
+    - echo "🚀 Запускаем деплой образа $IMAGE_NAME на $DEPLOY_HOST (HTTPS через Caddy, если получится; иначе HTTP :$APP_PORT / :$DEMO_PORT)"
+    # кладём на ВМ compose (app, demo, caddy), Caddyfile, скрипт деплоя и ключ сервис-аккаунта
     - $SSH $VM "mkdir -p ~/app"
-    - $SCP deploy/docker-compose.yml $SPIRIT_DOCKER_SA_KEY $VM:app/
-    # на ВМ: входим в registry, скачиваем новый образ и перезапускаем оба стенда.
-    # Имя образа пишем в ~/app/current_image, предыдущее — в ~/app/previous_image (для отката, docs/DEPLOY.md).
+    - $SCP deploy/docker-compose.yml deploy/Caddyfile deploy/deploy.sh $SPIRIT_DOCKER_SA_KEY $VM:app/
+    # на ВМ: входим в registry и запускаем deploy.sh — он выбирает HTTPS/HTTP, поднимает оба стенда,
+    # проверяет /api/health и при неудаче HTTPS откатывается на HTTP (подробности — docs/DEPLOY.md).
+    # ENABLE_HTTPS=0 в CI-переменных Spirit — принудительно остаться на HTTP.
     # dp и docker запускаем через sudo: dp пишет helper в /usr/local/bin, это требует root
     - |
       $SSH $VM "cd ~/app &&
         sudo dp auth service-acc --key-file $(basename $SPIRIT_DOCKER_SA_KEY) &&
         sudo dp auth configure-docker &&
-        echo IMAGE_NAME=$IMAGE_NAME > .env && echo APP_PORT=$APP_PORT >> .env && echo DEMO_PORT=$DEMO_PORT >> .env &&
-        sudo docker compose --profile demo pull app demo &&
-        sudo docker compose --profile demo up -d --no-build app demo &&
-        { [ -f current_image ] && cp current_image previous_image || true; } &&
-        echo $IMAGE_NAME > current_image"
-    - echo "⏳ Ждём, пока оба стенда ответят"
-    - |
-      ok=1
-      for port in $APP_PORT $DEMO_PORT; do
-        if $SSH $VM "curl -fsS --retry 20 --retry-delay 2 --retry-all-errors -o /dev/null http://localhost:$port/api/health"; then
-          echo "✅ http://$DEPLOY_HOST:$port отвечает"
-        else
-          echo "❌ http://$DEPLOY_HOST:$port не отвечает. На ВМ: cd ~/app && sudo docker compose --profile demo logs"; ok=0
-        fi
-      done
-      [ "$ok" = 1 ] && echo "🎉 Готово! Основной стенд: http://$DEPLOY_HOST:$APP_PORT, демо для жюри: http://$DEPLOY_HOST:$DEMO_PORT"
-      [ "$ok" = 1 ]
+        APP_PORT=$APP_PORT DEMO_PORT=$DEMO_PORT bash deploy.sh '$IMAGE_NAME' '$DEPLOY_HOST' '${ENABLE_HTTPS:-1}'"
   environment:
     name: production
-    url: http://$DEPLOY_HOST:$APP_PORT
+    url: https://$DEPLOY_HOST
