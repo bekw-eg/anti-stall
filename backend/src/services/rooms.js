@@ -475,7 +475,6 @@ export function createRoomsService(ctx, game, users, td) {
     const breakEnds = endAt + room.break_sec * 1000;
     db.run("UPDATE rooms SET phase = 'break', phase_started_at = ?, phase_ends_at = ? WHERE id = ?", endAt, breakEnds, room.id);
     db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'focus', to: 'break', cycleId: room.cycle_id, phaseStartedAt: endAt, phaseEndsAt: breakEnds, completed: active.length, rewarded: rewardedUsers.length, breakNo, cycles: room.cycles } });
-    game.scoreCycle(room);
     db.emit(stateEvent(room.id));
   }
 

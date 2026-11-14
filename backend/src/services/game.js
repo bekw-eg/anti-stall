@@ -125,6 +125,9 @@ export function createGame(ctx) {
   // ------------------------------------------------------------------ команды и казна
   const teamName = (key) => (key === 'shared' ? 'Команда' : `Команда ${key}`);
   const teamKeysOf = (room) => (room.mode === 'teams' ? ['A', 'B'] : ['shared']);
+  const roomRow = (roomId) => db.get('SELECT id, mode, cycle_no FROM rooms WHERE id = ?', roomId) ?? { id: roomId, mode: 'shared', cycle_no: 0 };
+  /** Карта комнаты: статичная ROADMAP (карта master). */
+  const mapOf = () => ROADMAP;
   /** Команда игрока в комнате: 'shared' или 'A'/'B' (по room_members.team_key; неизвестное → 'A'). */
   function teamOfMember(room, userId) {
     if (room.mode !== 'teams') return 'shared';

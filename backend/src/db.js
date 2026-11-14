@@ -270,6 +270,12 @@ export class Db {
     if (!columns('rooms').includes('mode')) this.sql.exec("ALTER TABLE rooms ADD COLUMN mode TEXT NOT NULL DEFAULT 'shared'");
     // v5: число циклов комнаты (настройка «сколько фокусов»; карта — статичная ROADMAP из master)
     if (!columns('rooms').includes('cycles')) this.sql.exec('ALTER TABLE rooms ADD COLUMN cycles INTEGER NOT NULL DEFAULT 4');
+    // v5: качество фокус-сессии (время «вне фокуса» и итоговая оценка)
+    const sessCols = columns('focus_sessions');
+    if (!sessCols.includes('away_ms')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN away_ms INTEGER NOT NULL DEFAULT 0');
+    if (!sessCols.includes('away_since')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN away_since INTEGER');
+    if (!sessCols.includes('away_kind')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN away_kind TEXT');
+    if (!sessCols.includes('quality')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN quality REAL');
     // v3: статус готовности участника комнаты (is_ready)
     if (!columns('room_members').includes('is_ready')) this.sql.exec('ALTER TABLE room_members ADD COLUMN is_ready INTEGER NOT NULL DEFAULT 0');
     // v4: песочные аккаунты демо-режима (users.sandbox); все существующие пользователи — обычные
