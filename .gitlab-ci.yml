@@ -10,8 +10,14 @@ stages:
   - build
   - deploy
 
-# Секреты (SPIRIT_DOCKER_SA_KEY, DEPLOY_KEY) задаются в Spirit, а не в GitLab-e:
-# Код → Репозитории → ваш репозиторий → вкладка CI-переменные.
+# CI-переменные задаются в Spirit, а не в GitLab-е:
+# Код → Репозитории → ваш репозиторий → вкладка CI-переменные. Полный список — docs/DEPLOY.md.
+#   DEPLOY_HOST           — публичный IP/адрес ВМ (обязательно)
+#   DEPLOY_USER           — пользователь на ВМ (по умолчанию root)
+#   DEPLOY_KEY            — приватный SSH-ключ к ВМ, тип «Файл» (обязательно, секрет)
+#   SPIRIT_DOCKER_SA_KEY  — ключ сервис-аккаунта registry, тип «Файл» (обязательно, секрет)
+#   NODE_IMAGE            — базовый node-образ (≥ 22.13), если Docker Hub недоступен из сборки
+#   APP_PORT / DEMO_PORT  — порты стендов на ВМ (по умолчанию 80 и 8081)
 # Переменная репозитория приоритетнее значения в этом файле, поэтому всё,
 # что задано ниже, можно переопределить из Spirit без правки файла.
 variables:
@@ -27,17 +33,23 @@ variables:
   DEPLOY_USER: root
   # Образ для deploy-джобы: любой, где есть dp CLI (нужен для авторизации в registry) и ssh
   DEPLOY_IMG: registry.spirit.t-education.com/cicd-images/base-noble:release-1.1.0
+  # Базовый образ сборки (нужен Node >= 22.13 со встроенным node:sqlite). Если Kaniko не достаёт до Docker Hub,
+  # создайте в Spirit переменную NODE_IMAGE с node-образом из внутреннего registry — она приоритетнее.
+  NODE_IMAGE: node:22-bookworm-slim
+  # Порты на ВМ: основной стенд и демо-стенд для жюри (ускоренное время, отдельная БД)
+  APP_PORT: "80"
+  DEMO_PORT: "8081"
 
-# 1. Сборка образа через Kaniko и публикация в registry.
-# Проект — монорепозиторий (frontend/ и backend/), а шаблон .dp_build по умолчанию ищет Dockerfile в корне,
-# поэтому явно указываем Dockerfile и контекст сборки фронтенда.
+# 1. Сборка ЕДИНОГО образа (frontend + backend: backend раздаёт собранный frontend, REST /api и WebSocket /ws
+# на одном порту) через Kaniko и публикация в registry. Раньше собирался только frontend — без backend стенд не работал.
 build:image:
   extends:
     - .dp_build
     - .rules-merge-or-master-or-parent
   variables:
-    DOCKERFILE_PATH: $CI_PROJECT_DIR/frontend/Dockerfile
-    CONTEXT: $CI_PROJECT_DIR/frontend
+    DOCKERFILE_PATH: $CI_PROJECT_DIR/Dockerfile
+    CONTEXT: $CI_PROJECT_DIR
+    KANIKO_ARGS: "--build-arg NODE_IMAGE=$NODE_IMAGE"
   after_script:
     - |
       if [ "$CI_JOB_STATUS" = "success" ]; then
@@ -57,8 +69,11 @@ build:image:
     DP_CLI_VERSION: "14.1.3"
   before_script:
     - |
-      if [ "$DEPLOY_HOST" = "CHANGE_ME_VM_IP" ]; then
-        echo "Укажите адрес ВМ: переменная DEPLOY_HOST в .gitlab-ci.yml или в CI-переменных репозитория в Spirit"; exit 1
+      if [ "$DEPLOY_HOST" = "CHANGE_ME_VM_IP" ] || [ -z "$DEPLOY_HOST" ]; then
+        echo "Укажите адрес ВМ: CI-переменная DEPLOY_HOST в Spirit (см. docs/DEPLOY.md)"; exit 1
+      fi
+      if [ -z "$DEPLOY_KEY" ] || [ ! -f "$DEPLOY_KEY" ]; then
+        echo "Нет SSH-ключа: CI-переменная DEPLOY_KEY в Spirit, тип «Файл» (см. docs/DEPLOY.md)"; exit 1
       fi
     # в образе может не быть ssh/scp — доустанавливаем (нужен root в образе)
     - command -v ssh >/dev/null || (apt-get update -qq && apt-get install -y -qq --no-install-recommends openssh-client)
@@ -87,25 +102,39 @@ deploy:vm:
   needs: ["build:image", "setup:vm"]
   resource_group: production
   script:
-    - echo "🚀 Запускаем деплой образа $IMAGE_NAME на $DEPLOY_HOST"
-    # кладём на ВМ compose-файл и ключ сервис-аккаунта
+    - |
+      if [ -z "$SPIRIT_DOCKER_SA_KEY" ] || [ ! -f "$SPIRIT_DOCKER_SA_KEY" ]; then
+        echo "Нет ключа registry: CI-переменная SPIRIT_DOCKER_SA_KEY в Spirit, тип «Файл» (см. docs/DEPLOY.md)"; exit 1
+      fi
+    - echo "🚀 Запускаем деплой образа $IMAGE_NAME на $DEPLOY_HOST (основной стенд :$APP_PORT, демо :$DEMO_PORT)"
+    # кладём на ВМ compose единого образа (сервисы app и demo, тома с БД) и ключ сервис-аккаунта;
+    # параметры (образ, порты) compose берёт из ~/app/.env
     - $SSH $VM "mkdir -p ~/app"
-    - $SCP frontend/deploy/docker-compose.yml $SPIRIT_DOCKER_SA_KEY $VM:app/
-    # на ВМ: входим в registry, скачиваем новый образ и перезапускаем.
+    - $SCP deploy/docker-compose.yml $SPIRIT_DOCKER_SA_KEY $VM:app/
+    # на ВМ: входим в registry, скачиваем новый образ и перезапускаем оба стенда.
+    # Имя образа пишем в ~/app/current_image, предыдущее — в ~/app/previous_image (для отката, docs/DEPLOY.md).
     # dp и docker запускаем через sudo: dp пишет helper в /usr/local/bin, это требует root
     - |
       $SSH $VM "cd ~/app &&
         sudo dp auth service-acc --key-file $(basename $SPIRIT_DOCKER_SA_KEY) &&
         sudo dp auth configure-docker &&
-        sudo IMAGE_NAME=$IMAGE_NAME docker compose pull &&
-        sudo IMAGE_NAME=$IMAGE_NAME docker compose up -d"
-    - echo "⏳ Ждём, пока приложение ответит"
+        echo IMAGE_NAME=$IMAGE_NAME > .env && echo APP_PORT=$APP_PORT >> .env && echo DEMO_PORT=$DEMO_PORT >> .env &&
+        sudo docker compose --profile demo pull app demo &&
+        sudo docker compose --profile demo up -d --no-build app demo &&
+        { [ -f current_image ] && cp current_image previous_image || true; } &&
+        echo $IMAGE_NAME > current_image"
+    - echo "⏳ Ждём, пока оба стенда ответят"
     - |
-      if $SSH $VM "curl -fsS --retry 20 --retry-delay 2 --retry-all-errors -o /dev/null http://localhost:${APP_PORT:-80}"; then
-        echo "🎉 Готово! Деплой прошёл успешно, приложение отвечает: http://$DEPLOY_HOST:${APP_PORT:-80}"
-      else
-        echo "❌ Контейнер запущен, но приложение не отвечает. Проверьте на ВМ: sudo docker compose logs"
-        exit 1
-      fi
+      ok=1
+      for port in $APP_PORT $DEMO_PORT; do
+        if $SSH $VM "curl -fsS --retry 20 --retry-delay 2 --retry-all-errors -o /dev/null http://localhost:$port/api/health"; then
+          echo "✅ http://$DEPLOY_HOST:$port отвечает"
+        else
+          echo "❌ http://$DEPLOY_HOST:$port не отвечает. На ВМ: cd ~/app && sudo docker compose --profile demo logs"; ok=0
+        fi
+      done
+      [ "$ok" = 1 ] && echo "🎉 Готово! Основной стенд: http://$DEPLOY_HOST:$APP_PORT, демо для жюри: http://$DEPLOY_HOST:$DEMO_PORT"
+      [ "$ok" = 1 ]
   environment:
     name: production
+    url: http://$DEPLOY_HOST:$APP_PORT

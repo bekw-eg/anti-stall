@@ -140,10 +140,8 @@ docker compose -f deploy/docker-compose.yml --profile demo up -d demo
 
 Оба сервиса (`app` и `demo`) собираются из корневого `Dockerfile` (`--build`) или берут готовый образ `${IMAGE_NAME:-tomato:local}`.
 
-CI (`.gitlab-ci.yml`) пока собирает `frontend/Dockerfile`, то есть только frontend с `vite preview`, и деплоит
-`frontend/deploy/docker-compose.yml`. **В задеплоенной через CI версии backend нет.** Чтобы перейти на единый образ,
-в джобе `build:image` нужно указать `DOCKERFILE_PATH: $CI_PROJECT_DIR/Dockerfile` и `CONTEXT: $CI_PROJECT_DIR`,
-а в `deploy:vm` использовать `deploy/docker-compose.yml`. В Spirit это не проверялось.
+CI (`.gitlab-ci.yml`) собирает этот же единый образ и из master деплоит на ВМ оба сервиса из `deploy/docker-compose.yml`
+(основной стенд на 80, демо для жюри на 8081). CI-переменные, требования к ВМ, откат и диагностика — [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ## Переменные окружения backend
 
