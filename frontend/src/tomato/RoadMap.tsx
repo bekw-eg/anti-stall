@@ -1,9 +1,22 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import type { Roadmap } from "@/api/tomato";
-import { NODE_STATUS_LABEL, defaultNode, edgeFill, nodeById } from "./roadmapGeometry";
+import type { Roadmap, RoadmapNode } from "@/api/tomato";
+import { NODE_STATUS_LABEL, defaultNode, edgeFill, isTdRoad, nodeById } from "./roadmapGeometry";
 
 const MARKER_SPRING = { type: "spring", stiffness: 90, damping: 18, mass: 1 } as const;
+/** Название этапа TD: этапы привязаны к узлам карты (id этапа = id узла) */
+const stageName = (road: Roadmap, stageId: string) => road.nodes.find((n) => n.id === stageId)?.title ?? stageId;
+/** Условие узла коротко — для подписи кнопки */
+function requirementShort(road: Roadmap, n: RoadmapNode) {
+  if (n.challenge?.kind === "td_stage_win") return `победа в обороне «${stageName(road, n.challenge.stageId)}»`;
+  return `${n.requiredPoints} очков`;
+}
+/** Условие узла подробно — для карточки этапа */
+function requirementLong(road: Roadmap, n: RoadmapNode) {
+  if (n.type === "start") return "Отсюда начинался путь";
+  if (n.challenge?.kind === "td_stage_win") return `Откроет победа в Tower Defense на этапе «${stageName(road, n.challenge.stageId)}»`;
+  return `Нужно командных очков: ${n.requiredPoints}`;
+}
 
 /**
  * Интерактивная Road Map. Всё состояние (позиция, пройденные/закрытые этапы, доли пути, вклад)
@@ -18,6 +31,8 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
   const instant = { duration: 0 };
   const selected = nodeById(road, picked ?? "") ?? defaultNode(road);
   const pct = Math.min(100, (road.points / road.goal) * 100);
+  const tdRules = isTdRoad(road);
+  const nextText = road.next ? (road.next.stageId ? `До «${road.next.title}»: победа на этапе «${stageName(road, road.next.stageId)}»` : `До «${road.next.title}»: ещё ${road.next.pointsNeeded}`) : null;
 
   return (
     <div className="flex h-full w-full flex-col gap-3 overflow-hidden p-3 sm:p-5 lg:flex-row" aria-label={`Road Map: ${road.title}`}>
@@ -45,7 +60,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
               key={n.id}
               type="button"
               onClick={() => setPicked(n.id)}
-              aria-label={`${n.title}: ${NODE_STATUS_LABEL[n.status]}, ${n.requiredPoints} очков`}
+              aria-label={`${n.title}: ${NODE_STATUS_LABEL[n.status]}, ${requirementShort(road, n)}`}
               aria-pressed={isSel}
               className="group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 focus-visible:outline-none"
               style={{ left: `${n.x * 100}%`, top: `${n.y * 100}%` }}
@@ -95,7 +110,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
           <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{NODE_STATUS_LABEL[selected.status]}</p>
           <p className="mt-1 text-base font-medium">{selected.title}</p>
           <p className="mt-1 text-xs text-[var(--muted)]">
-            {selected.type === "start" ? "Отсюда начинался путь" : `Нужно командных очков: ${selected.requiredPoints}`}
+            {requirementLong(road, selected)}
             {selected.reward && ` · награда ${selected.reward.xp} XP, ${selected.reward.coins} монет`}
             {selected.reachedAt && ` · пройден ${new Date(selected.reachedAt).toLocaleTimeString()}`}
           </p>
@@ -121,12 +136,12 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
                   </div>
                 </li>
               ))}
-              {road.next && <p className="text-xs text-[var(--muted)]">Вашей команде до «{road.next.title}»: ещё {road.next.pointsNeeded}</p>}
+              {road.next && <p className="text-xs text-[var(--muted)]">Вашей команде {nextText!.replace(/^До/, "до")}</p>}
             </ul>
           ) : (
             <>
               <div className="mb-1.5 flex justify-between text-xs text-[var(--muted)]">
-                <span>{road.completed ? "Цель достигнута" : road.next ? `До «${road.next.title}»: ещё ${road.next.pointsNeeded}` : road.title}</span>
+                <span>{road.completed ? "Цель достигнута" : nextText ?? road.title}</span>
                 <span className="tabular-nums">{road.points}/{road.goal}</span>
               </div>
               <div className="h-1.5 overflow-hidden rounded-full bg-[var(--line)]" role="progressbar" aria-valuenow={road.points} aria-valuemin={0} aria-valuemax={road.goal}>
@@ -134,7 +149,19 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
               </div>
             </>
           )}
-          <p className="mt-2 text-xs text-[var(--muted)]">Очко команде даёт каждая завершённая фокус-сессия — это проверяет сервер.</p>
+          {tdRules ? (
+            <>
+              <p className="mt-2 text-xs text-[var(--muted)]">Узлы карты открывают победы в Tower Defense на перерыве. Фокус-сессии дают очки вклада и пополняют казну команды — это проверяет сервер.</p>
+              {(typeof road.focusPoints === "number" || typeof road.treasuryCoins === "number") && (
+                <p className="mt-1 flex justify-between text-xs" data-testid="road-team-stats">
+                  {typeof road.focusPoints === "number" && <span>Очки вклада: <span className="tabular-nums">{road.focusPoints}</span></span>}
+                  {typeof road.treasuryCoins === "number" && <span>Казна: <span className="tabular-nums">{road.treasuryCoins}🪙</span></span>}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-[var(--muted)]">Очко команде даёт каждая завершённая фокус-сессия — это проверяет сервер.</p>
+          )}
         </div>
 
         <div>

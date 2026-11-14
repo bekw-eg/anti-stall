@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TomatoApiError, TomatoClient, WS_CLOSE_UNAUTHORIZED } from "@/api/tomato";
-import type { Connection, CreateRoomInput, Me, RoomSnapshot, ServerEvent, SocialAction, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
+import type { Connection, CreateRoomInput, Me, MercType, RoomSnapshot, ServerEvent, SocialAction, SpellId, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
 import { apiErrorText, extractRoomCode } from "./format";
 import { SHIELD_COST } from "./socialRules";
 import { useNow } from "./useMedia";
@@ -33,44 +33,71 @@ export interface TimerLimits {
 export const DEFAULT_LIMITS: TimerLimits = { focusSeconds: [60, 86_400], breakSeconds: [10, 7_200], cycles: [1, 12], demoFocusSeconds: [5, 600], demoBreakSeconds: [10, 300] };
 
 export type Conn = "idle" | "connecting" | "online" | "reconnecting" | "offline";
-export interface Toast { id: number; text: string; tone: "info" | "reward" | "error" }
+export interface Toast { id: number; text: string; tone: "info" | "reward" | "warning" | "error" }
 
 const teamLabel = (team?: string) => (team === "A" || team === "B" ? `${team}: ` : "");
 
-function describeEvent(ev: ServerEvent, myId?: string, myTeam?: string): string | null {
-  const d = ev.data as { winner?: string; team?: string; draw?: boolean; kind?: string; xp?: number; coins?: number; levelUp?: boolean; level?: number; title?: string; rewarded?: boolean; status?: string; to?: string; blocked?: boolean; quality?: number; countsForTeam?: boolean; capped?: boolean; reason?: string; type?: string };
+/** Справочники игры для подписей событий (названия наёмников и заклинаний приходят с сервера) */
+type TdNames = Pick<TdView, "team" | "mercenaries" | "spells"> | null | undefined;
+const mercTitle = (td: TdNames, id?: string) => td?.mercenaries?.find((m) => m.id === id)?.title ?? "томата-наёмника";
+const spellTitle = (td: TdNames, id?: string) => td?.spells?.find((s) => s.id === id)?.title ?? "заклинание";
+
+/**
+ * Текст и тон уведомления о событии комнаты (null — событие не показывается).
+ * Свои действия игрок видит в самой игре, поэтому о них не напоминаем.
+ */
+export function describeEvent(ev: ServerEvent, myId?: string, td?: TdNames): { text: string; tone: Toast["tone"] } | null {
+  const myTeam = td?.team;
+  const d = ev.data as {
+    winner?: string; team?: string; draw?: boolean; kind?: string; xp?: number; coins?: number; levelUp?: boolean; level?: number; title?: string;
+    rewarded?: boolean; status?: string; to?: string; blocked?: boolean; target?: string; type?: string; spell?: string; queued?: boolean; by?: string;
+    startedBy?: string; bonusTeam?: string | null; counterattackCoins?: number;
+  };
+  const info = (text: string | null, tone: Toast["tone"] = "info") => (text ? { text, tone } : null);
   switch (ev.type) {
-    case "reward_granted": return d.kind === "achievement" ? null : `+${d.xp} XP · +${d.coins} монет${d.levelUp ? ` · уровень ${d.level}` : ""}`;
-    case "achievement_unlocked": return `Достижение: ${d.title}`;
-    case "session_completed": {
-      if (d.status !== "completed") return d.reason === "user_abort" ? "Вы сдались — без награды, команда может не сделать шаг" : "Сессия прервана — без награды";
-      const q = `Качество фокуса ${Math.round((d.quality ?? 1) * 100)}%`;
-      if (d.capped) return `${q}. Дневной лимит наград исчерпан`;
-      return d.countsForTeam === false ? `${q} — маловато, команде этот фокус не засчитан` : q;
-    }
-    case "cycle_scored": {
-      const c = ev.data as { teams?: { team: string; advanced: boolean }[] };
-      const mine = c.teams?.find((x) => x.team === (myTeam ?? "shared")) ?? (c.teams?.length === 1 ? c.teams[0] : undefined);
-      return mine && !mine.advanced ? "Цикл не засчитан: меньше половины команды отфокусировались — шага по карте нет" : null;
-    }
+    case "reward_granted": return info(d.kind === "achievement" ? null : `+${d.xp} XP · +${d.coins} монет${d.levelUp ? ` · уровень ${d.level}` : ""}`, "reward");
+    case "achievement_unlocked": return info(`Достижение: ${d.title}`, "reward");
+    case "session_completed": return info(d.rewarded ? null : d.status === "completed" ? "Сессия завершена, дневной лимит наград исчерпан" : "Сессия прервана — без награды");
     case "td_round_finished":
       if (myTeam && d.team !== myTeam) return null;
-      return d.status === "won" ? "Оборона выстояла" : d.status === "lost" ? "База пала — в следующий перерыв получится лучше" : "Перерыв закончился — раунд завершён";
-    case "td_duel_result": return d.winner === "draw" ? "Дуэль: ничья" : `Дуэль: победила команда ${d.winner}`;
-    case "node_reached": return `${teamLabel(d.team)}этап пройден: ${d.title}`.replace(/^./, (c) => c.toUpperCase());
-    case "challenge_completed": return d.draw ? "Ничья: обе команды достигли цели" : d.team === "shared" ? "Команда достигла цели" : `Команда ${d.team} победила`;
+      return info(d.status === "won" ? "Оборона выстояла" : d.status === "lost" ? "База пала — в следующий перерыв получится лучше" : "Перерыв закончился — раунд завершён");
+    case "td_duel_result": return info(d.winner === "draw" ? "Дуэль: ничья" : `Дуэль: победила команда ${d.winner}`);
+    case "td_rematch_started": {
+      const bonus = d.bonusTeam && d.bonusTeam === myTeam ? ` · «Контратака»: +${d.counterattackCoins} в казну` : "";
+      return info(`Смена ролей! Начался раунд 2 — реванш${bonus}`);
+    }
+    case "td_unit_sent": {
+      if (!myTeam || d.by === myId) return null;
+      const title = mercTitle(td, d.type);
+      if (d.team !== myTeam && d.target === myTeam) {
+        return info(`Соперник прислал наёмника: ${title}!${d.queued ? " Выйдет, когда начнётся ваш раунд" : ""}`, "warning");
+      }
+      if (d.team !== myTeam) return null;
+      return info(d.target === myTeam ? `Подкрепление волны: ${title}` : `Команда отправила сопернику: ${title}`);
+    }
+    case "td_spell_cast": {
+      if (!myTeam || d.by === myId) return null;
+      const title = spellTitle(td, d.spell);
+      if (d.team !== myTeam && d.target === myTeam) return info(`Соперник наложил на вас «${title}»!`, "warning");
+      if (d.team !== myTeam) return null;
+      return info(d.target === myTeam ? `Команда усилила оборону: «${title}»` : `Команда наложила на соперника «${title}»`);
+    }
+    case "node_reached": return info(`${teamLabel(d.team)}этап пройден: ${d.title}`.replace(/^./, (c) => c.toUpperCase()), "reward");
+    case "challenge_completed": return info(d.draw ? "Ничья: обе команды достигли цели" : d.team === "shared" ? "Команда достигла цели" : `Команда ${d.team} победила`, "reward");
     case "help_applied": {
       const h = ev.data as { type?: string };
-      return d.to === myId ? (h.type === "shield" ? "Вам подарили щит от шуток" : "Вам помогли: бонус к XP в следующей сессии") : null;
+      return info(d.to === myId ? (h.type === "shield" ? "Вам подарили щит от шуток" : "Вам помогли: бонус к XP в следующей сессии") : null);
     }
-    case "prank_applied": {
-      const name = ({ fog: "туман", sticker: "липучку" } as Record<string, string>)[d.type ?? ""] ?? "шутку";
-      if (d.blocked) return d.to === myId || (myTeam && d.team === myTeam) ? "Щит команды отразил шутку соперника" : null;
-      return myTeam && d.team === myTeam ? `Соперник напустил ${name} на ваши башни` : null; // в общем режиме шутка видна на экране
-    }
+    case "prank_applied": return info(d.to === myId ? (d.blocked ? "Щит отразил шутку" : null) : null); // сама шутка видна на экране
     default: return null;
   }
 }
+
+/**
+ * События игры, после которых нужен полный GET /td (этапы, дуэль, реванш).
+ * Частые td_tower_*, td_unit_sent, td_spell_cast несут изменения вместе с td_state — перезагрузка не нужна.
+ */
+const TD_RELOAD_EVENTS = new Set(["td_round_started", "td_round_finished", "td_rematch_started", "td_duel_result"]);
 
 /**
  * Всё серверное состояние нового интерфейса. Здесь НЕТ собственного таймера сессии:
@@ -356,15 +383,17 @@ export function useTomato(initialCode?: string) {
         const d = ev.data as TdStateEvent;
         setTd((prev) => {
           if (!prev) return prev;
-          if (d.team === prev.team) return { ...prev, towers: d.towers, round: d.round };
-          if (prev.rival && prev.rival.team === d.team) return { ...prev, rival: { ...prev.rival, towers: d.towers.length, round: d.round } };
+          // казну присылает сервер вместе с состоянием команды (старый сервер поля не знает — оставляем прежнее)
+          const treasury = (fallback: number) => (typeof d.treasuryCoins === "number" ? d.treasuryCoins : fallback);
+          if (d.team === prev.team) return { ...prev, towers: d.towers, round: d.round, treasuryCoins: treasury(prev.treasuryCoins) };
+          if (prev.rival && prev.rival.team === d.team) return { ...prev, rival: { ...prev.rival, towers: d.towers.length, round: d.round, treasuryCoins: treasury(prev.rival.treasuryCoins) } };
           return prev;
         });
         return;
       }
-      if (ev.type.startsWith("td_") && tdRef.current) client.td(roomId).then((v) => alive && setTd(v)).catch(() => undefined);
-      const text = describeEvent(ev, myIdRef.current, tdRef.current?.team);
-      if (text) push(text, ev.type === "reward_granted" || ev.type === "achievement_unlocked" || ev.type === "challenge_completed" || ev.type === "node_reached" ? "reward" : "info");
+      if (TD_RELOAD_EVENTS.has(ev.type) && tdRef.current) client.td(roomId).then((v) => alive && setTd(v)).catch(() => undefined);
+      const toast = describeEvent(ev, myIdRef.current, tdRef.current);
+      if (toast) push(toast.text, toast.tone);
     });
 
     // Присутствие: WS шлёт heartbeat сам; REST-heartbeat страхует от обрыва только сокета.
@@ -492,6 +521,13 @@ export function useTomato(initialCode?: string) {
   const tdStart = useCallback(async (stageId?: string) => { const v = await call(() => client.tdStart(rid, stageId)); if (v) setTd(v); return v; }, [call, rid]);
   const tdBuild = useCallback(async (slot: string, type: string) => { const r = await call(() => client.tdBuild(rid, slot, type, newRequestId())); if (r) await loadTd(); return r; }, [call, loadTd, rid]);
   const tdUpgrade = useCallback(async (slot: string, level: number) => { const r = await call(() => client.tdUpgrade(rid, slot, newRequestId(), level)); if (r) await loadTd(); return r; }, [call, loadTd, rid]);
+  /** Баланс казны из ответа сервера (td_state следом принесёт его же вместе с полем) */
+  const setTreasury = useCallback((coins: number | undefined) => {
+    if (typeof coins === "number") setTd((prev) => (prev ? { ...prev, treasuryCoins: coins } : prev));
+  }, []);
+  const tdSendUnit = useCallback(async (type: MercType) => { const r = await call(() => client.tdSendUnit(rid, type, newRequestId())); if (r) setTreasury(r.treasuryCoins); return r; }, [call, rid, setTreasury]);
+  const tdCastSpell = useCallback(async (spell: SpellId) => { const r = await call(() => client.tdCastSpell(rid, spell, newRequestId())); if (r) setTreasury(r.treasuryCoins); return r; }, [call, rid, setTreasury]);
+  const tdRematch = useCallback(async (stageId?: string) => { const v = await call(() => client.tdRematch(rid, stageId)); if (v) setTd(v); return v; }, [call, rid]);
 
   // Перерыв закончился — обновляем состояние игры (раунд закрыт, игра недоступна)
   const phase = snapshot?.room.phase;
@@ -512,8 +548,8 @@ export function useTomato(initialCode?: string) {
   }, [focusing, rid]);
 
   return {
-    boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
-    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult,
+    boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
+    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, tdRematch, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

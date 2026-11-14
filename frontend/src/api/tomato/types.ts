@@ -27,7 +27,11 @@ export interface RoadmapNode {
   requiredPoints: number;
   type: "start" | "focus_goal" | "boss";
   status: "completed" | "current" | "next" | "locked";
-  challenge: { kind: string; required: number } | null;
+  /**
+   * Условие узла. Новые правила: `{ kind: "td_stage_win", stageId }` — узел открывает победа на этапе TD
+   * (stageId — этап предыдущего узла). Старый сервер присылал `{ kind: "team_focus_points", required }`.
+   */
+  challenge: RoadmapChallenge | null;
   /** Когда сервер зафиксировал прохождение этапа (null — ещё не пройден / стартовый узел) */
   reachedAt: number | null;
   /** Награда за этап: у промежуточных — этапная, у финального — командная */
@@ -35,6 +39,10 @@ export interface RoadmapNode {
   /** Доля пути до узла от предыдущего (0..1) — считает сервер */
   progress: number;
 }
+
+export type RoadmapChallenge =
+  | { kind: "td_stage_win"; stageId: string; required?: number }
+  | { kind: "team_focus_points"; required: number; stageId?: undefined };
 
 export interface RoadmapTeam {
   key: string; // "shared" | "A" | "B"
@@ -45,6 +53,10 @@ export interface RoadmapTeam {
   finished: boolean;
   /** победила (получила командную награду) */
   completed: boolean;
+  /** очки вклада команды за фокус-сессии (новый сервер) */
+  focusPoints?: number;
+  /** казна команды (новый сервер) */
+  treasuryCoins?: number;
 }
 
 export interface Roadmap {
@@ -54,10 +66,13 @@ export interface Roadmap {
   mode: "shared" | "teams";
   /** Команда зрителя: верхний уровень (points, nodes[].status, next…) описывает её */
   teamKey: string;
+  /** Прогресс по карте: число узлов, пройденных победами в TD (новые правила) */
   points: number;
   goal: number;
-  /** План циклов комнаты: карта — одна остановка на каждый перерыв */
-  cycles?: { planned: number; started: number };
+  /** Очки вклада команды за фокус-сессии (новый сервер; карту они не двигают) */
+  focusPoints?: number;
+  /** Казна команды зрителя (новый сервер) */
+  treasuryCoins?: number;
   completed: boolean;
   finished: boolean;
   winner: "A" | "B" | "draw" | null;
@@ -65,7 +80,7 @@ export interface Roadmap {
   reward: { xp: number; coins: number };
   positionNodeId: string;
   /** Следующий этап и сколько очков до него; null, если цель достигнута */
-  next: { nodeId: string; title: string; pointsNeeded: number } | null;
+  next: { nodeId: string; title: string; pointsNeeded: number; /** этап TD, победа в котором откроет узел */ stageId?: string } | null;
   /** Участок пути между текущим и следующим узлом и доля пройденного */
   segment: { from: string; to: string; progress: number } | null;
   /** Команды. Сейчас одна общая; Team A/B — задел, UI показывает маркер на каждую */
@@ -232,8 +247,12 @@ export interface RoomStats {
   teams: {
     key: string;
     name: string;
+    /** прогресс по карте: узлы, пройденные победами в Tower Defense (0…goal) */
     points: number;
     goal: number;
+    /** очки вклада за фокус-сессии и казна команды (новый сервер) */
+    focusPoints?: number;
+    treasuryCoins?: number;
     finished: boolean;
     completed: boolean;
     positionNodeId: string;
@@ -321,13 +340,17 @@ export type ServerEventType =
   | "player_status_changed" | "team_changed" | "task_updated" | "settings_changed"
   | "timer_started" | "timer_tick" | "phase_changed"
   | "session_completed" | "reward_granted" | "balance_changed" | "achievement_unlocked"
-  | "td_state" | "td_round_started" | "td_round_finished" | "td_tower_built" | "td_tower_upgraded" | "td_duel_result" | "roadmap_updated" | "node_reached" | "challenge_completed" | "help_applied" | "prank_applied"
+  | "td_state" | "td_round_started" | "td_round_finished" | "td_tower_built" | "td_tower_upgraded" | "td_duel_result"
+  | "td_unit_sent" | "td_spell_cast" | "td_rematch_started" | "roadmap_updated" | "node_reached" | "challenge_completed" | "help_applied" | "prank_applied"
   | "voice_roster" | "voice_joined" | "voice_left" | "voice_peer_joined" | "voice_peer_left" | "voice_state" | "voice_signal" | "voice_kicked"
   | "heartbeat_ack" | "unsubscribed" | "error";
 
 // ---------------------------------------------------------------------------- Tower Defense
 export type TowerType = "arrow" | "cannon" | "frost";
-export type EnemyType = "runner" | "grunt" | "tank" | "boss";
+export type EnemyType = "runner" | "grunt" | "tank" | "boss" | "cherry" | "ripe" | "armored" | "king";
+/** Наёмники Tower Wars: команда покупает их из казны и выпускает на поле соперника */
+export type MercType = "cherry" | "ripe" | "armored" | "king";
+export type SpellId = "haste" | "repair" | "slow_towers" | "disable_tower" | "enrage_horde";
 export type RoundStatus = "running" | "won" | "lost" | "expired";
 
 export interface TdTowerDef {
@@ -355,14 +378,78 @@ export interface TdEnemy {
   type: EnemyType;
   x: number; // клетки поля
   y: number;
+  /** пройденная доля пути в клетках (для интерполяции по полилинии) */
+  s: number;
   hp: number;
   maxHp: number;
+  /** текущая скорость, клеток в игровую секунду */
+  speed: number;
   slowed: boolean;
+  hasted: boolean;
+  armor: number;
+  isMerc: boolean;
+}
+
+/** Выстрел башни (последние ~1.5 игровой секунды) — только для отрисовки снарядов */
+export interface TdShot {
+  id: number;
+  t: number;
+  slot: string;
+  towerType: TowerType;
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  targetId: number;
+  damage: number;
+  splash: number | null;
+  slow: boolean;
+}
+
+/** Действующее заклинание на поле команды; истекает по игровому времени раунда */
+export interface TdEffect {
+  id: number;
+  kind: SpellId;
+  targetSlot: string | null;
+  expiresAtGameTime: number;
+  factor: number;
+}
+
+export interface TdMercDef {
+  id: MercType;
+  title: string;
+  description: string;
+  cost: number;
+  hp: number;
+  speed: number;
+  damage: number;
+  armor: number;
+}
+
+export interface TdSpellDef {
+  id: SpellId;
+  title: string;
+  description: string;
+  cost: number;
+  duration: number;
+  target: "self" | "rival";
+}
+
+export interface TdRematch {
+  available: boolean;
+  /** почему реванш сейчас недоступен (текст сервера) */
+  reason: string | null;
+  roundNo: number;
+  counterattackCoins: number;
+  /** команда, которая получит «Контратаку» (проиграла дуэль раунда 1) */
+  bonusTeam: string | null;
 }
 
 export interface TdRound {
   id: string;
   team: string;
+  /** 1 — основной раунд перерыва, 2 — реванш */
+  roundNo: number;
   stageId: string;
   status: RoundStatus;
   current: boolean;
@@ -382,6 +469,8 @@ export interface TdRound {
   /** Активные дебаффы команды от шуток соперника */
   debuffs?: { type: "fog" | "sticker"; endsAt: number; rangeMult: number; cooldownMult: number }[];
   enemies: TdEnemy[];
+  shots: TdShot[];
+  effects: TdEffect[];
   result: { hpLeft: number; hpMax: number; kills: number; leaked: number; total: number; gameTime: number } | null;
 }
 
@@ -394,6 +483,7 @@ export interface TdStage {
   reward: { xp: number; coins: number };
   waves: number;
   enemies: number;
+  hpScale?: number;
   wins: number;
   bestHpLeft: number | null;
 }
@@ -414,9 +504,16 @@ export interface TdView {
   base: { hpMax: number; damageMult: number; wallLevels: number; powerLevels: number };
   towers: TdTower[];
   round: TdRound | null;
-  rival: { team: string; towers: number; round: TdRound | null } | null;
-  duel: { stageId: string; winner: "A" | "B" | "draw"; scores: Record<string, number> } | null;
+  rival: { team: string; towers: number; treasuryCoins: number; round: TdRound | null } | null;
+  duel: { stageId: string; winner: "A" | "B" | "draw"; scores: Record<string, number>; roundNo: number } | null;
+  /** личные монеты (магазин улучшений); башни и заклинания оплачивает казна команды */
   me: { userId: string; coins: number; participated: boolean };
+  /** казна команды зрителя */
+  treasuryCoins: number;
+  mercenaries: TdMercDef[];
+  spells: TdSpellDef[];
+  mercCooldownSec: number;
+  rematch: TdRematch;
 }
 
 /** Событие td_state: состояние игры одной команды */
@@ -424,4 +521,23 @@ export interface TdStateEvent {
   team: string;
   towers: TdTower[];
   round: TdRound | null;
+  treasuryCoins: number;
 }
+
+/** Ответ build / upgrade: баланс — казна команды после списания */
+export interface TdBuildResult { action: string; slotId: string; type: TowerType; level: number; cost: number; treasuryCoins: number; replayed?: boolean }
+export interface TdSendUnitResult {
+  action: "send_unit"; type: MercType; cost: number; target: string; queued: boolean; treasuryCoins: number;
+  /** команда-отправитель; delivered=false — ждёт старта раунда соперника */
+  from?: string; delivered?: boolean; roundId?: string; replayed?: boolean;
+}
+export interface TdSpellResult {
+  action: "spell"; spell: SpellId; cost: number; target: string; treasuryCoins: number;
+  /** башня под «Заморозкой» (только disable_tower) и конец эффекта по игровому времени раунда */
+  targetSlot?: string | null; expiresAtGameTime?: number; replayed?: boolean;
+}
+
+/** Данные событий Tower Wars (рассылаются всей комнате) */
+export interface TdUnitSentEvent { team: string; target: string; type: MercType; queued: boolean; by: string }
+export interface TdSpellCastEvent { team: string; target: string; spell: SpellId; targetSlot: string | null; by: string }
+export interface TdRematchStartedEvent { roundNo: number; bonusTeam: string | null; counterattackCoins: number; startedBy: string; teams: string[] }

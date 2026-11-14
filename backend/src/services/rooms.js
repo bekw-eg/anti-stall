@@ -105,7 +105,7 @@ export function createRoomsService(ctx, game, users, td) {
         id, code, name, user.id, 'waiting', s.focusSec, s.breakSec, s.cycles, s.demo, mode, t, t,
       );
       db.run('INSERT INTO room_members(room_id, user_id, role, team_key, joined_at) VALUES (?,?,?,?,?)', id, user.id, 'host', mode === 'teams' ? 'A' : 'shared', t);
-      for (const key of mode === 'teams' ? ['A', 'B'] : ['shared']) db.run('INSERT INTO team_progress(room_id, team_key) VALUES (?,?)', id, key);
+      game.ensureTeams({ id, mode }); // команды сразу получают стартовый капитал казны
       return snapshot(id, user.id);
     });
   }
@@ -128,6 +128,7 @@ export function createRoomsService(ctx, game, users, td) {
       }
       if (existing) db.run('UPDATE room_members SET left_at = NULL, joined_at = ?, team_key = ?, is_ready = 0 WHERE room_id = ? AND user_id = ?', t, team, room.id, user.id);
       else db.run('INSERT INTO room_members(room_id, user_id, team_key, joined_at) VALUES (?,?,?,?)', room.id, user.id, team, t);
+      game.ensureTeams(room);
       db.emit({ scope: 'room', roomId: room.id, type: 'player_joined', data: { user: users.publicUser(user) } });
       db.emit(stateEvent(room.id));
       return snapshot(room.id, user.id);
@@ -201,6 +202,7 @@ export function createRoomsService(ctx, game, users, td) {
       if (room.mode !== 'teams') throw E.conflict('NOT_TEAM_MODE', 'Комната не в командном режиме');
       requirePhase(room, 'waiting');
       db.run('UPDATE room_members SET team_key = ? WHERE room_id = ? AND user_id = ?', b.team, room.id, user.id);
+      game.ensureTeams(room);
       db.emit({ scope: 'room', roomId: room.id, type: 'team_changed', data: { userId: user.id, team: b.team } });
       db.emit(stateEvent(room.id));
       return snapshot(room.id, user.id);
@@ -268,8 +270,37 @@ export function createRoomsService(ctx, game, users, td) {
       if (room.demo && !config.demoMode) throw E.forbidden('DEMO_DISABLED', 'Демо-режим выключен на сервере');
       requireSandboxMatch(Boolean(room.demo), user);
       if (activeSessionOf(user.id)) throw E.conflict('ALREADY_FOCUSING', 'У вас уже идёт фокус-сессия в другой комнате');
-      const start = beginCycle(room, clock.now(), user.id);
-      return { ...snapshot(room.id, user.id), start };
+
+      const t = clock.now();
+      const cycleId = randomUUID();
+      const cycleNo = room.cycle_no + 1;
+      const endsAt = t + room.focus_sec * 1000;
+      const members = db.all(
+        `SELECT m.user_id, m.task_title, u.last_seen_at, u.sandbox FROM room_members m JOIN users u ON u.id = m.user_id
+         WHERE m.room_id = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.rowid`, room.id,
+      );
+      db.run("UPDATE rooms SET phase = 'focus', cycle_id = ?, cycle_no = ?, phase_started_at = ?, phase_ends_at = ? WHERE id = ?", cycleId, cycleNo, t, endsAt, room.id);
+      db.run('UPDATE room_members SET is_ready = 0 WHERE room_id = ?', room.id);
+      game.ensureTeams(room); // у каждой команды есть строка прогресса и стартовая казна
+
+      const participants = [];
+      const skipped = [];
+      for (const m of members) {
+        if (Boolean(m.sandbox) !== Boolean(room.demo)) { skipped.push({ userId: m.user_id, reason: 'sandbox_mismatch' }); continue; } // только старые данные
+        if (m.user_id !== user.id && t - m.last_seen_at > config.graceMs) { skipped.push({ userId: m.user_id, reason: 'offline' }); continue; }
+        if (activeSessionOf(m.user_id)) { skipped.push({ userId: m.user_id, reason: 'busy_elsewhere' }); continue; }
+        const id = randomUUID();
+        db.run(
+          `INSERT INTO focus_sessions(id, room_id, cycle_id, cycle_no, user_id, task_title, started_at, scheduled_end_at, duration_sec, status, demo)
+           VALUES (?,?,?,?,?,?,?,?,?,'active',?)`,
+          id, room.id, cycleId, cycleNo, m.user_id, m.task_title, t, endsAt, room.focus_sec, room.demo,
+        );
+        participants.push(m.user_id);
+      }
+      db.emit({ scope: 'room', roomId: room.id, type: 'timer_started', data: { cycleId, cycleNo, phase: 'focus', phaseStartedAt: t, phaseEndsAt: endsAt, serverTime: t, participants, skipped } });
+      db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'waiting', to: 'focus', cycleId, phaseStartedAt: t, phaseEndsAt: endsAt } });
+      db.emit(stateEvent(room.id));
+      return { ...snapshot(room.id, user.id), start: { participants, skipped } };
     });
   }
 
@@ -433,6 +464,7 @@ export function createRoomsService(ctx, game, users, td) {
 
   function finishFocus(room) {
     const endAt = room.phase_ends_at;
+    game.ensureTeams(room); // до перерыва: у каждой команды есть казна для Tower Defense
     const active = db.all("SELECT * FROM focus_sessions WHERE room_id = ? AND cycle_id = ? AND status = 'active' ORDER BY rowid", room.id, room.cycle_id);
     const rewardedUsers = [];
     for (const s of active) {

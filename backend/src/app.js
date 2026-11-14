@@ -21,7 +21,7 @@ const isApiPath = (p) => p === '/api' || p.startsWith('/api/') || p === '/ws' ||
  * Фабрика приложения. clock и config подменяются в тестах (управляемые часы вместо системного времени).
  */
 export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
-  const db = new Db(config.dbPath);
+  const db = new Db(config.dbPath, { treasuryStart: config.economy.treasuryStart });
   const ctx = { db, clock, config };
   const game = createGame(ctx);
   const users = createUsersService(ctx, game);

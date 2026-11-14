@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion";
 import { BarChart3, Map as MapIcon, Settings, Swords, Timer, Users } from "lucide-react";
 import { useParams } from "react-router-dom";
@@ -94,15 +94,27 @@ export default function TomatoApp() {
   const showStats = inRoom && panel === "stats" && !open;
   const mode = open ? "settings" : showMap || showGame || showSocial || showStats ? "map" : "room";
   const phase = room?.phase;
-  // Перерыв не «пустой»: с его началом сразу открывается игра (Tower Defense команды); с концом — закрывается
-  const prevPhase = useRef(phase);
-  useEffect(() => {
-    if (inRoom && phase === "break" && prevPhase.current !== "break") setPanel("game");
-    if (inRoom && phase !== "break") setPanel((p) => (p === "game" ? null : p));
-    prevPhase.current = phase;
-  }, [inRoom, phase]);
   const { loadTd } = t;
-  useEffect(() => { if (showGame) loadTd(); }, [showGame, loadTd]);
+  // Свежее состояние игры; два повода сразу (начало перерыва + раскрытие панели) — один запрос
+  const lastTdLoad = useRef(0);
+  const freshTd = useCallback(() => {
+    if (Date.now() - lastTdLoad.current < 1000) return;
+    lastTdLoad.current = Date.now();
+    loadTd();
+  }, [loadTd]);
+  // Перерыв = время игры: фаза стала break — игра раскрывается сама и подгружает состояние;
+  // перерыв кончился — панель игры закрывается. Явно открытые настройки (`open`) всё равно важнее: showGame их учитывает.
+  const prevPhase = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const was = prevPhase.current;
+    prevPhase.current = inRoom ? phase : undefined;
+    if (!inRoom) return;
+    if (phase === "break" && was !== "break") {
+      setPanel("game");
+      freshTd();
+    } else if (phase !== "break") setPanel((p) => (p === "game" ? null : p));
+  }, [inRoom, phase, freshTd]);
+  useEffect(() => { if (showGame) freshTd(); }, [showGame, freshTd]); // повторное открытие вручную — свежее состояние
 
   const dark = inRoom && room!.phase === "break" && !open;
   const vars = { ...(dark ? DARK_VARS : LIGHT_VARS), "--timer": open ? "#111111" : "var(--fg)" } as React.CSSProperties;
@@ -152,6 +164,11 @@ export default function TomatoApp() {
                 {inRoom && !open && mode === "room" && (
                   <motion.div key="roadmap" className="absolute inset-0" style={{ color: "var(--fg)" }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.8 }}>
                     <RoadmapBackdrop road={t.snapshot!.challenge} />
+                    {room!.phase === "focus" && (
+                      <p data-testid="game-later" className="pointer-events-none absolute inset-x-0 bottom-[6.25rem] text-center text-xs tracking-wide text-[var(--muted)] sm:bottom-28">
+                        Игра откроется на перерыве
+                      </p>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -244,7 +261,7 @@ export default function TomatoApp() {
                     exit={{ opacity: 0, clipPath: "inset(42% 32% 42% 32% round 28px)" }}
                     transition={reduce ? instant : { ...SPRING, opacity: { duration: 0.35 } }}
                   >
-                    {t.td ? <TowerDefense td={t.td} actions={{ join: t.tdJoin, start: t.tdStart, build: t.tdBuild, upgrade: t.tdUpgrade }} /> : <p className="p-6 text-sm text-[var(--muted)]">Загружаем игру…</p>}
+                    {t.td ? <TowerDefense td={t.td} actions={{ join: t.tdJoin, start: t.tdStart, build: t.tdBuild, upgrade: t.tdUpgrade, sendUnit: t.tdSendUnit, castSpell: t.tdCastSpell, rematch: t.tdRematch }} /> : <p className="p-6 text-sm text-[var(--muted)]">Загружаем игру…</p>}
                   </motion.section>
                 )}
               </AnimatePresence>
