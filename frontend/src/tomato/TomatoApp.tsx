@@ -83,11 +83,8 @@ export default function TomatoApp() {
         ) : (
           <div className="flex min-h-[100dvh] flex-col">
             {/* высота по содержимому: если стикеров или участников много, страница прокручивается, полоса голоса прилипает к низу */}
-            <RoomHeader t={t} headerRef={headerRef} active={sheet} stickers={stickers} onOpen={(s) => {
-              // на перерыве «Друзья» уже на экране — прокручиваем к ним, а не открываем вторую копию
-              if (s === "social" && phase === "break") { setSheet(null); document.getElementById("break-social")?.scrollIntoView({ behavior: "smooth", block: "center" }); }
-              else setSheet((cur) => (cur === s ? null : s)); // повторное нажатие закрывает панель
-            }} />
+            {/* повторное нажатие кнопки шапки закрывает панель */}
+            <RoomHeader t={t} headerRef={headerRef} active={sheet} stickers={stickers} onOpen={(s) => setSheet((cur) => (cur === s ? null : s))} />
             {phase === "focus" ? <FocusRoom t={t} stickers={stickers} /> : phase === "break" ? <BreakRoom t={t} onOpenMap={() => setSheet("map")} /> : <Lobby t={t} />}
             <div className="sticky bottom-0 z-20 px-3 pb-3 pt-1 sm:px-8 sm:pb-5 lg:px-12">
               <VoiceBar conn={t.conn} voice={voice} meId={t.snapshot?.me?.userId} tone={dark ? "light" : "dark"} note={voiceNote(t)} />

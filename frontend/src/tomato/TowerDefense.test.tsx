@@ -39,7 +39,7 @@ beforeEach(() => {
   canvas.create.mockClear();
   Object.values(canvas.renderer).forEach((f) => f.mockClear());
   const ok = () => vi.fn().mockResolvedValue(null);
-  actions = { join: ok(), start: ok(), build: ok(), upgrade: ok(), sendUnit: ok(), castSpell: ok(), rematch: ok() };
+  actions = { join: ok(), start: ok(), build: ok(), upgrade: ok(), sendUnit: ok(), castSpell: ok() };
 });
 afterEach(() => { act(() => root.unmount()); host.remove(); });
 
@@ -61,14 +61,16 @@ describe("TowerDefense: показывает серверное состояни
     expect(treasury.textContent).toContain("Казна команды:");
     const bridge = [...host.querySelectorAll('[role="radio"]')].find((b) => b.textContent?.includes("Мост дедлайнов")) as HTMLButtonElement;
     expect(bridge.disabled).toBe(true);
-    expect(bridge.textContent).toContain("🔒");
+    expect(bridge.querySelector('[aria-label="закрыто"]')).not.toBeNull(); // замок-иконка, без эмодзи
+    expect(host.textContent).not.toMatch(/🔒|🪙|🍒|⚡/u);
   });
 
   it("постройка: меню башен-аксолотлей, цены с сервера, доступность — по казне команды, а не по личным монетам", async () => {
     render(makeTd({ treasuryCoins: 20, me: { userId: "me", coins: 999, participated: false } }));
     click(slot("s1"));
-    const arrow = btn("Аксолотль-Стрелок")!, cannon = btn("Аксолотль-Бомбардир")!, frost = btn("Крио-Аксолотль")!;
-    expect(arrow.textContent).toContain("15🪙");
+    const tile = (name: string) => [...host.querySelectorAll("button")].find((b) => b.getAttribute("aria-label")?.startsWith(name)) as HTMLButtonElement;
+    const arrow = tile("Аксолотль-Стрелок"), cannon = tile("Аксолотль-Бомбардир"), frost = tile("Крио-Аксолотль");
+    expect(arrow.textContent).toBe("Стрелок15"); // крупно: короткое имя и цена с иконкой монеты
     expect(cannon.disabled).toBe(true); // 30 > 20 в казне: UI-подсказка, окончательно решает сервер
     expect(arrow.disabled).toBe(false);
     expect(frost.disabled).toBe(false);
@@ -77,7 +79,7 @@ describe("TowerDefense: показывает серверное состояни
     expect(actions.build).toHaveBeenCalledWith("s1", "arrow");
 
     render(makeTd({ treasuryCoins: 10, me: { userId: "me", coins: 999, participated: false } }));
-    expect(btn("Аксолотль-Стрелок")!.disabled).toBe(true);
+    expect(btn("Стрелок")!.disabled).toBe(true);
   });
 
   it("слот выбирается и с клавиатуры (Enter)", () => {
@@ -85,14 +87,14 @@ describe("TowerDefense: показывает серверное состояни
     act(() => { slot("s1").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
     expect(slot("s1").getAttribute("aria-pressed")).toBe("true");
     expect(slot("s1").getAttribute("role")).toBe("button");
-    expect(btn("Аксолотль-Стрелок")).toBeDefined();
+    expect(btn("Стрелок")).toBeDefined();
   });
 
   it("клик по башне — улучшение с серверной ценой из казны; максимальный уровень блокирует кнопку", async () => {
     render(makeTd());
     click(slot("s3"));
     const up = btn("Улучшить")!;
-    expect(up.textContent).toContain("Улучшить · 12🪙");
+    expect(up.textContent).toContain("Улучшить · 12");
     click(up);
     await flush();
     expect(actions.upgrade).toHaveBeenCalledWith("s3", 1);
@@ -110,7 +112,7 @@ describe("TowerDefense: показывает серверное состояни
     expect(actions.start).toHaveBeenCalledWith("camp");
     render(makeTd({ round: makeTdRound() }));
     expect(btn("Начать раунд")).toBeUndefined();
-    expect(host.textContent).toContain("волна 1/2");
+    expect(host.textContent).toContain("Волна 1 из 2");
   });
 
   it("враги и здоровье базы — ровно из присланного состояния; canvas получает каждый новый раунд", () => {
@@ -195,102 +197,106 @@ describe("TowerDefense: показывает серверное состояни
     expect(tw("s3").getAttribute("data-haste")).toBe("false");
   });
 
-  it("командный режим: соперник, его казна, база и результат дуэли", () => {
+  it("командный режим, защита: роль видна крупно, своё поле, башни и усиления; томатов и дебаффов нет", () => {
     render(makeTd({
-      mode: "teams", team: "A",
-      rival: { team: "B", towers: 3, treasuryCoins: 17, round: makeTdRound({ team: "B", hp: 62, hpMax: 100 }) },
-      duel: { stageId: "camp", winner: "A", scores: { A: 1090, B: 0 }, roundNo: 1 },
+      mode: "teams", team: "A", role: "defense", defender: "A", round: makeTdRound({ team: "A", hp: 62, hpMax: 100 }),
+      rival: { team: "B", towers: 0, treasuryCoins: 17, round: null },
+      duel: { stageId: "camp", winner: "A", scores: { A: 62, B: 3 }, roundNo: 1 },
     }));
-    expect(host.textContent).toContain("Соперник · команда B");
-    expect(host.textContent).toContain("башен: 3");
-    expect(host.textContent).toContain("казна 17🪙");
-    expect(host.textContent).toContain("база 62/100");
-    expect(host.querySelector('[aria-label="Здоровье базы команды B"]')!.getAttribute("aria-valuenow")).toBe("62");
+    expect(host.querySelector('[data-testid="td-role"]')!.textContent).toContain("Вы в обороне");
+    expect(host.querySelector('[aria-label="Здоровье базы"]')!.getAttribute("aria-valuenow")).toBe("62");
+    expect(btn("Ускорить")).toBeDefined();
+    expect(btn("Черри")).toBeUndefined();
+    expect(btn("Замедлить")).toBeUndefined();
     expect(host.textContent).toContain("Дуэль выиграла ваша команда");
-    expect(host.textContent).toContain("A 1090 : B 0");
-    render(makeTd({ mode: "teams", team: "B", rival: { team: "A", towers: 1, treasuryCoins: 0, round: null }, duel: { stageId: "camp", winner: "A", scores: {}, roundNo: 1 } }));
+  });
+
+  it("командный режим, атака: поле защиты с её башнями только для просмотра; томаты и дебаффы", async () => {
+    const tower = { slot: "s3", type: "arrow" as const, level: 2, ownerId: "u2", ownerName: "Аня" };
+    render(makeTd({
+      mode: "teams", team: "B", role: "attack", defender: "A", towers: [],
+      rival: { team: "A", towers: 1, towerList: [tower], treasuryCoins: 0, round: makeTdRound({ team: "A", hp: 50, hpMax: 100 }) },
+      duel: { stageId: "camp", winner: "A", scores: {}, roundNo: 1 },
+    }));
+    expect(host.querySelector('[data-testid="td-role"]')!.textContent).toContain("Вы в атаке");
+    expect(host.querySelector('[data-testid="td-role"]')!.textContent).toContain("команды A");
+    expect(slot("s3").querySelector('[data-testid="tower"]')!.getAttribute("data-level")).toBe("2");
+    expect(slot("s1").getAttribute("role")).toBeNull(); // на чужом поле не строят
+    click(slot("s1"));
+    expect(btn("Стрелок")).toBeUndefined();
+    expect(host.querySelector('[aria-label="Здоровье базы команды A"]')!.getAttribute("aria-valuenow")).toBe("50");
+    expect(btn("Ускорить")).toBeUndefined();
+    click(btn("Черри")!);
+    await flush();
+    expect(actions.sendUnit).toHaveBeenCalledWith("cherry");
     expect(host.textContent).toContain("Дуэль выиграла команда A");
+  });
+
+  it("баннер посреди поля: событие сервера и новая волна", () => {
+    act(() => { root.render(<TowerDefense td={makeTd({ round: makeTdRound({ wave: 1, waves: 3 }) })} actions={actions} fx={{ id: 1, title: "Томаты идут!", sub: "Соперник выпустил: Черри", tone: "attack", icon: "tomato" }} />); });
+    expect(host.querySelector('[data-testid="td-banner"]')!.textContent).toContain("Томаты идут!");
+    act(() => { root.render(<TowerDefense td={makeTd({ round: makeTdRound({ wave: 2, waves: 3 }) })} actions={actions} fx={{ id: 1, title: "Томаты идут!", tone: "attack", icon: "tomato" }} />); });
+    // старый баннер ещё может доигрывать исчезновение — новый появляется рядом
+    expect([...host.querySelectorAll('[data-testid="td-banner"]')].some((b) => b.textContent?.includes("Волна 2"))).toBe(true);
   });
 });
 
 describe("TowerDefense: штурм и поддержка", () => {
   it("общий режим: подкрепление волны только в идущий раунд; цена из казны; клик — намерение на сервер", async () => {
     render(makeTd());
-    expect(btn("Черри · 2🪙")!.disabled).toBe(true); // раунда нет
-    expect(host.textContent).toContain("только в идущий раунд");
+    expect(btn("Черри")!.disabled).toBe(true); // раунда нет
+    expect(host.textContent).toContain("Подкрепление — во время раунда");
 
     render(makeTd({ treasuryCoins: 20, round: makeTdRound() }));
-    const cherry = btn("Черри · 2🪙")!;
+    const cherry = btn("Черри")!;
+    expect(cherry.textContent).toBe("Черри2");
     expect(cherry.disabled).toBe(false);
-    expect(btn("Дредноут · 25🪙")!.disabled).toBe(true); // 25 > 20
+    expect(btn("Дредноут")!.disabled).toBe(true); // 25 > 20
     click(cherry);
     await flush();
     expect(actions.sendUnit).toHaveBeenCalledWith("cherry");
   });
 
-  it("общий режим: свои заклинания работают в раунде, атакующие — заблокированы с подсказкой", async () => {
+  it("общий режим: свои заклинания работают в раунде, атакующих нет", async () => {
     render(makeTd({ round: makeTdRound() }));
-    const haste = btn("Ускорить своих · 10🪙")!;
+    const haste = btn("Ускорить")!;
     expect(haste.disabled).toBe(false);
-    expect(btn("Щит базы · 12🪙")!.disabled).toBe(false);
-    for (const label of ["Замедлить башни врага · 10🪙", "Заморозить башню · 14🪙", "Ярость томатов · 12🪙"]) expect(btn(label)!.disabled).toBe(true);
-    expect(host.querySelector('[data-testid="spell-hint"]')!.textContent).toContain("соперника нет");
+    expect(btn("Щит базы")!.disabled).toBe(false);
+    for (const label of ["Замедлить", "Заморозить", "Ярость"]) expect(btn(label)).toBeUndefined();
     click(haste);
     await flush();
     expect(actions.castSpell).toHaveBeenCalledWith("haste");
 
     render(makeTd()); // без раунда — и свои недоступны
-    expect(btn("Ускорить своих · 10🪙")!.disabled).toBe(true);
+    expect(btn("Ускорить")!.disabled).toBe(true);
   });
 
-  it("команды: наёмники ждут старта соперника; в его бою — атакующие заклинания; после его раунда — нельзя", async () => {
-    const teams = (rivalRound: ReturnType<typeof makeTdRound> | null, over: Partial<TdView> = {}) =>
-      makeTd({ mode: "teams", team: "A", rival: { team: "B", towers: 2, treasuryCoins: 5, round: rivalRound }, ...over });
+  it("атака: томаты ждут старта раунда защиты; в бою — дебаффы; после раунда — нельзя", async () => {
+    const attack = (rivalRound: ReturnType<typeof makeTdRound> | null, over: Partial<TdView> = {}) =>
+      makeTd({ mode: "teams", team: "B", role: "attack", defender: "A", rival: { team: "A", towers: 2, towerList: [], treasuryCoins: 5, round: rivalRound }, ...over });
 
-    render(teams(null));
-    expect(btn("Спелый · 5🪙")!.disabled).toBe(false);
-    expect(host.querySelector('[data-testid="merc-hint"]')!.textContent).toContain("ещё не начала раунд");
-    expect(btn("Замедлить башни врага · 10🪙")!.disabled).toBe(true);
+    render(attack(null));
+    expect(btn("Спелый")!.disabled).toBe(false);
+    expect(host.textContent).toContain("Томаты выйдут, когда начнётся раунд");
+    expect(btn("Замедлить")!.disabled).toBe(true);
+    expect(btn("Начать атаку")).toBeDefined();
 
-    render(teams(makeTdRound({ team: "B" })));
-    const slow = btn("Замедлить башни врага · 10🪙")!;
+    render(attack(makeTdRound({ team: "A" })));
+    const slow = btn("Замедлить")!;
     expect(slow.disabled).toBe(false);
     click(slow);
     await flush();
     expect(actions.castSpell).toHaveBeenCalledWith("slow_towers");
-    click(btn("Броне-томат · 12🪙")!);
+    click(btn("Броня")!);
     await flush();
     expect(actions.sendUnit).toHaveBeenCalledWith("armored");
 
-    render(teams(makeTdRound({ team: "B", status: "lost", hp: 0 })));
-    expect(btn("Черри · 2🪙")!.disabled).toBe(true);
-    expect(btn("Заморозить башню · 14🪙")!.disabled).toBe(true);
-    expect(host.querySelector('[data-testid="merc-hint"]')!.textContent).toContain("закончил раунд");
+    render(attack(makeTdRound({ team: "A", status: "lost", hp: 0 })));
+    expect(btn("Черри")!.disabled).toBe(true);
+    expect(btn("Заморозить")!.disabled).toBe(true);
+    expect(host.querySelector('[role="status"]')!.textContent).toContain("База взята");
 
-    render(teams(makeTdRound({ team: "B" }), { treasuryCoins: 9 }));
-    expect(btn("Замедлить башни врага · 10🪙")!.disabled).toBe(true); // казна 9 < 10
-  });
-
-  it("реванш: кнопка при available, бонус контратаки; иначе — причина от сервера", async () => {
-    const finished = makeTdRound({ team: "A", status: "won", stageId: "forest" });
-    render(makeTd({
-      mode: "teams", team: "A", round: finished,
-      rival: { team: "B", towers: 1, treasuryCoins: 0, round: makeTdRound({ team: "B", status: "lost", hp: 0 }) },
-      rematch: { available: true, reason: null, roundNo: 2, counterattackCoins: 40, bonusTeam: "B" },
-    }));
-    const rematch = btn("Смена ролей / Реванш (Раунд 2)")!;
-    expect(rematch.disabled).toBe(false);
-    expect(host.textContent).toContain("команда B получит +40🪙");
-    click(rematch);
-    await flush();
-    expect(actions.rematch).toHaveBeenCalledWith("forest");
-
-    render(makeTd({ round: makeTdRound({ status: "won" }), rematch: { available: false, reason: "соперник ещё в бою", roundNo: 1, counterattackCoins: 40, bonusTeam: "shared" } }));
-    expect(btn("Смена ролей")).toBeUndefined();
-    expect(host.querySelector('[data-testid="rematch-reason"]')!.textContent).toContain("соперник ещё в бою");
-    expect(host.textContent).toContain("это вам");
-
-    render(makeTd({ round: makeTdRound({ roundNo: 2 }) }));
-    expect(host.textContent).toContain("Раунд 2 · реванш");
+    render(attack(makeTdRound({ team: "A" }), { treasuryCoins: 9 }));
+    expect(btn("Замедлить")!.disabled).toBe(true); // казна 9 < 10
   });
 });

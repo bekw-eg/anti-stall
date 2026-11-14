@@ -112,7 +112,6 @@ export function makeTd(over: Partial<TdView> = {}): TdView {
       { id: "enrage_horde", title: "Ярость Томатов", description: "Враги соперника быстрее", cost: 12, duration: 5, target: "rival" },
     ],
     mercCooldownSec: 0.8,
-    rematch: { available: false, reason: null, roundNo: 1, counterattackCoins: 40, bonusTeam: null },
     ...over,
   };
 }

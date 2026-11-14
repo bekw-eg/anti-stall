@@ -19,7 +19,8 @@ const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/;
  *  - результат раунда, награды, победитель дуэли A/B и узлы Road Map определяются здесь и выдаются один раз;
  *  - раунд принадлежит перерыву: когда перерыв заканчивается, раунд корректно закрывается («expired»),
  *    учёба важнее игры. Башни команды сохраняются для следующих перерывов.
- *  - за перерыв у команды раунд 1 и (по общему решению) реванш — раунд 2.
+ *  - командный режим: на перерыве один раунд; одна команда только обороняется (башни, свои заклинания),
+ *    другая только атакует её поле (томаты-наёмники, заклинания против защиты). Роли меняются каждый цикл.
  */
 export function createTd(ctx, game) {
   const { db, clock, config } = ctx;
@@ -37,6 +38,24 @@ export function createTd(ctx, game) {
   const teamKeys = (room) => (room.mode === 'teams' ? ['A', 'B'] : ['shared']);
   const rivalOf = (room, team) => (room.mode === 'teams' ? (team === 'A' ? 'B' : 'A') : null);
   const cycleOf = (room) => room.cycle_id ?? '-';
+  const teamSize = (room, team) => db.get('SELECT COUNT(*) c FROM room_members WHERE room_id = ? AND team_key = ? AND left_at IS NULL', room.id, team).c;
+
+  /**
+   * Команда защиты этого перерыва (только teams): в нечётных циклах — A, в чётных — B.
+   * Если в ней никого нет, обороняется другая — иначе играть было бы некому.
+   */
+  function defenderOf(room) {
+    if (room.mode !== 'teams') return null;
+    const preferred = (room.cycle_no ?? 1) % 2 === 1 ? 'A' : 'B';
+    const other = preferred === 'A' ? 'B' : 'A';
+    return !teamSize(room, preferred) && teamSize(room, other) ? other : preferred;
+  }
+  /** Роль команды на этом перерыве: 'defense' | 'attack' (общий режим — null, доступно всё). */
+  const roleOf = (room, team) => { const d = defenderOf(room); return d ? (team === d ? 'defense' : 'attack') : null; };
+  const requireRole = (room, team, role, message) => {
+    const r = roleOf(room, team);
+    if (r && r !== role) throw E.forbidden('WRONG_ROLE', message, { role: r });
+  };
 
   /** Параметры базы и башен команды из улучшений её игроков (те же «Крепкие стены» и «Усиленные башни»). */
   function teamStats(room, team) {
@@ -114,50 +133,24 @@ export function createTd(ctx, game) {
     ? db.get('SELECT * FROM td_duels WHERE room_id = ? AND cycle_id = ? ORDER BY round_no DESC LIMIT 1', room.id, room.cycle_id)
     : null);
 
-  /** «Контратака» достаётся команде, проигравшей дуэль раунда 1 этого перерыва (ничья — никому). */
-  function counterattackTeam(room) {
-    if (room.mode !== 'teams' || !room.cycle_id) return null;
-    const d = db.get('SELECT winner FROM td_duels WHERE room_id = ? AND cycle_id = ? AND round_no = 1', room.id, room.cycle_id);
-    return d && (d.winner === 'A' || d.winner === 'B') ? (d.winner === 'A' ? 'B' : 'A') : null;
-  }
-
-  /**
-   * Можно ли сейчас начать реванш (раунд 2). Возвращает null или { status, code, message } —
-   * то же самое показывается в view.rematch.reason и бросается из rematch().
-   */
-  function rematchBlocker(room, team) {
-    if (room.phase !== 'break') return { status: 409, code: 'WRONG_PHASE', message: 'Реванш доступен только на перерыве' };
-    const cycle = cycleOf(room);
-    if (db.get('SELECT 1 x FROM td_rounds WHERE room_id = ? AND cycle_id = ? AND round_no >= 2', room.id, cycle)) {
-      return { status: 409, code: 'REMATCH_USED', message: 'Реванш в этом перерыве уже был' };
-    }
-    const own = cycleRound(room, team, 1);
-    if (!own) return { status: 409, code: 'NO_ROUND', message: 'Сначала сыграйте раунд 1' };
-    if (own.status === 'running') return { status: 409, code: 'ROUND_IN_PROGRESS', message: 'Дождитесь конца текущего раунда' };
-    if (db.get("SELECT 1 x FROM td_rounds WHERE room_id = ? AND cycle_id = ? AND round_no = 1 AND status = 'running'", room.id, cycle)) {
-      return { status: 409, code: 'ROUND_IN_PROGRESS', message: 'Соперник ещё не доиграл раунд 1' };
-    }
-    if ((room.phase_ends_at - clock.now()) / 1000 < cfg.minRemainingSec) return { status: 409, code: 'TOO_LATE', message: 'До конца перерыва слишком мало времени для реванша' };
-    return null;
-  }
-
   /** Полное состояние мини-игры для игрока (то же отдаёт REST и подписка по WS). */
   function view(room, userId) {
     const team = teamOf(room, userId);
     const stats = teamStats(room, team);
+    const role = roleOf(room, team);
+    // этапы — той команды, чьё поле в бою (атакующие выбирают этап для поля защиты)
+    const field = role === 'attack' ? rivalOf(room, team) : team;
     const stages = TD.stages.map((s) => ({
-      id: s.id, title: s.title, node: s.node, nodeTitle: nodeTitle(s.node), unlocked: stageUnlocked(room, team, s),
-      reward: s.reward, waves: s.waves.length, enemies: buildSchedule(s).length, hpScale: s.hpScale, ...bestOf(room, team, s.id),
+      id: s.id, title: s.title, node: s.node, nodeTitle: nodeTitle(s.node), unlocked: stageUnlocked(room, field, s),
+      reward: s.reward, waves: s.waves.length, enemies: buildSchedule(s).length, hpScale: s.hpScale, ...bestOf(room, field, s.id),
     }));
     const unlockedIdx = stages.map((s, i) => (s.unlocked ? i : -1)).filter((i) => i >= 0);
     const rival = rivalOf(room, team);
     const duel = latestDuel(room);
     const u = db.get('SELECT coins FROM users WHERE id = ?', userId);
-    const blocker = rematchBlocker(room, team);
-    const ownLatest = room.cycle_id ? db.get('SELECT MAX(round_no) n FROM td_rounds WHERE room_id = ? AND team_key = ? AND cycle_id = ?', room.id, team, room.cycle_id).n : null;
     return {
       enabled: room.phase === 'break', // вне перерыва игра закрыта
-      phase: room.phase, mode: room.mode, team, breakEndsAt: room.phase === 'break' ? room.phase_ends_at : null, serverTime: clock.now(),
+      phase: room.phase, mode: room.mode, team, role, defender: defenderOf(room), breakEndsAt: room.phase === 'break' ? room.phase_ends_at : null, serverTime: clock.now(),
       map: { ...TD.map, pathLength: PATH_LENGTH },
       towerTypes: Object.values(TD.towers).map((d) => ({ ...d, upgradeCosts: [TD.upgradeCost(d, 2), TD.upgradeCost(d, 3)] })),
       enemyTypes: Object.values(TD.enemies),
@@ -167,18 +160,13 @@ export function createTd(ctx, game) {
       base: stats,
       towers: towersOf(room, team),
       round: roundView(roundOf(room, team), room),
-      rival: rival ? { team: rival, towers: towersOf(room, rival).length, treasuryCoins: treasuryOf(room, rival), round: roundView(roundOf(room, rival), room) } : null,
+      rival: rival ? { team: rival, towers: towersOf(room, rival).length, towerList: towersOf(room, rival), treasuryCoins: treasuryOf(room, rival), round: roundView(roundOf(room, rival), room) } : null,
       duel: duel ? { stageId: duel.stage_id, winner: duel.winner, scores: JSON.parse(duel.scores), roundNo: duel.round_no } : null,
       me: { userId, coins: u.coins, participated: participantsOf(room.id, team, cycleOf(room)).includes(userId) },
       treasuryCoins: treasuryOf(room, team),
       mercenaries: Object.values(TD.mercenaries).map(({ id, title, description, cost, hp, speed, damage, armor }) => ({ id, title, description, cost, hp, speed, damage, armor })),
       spells: Object.values(TD.spells).map(({ id, title, description, cost, duration, target }) => ({ id, title, description, cost, duration, target })),
       mercCooldownSec: TD.mercCooldownSec,
-      rematch: {
-        available: !blocker, reason: blocker ? blocker.message : null,
-        roundNo: ownLatest ?? 0, // номер последнего раунда команды в этом перерыве (0 — ещё не играли)
-        counterattackCoins: cfg.counterattackCoins, bonusTeam: counterattackTeam(room),
-      },
     };
   }
 
@@ -271,34 +259,25 @@ export function createTd(ctx, game) {
     return reward;
   }
 
-  const duelScore = (r) => { const x = JSON.parse(r.result); return r.status === 'won' ? 1000 + x.hpLeft : r.status === 'expired' ? x.hpLeft : 0; };
-
   /**
-   * Дуэль A/B считается отдельно для каждого номера раунда. Раунд 1 — обе команды сыграли один и тот же этап
-   * (как раньше); реванш (раунд 2) сравнивается при любых этапах.
+   * Итог раунда в командном режиме: поле принадлежит защите. База выстояла (победа или конец перерыва) — победила защита,
+   * база пала — атака. Бонус за дуэль получают только участники победившей стороны, один раз.
    */
   function resolveDuel(row, room) {
     if (room.mode !== 'teams') return;
+    const defender = row.team_key;
+    const attacker = rivalOf(room, defender);
+    const r = JSON.parse(row.result);
+    const winner = row.status === 'lost' ? attacker : defender;
+    const scores = { [defender]: r.hpLeft, [attacker]: r.leaked };
     const roundNo = row.round_no ?? 1;
-    const other = db.get(
-      `SELECT * FROM td_rounds WHERE room_id = ? AND cycle_id = ? AND team_key != ? AND round_no = ? AND status != 'running'${roundNo === 1 ? ' AND stage_id = ?' : ''}`,
-      ...[room.id, row.cycle_id, row.team_key, roundNo, ...(roundNo === 1 ? [row.stage_id] : [])],
-    );
-    if (!other) return;
-    const scores = { [row.team_key]: duelScore(row), [other.team_key]: duelScore(other) };
-    const [a, b] = [scores.A, scores.B];
-    const winner = a === b ? 'draw' : a > b ? 'A' : 'B';
     const ins = db.run('INSERT OR IGNORE INTO td_duels(room_id, cycle_id, round_no, stage_id, winner, scores, decided_at) VALUES (?,?,?,?,?,?,?)', room.id, row.cycle_id, roundNo, row.stage_id, winner, JSON.stringify(scores), clock.now());
     if (ins.changes === 0) return;
-    const winners = winner === 'draw' ? (a > 0 ? ['A', 'B'] : []) : [winner];
-    for (const team of winners) {
-      for (const uid of participantsOf(room.id, team, row.cycle_id)) {
-        // тот же суточный потолок, что и у раундов: иначе дуэли (достаточно нажать «старт») фармятся без лимита
-        if (!underDailyCap(room, uid, 'td_duel')) continue;
-        game.grant(uid, `td:duel:${room.id}:${row.cycle_id}:r${roundNo}:${uid}`, 'td_duel', cfg.duelReward, { roomId: room.id, team, roundNo });
-      }
+    for (const uid of participantsOf(room.id, winner, row.cycle_id)) {
+      if (!underDailyCap(room, uid, 'td_duel')) continue;
+      game.grant(uid, `td:duel:${room.id}:${row.cycle_id}:r${roundNo}:${uid}`, 'td_duel', cfg.duelReward, { roomId: room.id, team: winner, roundNo });
     }
-    db.emit({ scope: 'room', roomId: room.id, type: 'td_duel_result', data: { stageId: row.stage_id, roundNo, winner, scores } });
+    db.emit({ scope: 'room', roomId: room.id, type: 'td_duel_result', data: { stageId: row.stage_id, roundNo, winner, scores, defender, attacker } });
   }
 
   /** Вызывается из rooms.advance: продвигает активные раунды комнаты. */
@@ -390,17 +369,19 @@ export function createTd(ctx, game) {
     return db.tx(() => {
       const { room, team } = context(user, roomKey);
       requireBreak(room, user);
-      if (db.get('SELECT 1 x FROM td_rounds WHERE room_id = ? AND team_key = ? AND cycle_id = ?', room.id, team, room.cycle_id)) {
-        throw E.conflict('ROUND_EXISTS', 'Раунд вашей команды в этот перерыв уже был');
+      // в командном режиме раунд идёт на поле защиты; начать его может любая сторона
+      const field = defenderOf(room) ?? team;
+      if (db.get('SELECT 1 x FROM td_rounds WHERE room_id = ? AND team_key = ? AND cycle_id = ?', room.id, field, room.cycle_id)) {
+        throw E.conflict('ROUND_EXISTS', 'Раунд в этот перерыв уже был');
       }
-      const stage = b.stageId === undefined ? furthestStage(room, team) : stageDef(reqString(b.stageId, 'stageId', { max: 20 }));
+      const stage = b.stageId === undefined ? furthestStage(room, field) : stageDef(reqString(b.stageId, 'stageId', { max: 20 }));
       if (!stage) throw E.notFound('STAGE_NOT_FOUND', 'Такого этапа нет');
-      if (!stageUnlocked(room, team, stage)) throw E.forbidden('STAGE_LOCKED', `Этап откроется, когда команда пройдёт «${nodeTitle(stage.node)}» на карте`, { node: stage.node });
+      if (!stageUnlocked(room, field, stage)) throw E.forbidden('STAGE_LOCKED', `Этап откроется, когда команда пройдёт «${nodeTitle(stage.node)}» на карте`, { node: stage.node });
       if ((room.phase_ends_at - clock.now()) / 1000 < cfg.minRemainingSec) throw E.conflict('TOO_LATE', 'До конца перерыва слишком мало времени для раунда');
-      game.ensureTeamProgress(room.id, team);
-      createRound(room, team, stage, 1, user.id);
+      game.ensureTeamProgress(room.id, field);
+      createRound(room, field, stage, 1, user.id);
       recordAction(room, team, user.id, 'start');
-      emitState(room, team);
+      emitState(room, field);
       return view(room, user.id);
     });
   }
@@ -422,6 +403,7 @@ export function createTd(ctx, game) {
       if (replay) return replay;
       const { room, team } = context(user, roomKey);
       requireBreak(room, user);
+      requireRole(room, team, 'defense', 'Ваша команда сейчас в атаке: башни строит защита');
       const slot = slotById(slotId);
       if (!slot) throw E.badRequest('INVALID_SLOT', 'Такого места под башню нет', { slotId });
       const def = catalogEntry(TD.towers, type);
@@ -449,6 +431,7 @@ export function createTd(ctx, game) {
       if (replay) return replay;
       const { room, team } = context(user, roomKey);
       requireBreak(room, user);
+      requireRole(room, team, 'defense', 'Ваша команда сейчас в атаке: башни улучшает защита');
       const tower = db.get('SELECT * FROM td_towers WHERE room_id = ? AND team_key = ? AND slot_id = ?', room.id, team, slotId);
       if (!tower) throw E.notFound('NO_TOWER', 'На этом месте нет башни');
       if (b.expectedLevel !== undefined && b.expectedLevel !== tower.level) throw E.conflict('STALE_LEVEL', 'Уровень башни уже изменился', { currentLevel: tower.level });
@@ -492,6 +475,7 @@ export function createTd(ctx, game) {
       if (replay) return replay;
       const { room, team } = context(user, roomKey);
       requireBreak(room, user);
+      requireRole(room, team, 'attack', 'Ваша команда сейчас в обороне: томатов отправляет атака');
       // кулдаун на команду: наёмников нельзя «заливать» десятками в секунду
       const last = db.get("SELECT MAX(created_at) at FROM td_actions WHERE room_id = ? AND team_key = ? AND kind = 'send_unit'", room.id, team).at;
       const cooldownMs = Math.round(TD.mercCooldownSec * 1000);
@@ -540,6 +524,8 @@ export function createTd(ctx, game) {
       requireBreak(room, user);
       const onRival = def.target === 'rival';
       if (onRival && room.mode !== 'teams') throw E.badRequest('NO_RIVAL', 'Соперника нет: в общем режиме доступны только свои заклинания');
+      if (onRival) requireRole(room, team, 'attack', 'Ваша команда в обороне: заклинания против соперника — у атаки');
+      else requireRole(room, team, 'defense', 'Ваша команда в атаке: усиливать оборону может только защита');
       const target = onRival ? rivalOf(room, team) : team;
       const row = liveRound(room, target);
       if (!row) {
@@ -567,40 +553,5 @@ export function createTd(ctx, game) {
     });
   }
 
-  /**
-   * Реванш: раунд 2 в том же перерыве для каждой команды, у которой закончился раунд 1.
-   * Проигравшая дуэль раунда 1 команда получает «Контратаку» в казну (один раз: реванш в перерыве единственный).
-   * stageId — этап для команды инициатора; остальные играют свой самый дальний открытый этап.
-   */
-  function rematch(user, roomKey, body) {
-    const b = reqObject(body ?? {});
-    return db.tx(() => {
-      const { room, team } = context(user, roomKey);
-      requireBreak(room, user);
-      const blocker = rematchBlocker(room, team);
-      if (blocker) throw E.conflict(blocker.code, blocker.message);
-      let own = furthestStage(room, team);
-      if (b.stageId !== undefined && b.stageId !== null) {
-        own = stageDef(reqString(b.stageId, 'stageId', { max: 20 }));
-        if (!own) throw E.notFound('STAGE_NOT_FOUND', 'Такого этапа нет');
-        if (!stageUnlocked(room, team, own)) throw E.forbidden('STAGE_LOCKED', `Этап откроется, когда команда пройдёт «${nodeTitle(own.node)}» на карте`, { node: own.node });
-      }
-      const bonusTeam = counterattackTeam(room);
-      if (bonusTeam) game.creditTreasury(room.id, bonusTeam, cfg.counterattackCoins);
-      const teams = teamKeys(room).filter((k) => cycleRound(room, k, 1));
-      for (const k of teams) {
-        game.ensureTeamProgress(room.id, k);
-        createRound(room, k, k === team ? own : furthestStage(room, k), 2, user.id);
-      }
-      recordAction(room, team, user.id, 'rematch', { result: { teams, bonusTeam } });
-      db.emit({
-        scope: 'room', roomId: room.id, type: 'td_rematch_started',
-        data: { roundNo: 2, bonusTeam, counterattackCoins: bonusTeam ? cfg.counterattackCoins : 0, startedBy: user.id, teams },
-      });
-      for (const k of teamKeys(room)) emitState(room, k);
-      return view(room, user.id);
-    });
-  }
-
-  return { setRooms: (r) => { rooms = r; }, view, get, join, start, build, upgrade, sendUnit, castSpell, rematch, tick, closeRounds, towersOf, teamStats };
+  return { setRooms: (r) => { rooms = r; }, view, get, join, start, build, upgrade, sendUnit, castSpell, tick, closeRounds, towersOf, teamStats };
 }

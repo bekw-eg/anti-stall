@@ -81,8 +81,8 @@ const ROUND_KEYS: (keyof TdRound)[] = [
   "spawned", "total", "hp", "hpMax", "kills", "leaked", "enemies", "shots", "effects", "result",
 ];
 const VIEW_KEYS: (keyof TdView)[] = [
-  "enabled", "phase", "mode", "team", "breakEndsAt", "serverTime", "map", "towerTypes", "enemyTypes", "maxLevel", "stages", "defaultStageId",
-  "base", "towers", "round", "rival", "duel", "me", "treasuryCoins", "mercenaries", "spells", "mercCooldownSec", "rematch",
+  "enabled", "phase", "mode", "team", "role", "defender", "breakEndsAt", "serverTime", "map", "towerTypes", "enemyTypes", "maxLevel", "stages", "defaultStageId",
+  "base", "towers", "round", "rival", "duel", "me", "treasuryCoins", "mercenaries", "spells", "mercCooldownSec",
 ];
 const ROADMAP_KEYS: (keyof Roadmap)[] = [
   "roadmapId", "title", "mode", "teamKey", "points", "goal", "focusPoints", "treasuryCoins", "completed", "finished", "completedAt", "winner",
@@ -177,7 +177,7 @@ describe("клиент ↔ backend: Tower Defense", () => {
     expect(view.mercenaries.map((m) => [m.id, m.cost])).toEqual([["cherry", 2], ["ripe", 5], ["armored", 12], ["king", 25]]);
     expect(view.spells.map((s) => [s.id, s.target])).toEqual([["haste", "self"], ["repair", "self"], ["slow_towers", "rival"], ["disable_tower", "rival"], ["enrage_horde", "rival"]]);
     expect(view.rival).toBeNull();
-    expect(view.rematch).toEqual({ available: false, reason: "Сначала сыграйте раунд 1", roundNo: 0, counterattackCoins: 40, bonusTeam: null });
+    expect([view.role, view.defender]).toEqual([null, null]); // общий режим: ролей нет
     const personal = (await lotti.progress()).coins;
 
     const built = await lotti.tdBuild(id, "s1", "arrow", "req-build-s1-0001");
@@ -233,13 +233,8 @@ describe("клиент ↔ backend: Tower Defense", () => {
     // клиент не может сам закрыть раунд или назначить результат
     expect((await fail(lotti.request("POST", `/api/rooms/${id}/td/finish`, { status: "won" }))).status).toBe(404);
     expect((await fail(lotti.tdStart(id, "forest"))).code).toBe("ROUND_EXISTS");
-
-    // реванш: раунд 2 того же перерыва, второй раз — нельзя
-    expect(done.rematch.available).toBe(true);
-    const re = await anya.tdRematch(id, "forest");
-    expect([re.round?.roundNo, re.round?.status, re.round?.stageId]).toEqual([2, "running", "forest"]);
-    expect(re.rematch).toMatchObject({ available: false, roundNo: 2, bonusTeam: null });
-    expect((await fail(lotti.tdRematch(id))).code).toBe("REMATCH_USED");
+    // реванша в игре нет
+    expect((await fail(lotti.request("POST", `/api/rooms/${id}/td/rematch`, {}))).status).toBe(404);
   }, LONG);
 
   it("WebSocket присылает состояние игры команды (с казной); после перерыва раунд закрыт сервером", async () => {
@@ -310,14 +305,14 @@ describe("клиент ↔ backend: Team A/B", () => {
     expect((await fail(lotti.setTeam(id, "B"))).code).toBe("WRONG_PHASE"); // во время сессии — нет
   }, LONG);
 
-  it("Tower Wars: наёмник ждёт старта соперника, наёмники и заклинания по WS, чужая казна неприкосновенна, дуэль и реванш с «Контратакой»", async () => {
+  it("Tower Wars: защита строит, атака шлёт томатов и дебаффы на её поле; наёмник ждёт старта; чужая казна неприкосновенна; дуэль", async () => {
     const lotti = await player("Война-A");
     const anya = await player("Война-B");
     const snap = await lotti.createRoom({ name: "Tower Wars", focusMinutes: 25, breakMinutes: 5, teamMode: true });
     await anya.joinByCode(snap.room.code);
     const id = snap.room.id;
     const events: ServerEvent[] = [];
-    const sock = anya.connect(); // Аня — команда B: смотрит, что прилетает от соперника
+    const sock = lotti.connect(); // Лотти — команда A (защита): смотрит, что прилетает от атаки
     sock.on("*", (e) => events.push(e));
     sock.subscribe(id);
     await until(() => events.some((e) => e.type === "room_state"));
@@ -326,67 +321,60 @@ describe("клиент ↔ backend: Team A/B", () => {
     await advance(25 * 60_000 + 1000, [lotti, anya]);
     const va = await lotti.td(id);
     const vb = await anya.td(id);
-    expect([va.team, va.treasuryCoins, vb.team, vb.treasuryCoins]).toEqual(["A", 50, "B", 50]);
-    expect(va.rival).toEqual({ team: "B", towers: 0, treasuryCoins: 50, round: null });
+    expect([va.team, va.role, va.treasuryCoins, vb.team, vb.role, vb.treasuryCoins]).toEqual(["A", "defense", 50, "B", "attack", 50]);
+    expect([va.defender, vb.defender]).toEqual(["A", "A"]);
+    expect(va.rival).toEqual({ team: "B", towers: 0, towerList: [], treasuryCoins: 50, round: null });
 
-    // B ещё не начал раунд: наёмник A ждёт его старта
-    const queued = await lotti.tdSendUnit(id, "cherry", req("war-unit"));
-    expect([queued.target, queued.queued, queued.treasuryCoins]).toEqual(["B", true, 48]);
+    // роли проверяет сервер
+    expect((await fail(anya.tdBuild(id, "s2", "arrow", req("war-build")))).code).toBe("WRONG_ROLE");
+    expect((await fail(lotti.tdSendUnit(id, "cherry", req("war-unit")))).code).toBe("WRONG_ROLE");
+
+    // раунд защиты ещё не начат: наёмник атаки ждёт старта
+    const queued = await anya.tdSendUnit(id, "cherry", req("war-unit"));
+    expect([queued.target, queued.queued, queued.treasuryCoins]).toEqual(["A", true, 48]);
     const sent = await until(() => events.find((e) => e.type === "td_unit_sent"));
-    expect(sent.data as TdUnitSentEvent).toEqual({ team: "A", target: "B", type: "cherry", queued: true, by: va.me.userId });
+    expect(sent.data as TdUnitSentEvent).toEqual({ team: "B", target: "A", type: "cherry", queued: true, by: vb.me.userId });
 
-    expect((await lotti.tdBuild(id, "s1", "arrow", req("war-build"))).treasuryCoins).toBe(33);
-    expect((await lotti.tdBuild(id, "s3", "arrow", req("war-build"))).treasuryCoins).toBe(18);
-    expect((await anya.td(id)).treasuryCoins).toBe(50); // покупки A не трогают казну B
-    // заклинание на соперника, пока он не в бою, — отказ без списания
-    expect((await fail(lotti.tdCastSpell(id, "slow_towers", req("war-spell")))).code).toBe("RIVAL_NOT_IN_BATTLE");
+    expect((await lotti.tdBuild(id, "s1", "arrow", req("war-build"))).treasuryCoins).toBe(35);
+    expect((await lotti.tdBuild(id, "s3", "arrow", req("war-build"))).treasuryCoins).toBe(20);
+    expect((await anya.td(id)).treasuryCoins).toBe(48); // покупки A не трогают казну B
+    expect((await anya.td(id)).rival?.towerList?.map((t) => t.slot)).toEqual(["s1", "s3"]); // атака видит башни защиты
+    // дебафф, пока защита не в бою, — отказ без списания
+    expect((await fail(anya.tdCastSpell(id, "slow_towers", req("war-spell")))).code).toBe("RIVAL_NOT_IN_BATTLE");
 
-    await anya.tdStart(id, "camp");
-    await lotti.tdStart(id, "camp");
+    await anya.tdStart(id, "camp"); // начать может и атака: раунд идёт на поле защиты
+    expect((await fail(lotti.tdStart(id, "camp"))).code).toBe("ROUND_EXISTS");
     await advance(1_000, [lotti, anya]);
-    const bRound = (await anya.td(id)).round!;
-    expect(bRound.enemies.some((e) => e.isMerc && e.type === "cherry")).toBe(true); // недоставленный наёмник вышел на поле B
+    const aRound = (await lotti.td(id)).round!;
+    expect(aRound.enemies.some((e) => e.isMerc && e.type === "cherry")).toBe(true); // недоставленный наёмник вышел на поле A
 
-    const ripe = await lotti.tdSendUnit(id, "ripe", req("war-unit"));
-    expect([ripe.target, ripe.queued, ripe.treasuryCoins]).toEqual(["B", false, 13]);
-    const slow = await lotti.tdCastSpell(id, "slow_towers", req("war-spell"));
-    expect([slow.target, slow.treasuryCoins]).toEqual(["B", 3]);
+    const ripe = await anya.tdSendUnit(id, "ripe", req("war-unit"));
+    expect([ripe.target, ripe.queued, ripe.treasuryCoins]).toEqual(["A", false, 43]);
+    const slow = await anya.tdCastSpell(id, "slow_towers", req("war-spell"));
+    expect([slow.target, slow.treasuryCoins]).toEqual(["A", 33]);
     const spell = await until(() => events.find((e) => e.type === "td_spell_cast"));
-    expect(spell.data as TdSpellCastEvent).toEqual({ team: "A", target: "B", spell: "slow_towers", targetSlot: null, by: va.me.userId });
-    // B отвечает своими деньгами; A не может заплатить больше, чем есть в казне
-    const enrage = await anya.tdCastSpell(id, "enrage_horde", req("war-spell"));
-    expect([enrage.target, enrage.treasuryCoins]).toEqual(["A", 38]);
-    await advance(1_000, [lotti, anya]);
-    const broke = await fail(lotti.tdSendUnit(id, "king", req("war-unit")));
-    expect([broke.status, broke.code, broke.details]).toEqual([409, "INSUFFICIENT_TEAM_FUNDS", { required: 25, treasuryCoins: 3 }]);
-    expect((await anya.td(id)).treasuryCoins).toBe(38);
+    expect(spell.data as TdSpellCastEvent).toEqual({ team: "B", target: "A", spell: "slow_towers", targetSlot: null, by: vb.me.userId });
+    // защита отвечает своими деньгами и не может заплатить больше, чем есть в казне
+    const haste = await lotti.tdCastSpell(id, "haste", req("war-spell"));
+    expect([haste.target, haste.treasuryCoins]).toEqual(["A", 10]);
+    const broke = await fail(lotti.tdBuild(id, "s5", "cannon", req("war-build")));
+    expect([broke.status, broke.code, broke.details]).toEqual([409, "INSUFFICIENT_TEAM_FUNDS", { required: 30, treasuryCoins: 10 }]);
+    expect((await anya.td(id)).treasuryCoins).toBe(33);
     // td_state обеих команд пришли по WS вместе с казной
-    expect(events.some((e) => e.type === "td_state" && (e.data as TdStateEvent).team === "A" && (e.data as TdStateEvent).treasuryCoins === 3)).toBe(true);
-    expect(events.some((e) => e.type === "td_state" && (e.data as TdStateEvent).team === "B" && (e.data as TdStateEvent).treasuryCoins === 38)).toBe(true);
+    await until(() => events.find((e) => e.type === "td_state" && (e.data as TdStateEvent).team === "B" && (e.data as TdStateEvent).treasuryCoins === 33));
+    expect(events.some((e) => e.type === "td_state" && (e.data as TdStateEvent).team === "A" && (e.data as TdStateEvent).treasuryCoins === 10)).toBe(true);
     const aView = await lotti.td(id);
-    expect(aView.round?.effects.map((e) => e.kind)).toEqual(["enrage_horde"]);
-    expect(aView.rival?.round?.effects.map((e) => e.kind)).toEqual(["slow_towers"]);
+    expect(aView.round?.effects.map((e) => e.kind).sort()).toEqual(["haste", "slow_towers"]);
+    expect((await anya.td(id)).rival?.round?.effects.map((e) => e.kind).sort()).toEqual(["haste", "slow_towers"]);
 
     await advance(70_000, [lotti, anya]);
     const [ra, rb] = await Promise.all([lotti.td(id), anya.td(id)]);
-    expect([ra.round?.status, rb.round?.status]).toEqual(["won", "lost"]);
+    const status = ra.round?.status;
+    expect(["won", "lost"]).toContain(status);
+    expect(rb.round).toBeNull(); // у атаки своего раунда нет
     expect(ra.duel).toEqual(rb.duel);
-    expect([ra.duel?.winner, ra.duel?.roundNo]).toEqual(["A", 1]);
-    const road = await anya.roadmap(id);
-    expect(road.teams.map((t) => [t.key, t.points, t.positionNodeId])).toEqual([["A", 1, "forest"], ["B", 0, "camp"]]);
-
-    // реванш: проигравшая дуэль B получает «Контратаку» и начинает раунд 2 для обеих команд
-    expect(rb.rematch).toMatchObject({ available: true, bonusTeam: "B", counterattackCoins: 40 });
-    const re = await anya.tdRematch(id);
-    expect([re.round?.roundNo, re.round?.status, re.treasuryCoins]).toEqual([2, "running", 78]);
-    expect(re.rival?.round?.roundNo).toBe(2);
-    const started = await until(() => events.find((e) => e.type === "td_rematch_started"));
-    expect(started.data).toMatchObject({ roundNo: 2, bonusTeam: "B", counterattackCoins: 40, teams: ["A", "B"] });
-    expect((await fail(lotti.tdRematch(id))).code).toBe("REMATCH_USED");
-    await advance(3 * 60_000, [lotti, anya]); // перерыв кончился: раунды 2 закрыты сервером
-    const after = await lotti.td(id);
-    expect(after.round?.status).not.toBe("running");
-    expect(after.duel?.roundNo).toBe(2);
+    expect([ra.duel?.winner, ra.duel?.roundNo]).toEqual([status === "won" ? "A" : "B", 1]);
+    expect((await fail(anya.request("POST", `/api/rooms/${id}/td/rematch`, {}))).status).toBe(404); // реванша нет
     sock.close();
   }, LONG);
 });

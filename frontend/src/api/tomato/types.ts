@@ -444,16 +444,6 @@ export interface TdSpellDef {
   target: "self" | "rival";
 }
 
-export interface TdRematch {
-  available: boolean;
-  /** почему реванш сейчас недоступен (текст сервера) */
-  reason: string | null;
-  roundNo: number;
-  counterattackCoins: number;
-  /** команда, которая получит «Контратаку» (проиграла дуэль раунда 1) */
-  bonusTeam: string | null;
-}
-
 export interface TdRound {
   id: string;
   team: string;
@@ -497,11 +487,17 @@ export interface TdStage {
   bestHpLeft: number | null;
 }
 
+export type TdRole = "defense" | "attack";
+
 export interface TdView {
   enabled: boolean;
   phase: string;
   mode: "shared" | "teams";
   team: string;
+  /** роль команды на этом перерыве (teams): защита строит башни, атака шлёт томатов на её поле; shared — null */
+  role?: TdRole | null;
+  /** команда, чьё поле в бою (teams) */
+  defender?: string | null;
   breakEndsAt: number | null;
   serverTime: number;
   map: { cols: number; rows: number; path: [number, number][]; slots: { id: string; x: number; y: number }[]; pathLength: number };
@@ -513,7 +509,7 @@ export interface TdView {
   base: { hpMax: number; damageMult: number; wallLevels: number; powerLevels: number };
   towers: TdTower[];
   round: TdRound | null;
-  rival: { team: string; towers: number; treasuryCoins: number; round: TdRound | null } | null;
+  rival: { team: string; towers: number; towerList?: TdTower[]; treasuryCoins: number; round: TdRound | null } | null;
   duel: { stageId: string; winner: "A" | "B" | "draw"; scores: Record<string, number>; roundNo: number } | null;
   /** личные монеты (магазин улучшений); башни и заклинания оплачивает казна команды */
   me: { userId: string; coins: number; participated: boolean };
@@ -522,7 +518,6 @@ export interface TdView {
   mercenaries: TdMercDef[];
   spells: TdSpellDef[];
   mercCooldownSec: number;
-  rematch: TdRematch;
 }
 
 /** Событие td_state: состояние игры одной команды */
@@ -549,4 +544,3 @@ export interface TdSpellResult {
 /** Данные событий Tower Wars (рассылаются всей комнате) */
 export interface TdUnitSentEvent { team: string; target: string; type: MercType; queued: boolean; by: string }
 export interface TdSpellCastEvent { team: string; target: string; spell: SpellId; targetSlot: string | null; by: string }
-export interface TdRematchStartedEvent { roundNo: number; bonusTeam: string | null; counterattackCoins: number; startedBy: string; teams: string[] }

@@ -1,8 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, animate, motion, useReducedMotion } from "framer-motion";
+import { Clock, Flame, Heart, Lock, Play, Shield, ShieldPlus, Skull, Snail, Snowflake, Swords, Trophy, Zap, type LucideIcon } from "lucide-react";
 import type { EnemyType, MercType, SpellId, TdEffect, TdRound, TdTower, TdTowerDef, TdView, TowerType } from "@/api/tomato";
 import { createTdRenderer, type TdRenderer } from "./tdCanvas";
 import { AcademyBase, AxolotlTower, TomatoPortal, TowerPreview } from "./tdSprites";
+import { SeedIcon } from "./screens/ui";
+import type { TdFx, TdFxIcon } from "./useTomato";
 
 export interface TdActions {
   join: () => Promise<unknown>;
@@ -11,28 +14,30 @@ export interface TdActions {
   upgrade: (slot: string, level: number) => Promise<unknown>;
   sendUnit: (type: MercType) => Promise<unknown>;
   castSpell: (spell: SpellId) => Promise<unknown>;
-  rematch: (stageId?: string) => Promise<unknown>;
 }
 
-const STATUS_TEXT = { running: "идёт", won: "оборона выстояла", lost: "база пала", expired: "перерыв закончился" } as const;
 /** Игровые имена башен; цены, урон и описание — с сервера */
 const TOWER_NAME: Record<TowerType, string> = { arrow: "Аксолотль-Стрелок", cannon: "Аксолотль-Бомбардир", frost: "Крио-Аксолотль" };
-const MERC_SHORT: Record<MercType, string> = { cherry: "Черри", ripe: "Спелый", armored: "Броне-томат", king: "Дредноут" };
-const MERC_ICON: Record<MercType, string> = { cherry: "🍒", ripe: "🍅", armored: "🪖", king: "👑" };
-const SPELL_SHORT: Record<SpellId, string> = {
-  haste: "Ускорить своих", repair: "Щит базы", slow_towers: "Замедлить башни врага", disable_tower: "Заморозить башню", enrage_horde: "Ярость томатов",
-};
-const SPELL_ICON: Record<SpellId, string> = { haste: "⚡", repair: "🛡️", slow_towers: "💤", disable_tower: "🧊", enrage_horde: "😡" };
+const TOWER_SHORT: Record<TowerType, string> = { arrow: "Стрелок", cannon: "Бомбардир", frost: "Крио" };
+const MERC_SHORT: Record<MercType, string> = { cherry: "Черри", ripe: "Спелый", armored: "Броня", king: "Дредноут" };
+const SPELL_SHORT: Record<SpellId, string> = { haste: "Ускорить", repair: "Щит базы", slow_towers: "Замедлить", disable_tower: "Заморозить", enrage_horde: "Ярость" };
+const SPELL_ICON: Record<SpellId, LucideIcon> = { haste: Zap, repair: ShieldPlus, slow_towers: Snail, disable_tower: Snowflake, enrage_horde: Flame };
 const ENEMY_NAME: Record<EnemyType, string> = {
   runner: "Бегун", grunt: "Солдат", tank: "Тяжёлый", boss: "Босс", cherry: "Черри-бегун", ripe: "Спелый томат", armored: "Броне-томат", king: "Томат-Дредноут",
 };
-/** Подписи действующих эффектов на своём поле */
+/** Подписи действующих эффектов на поле */
 const EFFECT_CHIP: Record<SpellId, { text: string; cls: string }> = {
-  haste: { text: "⚡ Башни ускорены", cls: "bg-lime text-ink" },
-  repair: { text: "🛡️ Щит базы", cls: "bg-lime text-ink" },
-  slow_towers: { text: "💤 Башни замедлены", cls: "bg-peach text-ink" },
-  disable_tower: { text: "🧊 Башня заморожена", cls: "bg-rose text-white" },
-  enrage_horde: { text: "😡 Ярость томатов", cls: "bg-rose text-white" },
+  haste: { text: "Башни ускорены", cls: "bg-lime text-ink" },
+  repair: { text: "Щит базы", cls: "bg-lime text-ink" },
+  slow_towers: { text: "Башни замедлены", cls: "bg-peach text-ink" },
+  disable_tower: { text: "Башня заморожена", cls: "bg-rose text-white" },
+  enrage_horde: { text: "Ярость томатов", cls: "bg-rose text-white" },
+};
+const FX_ICON: Record<TdFxIcon, LucideIcon> = {
+  swords: Swords, shield: Shield, zap: Zap, snail: Snail, snow: Snowflake, flame: Flame, heart: ShieldPlus, tomato: Swords, trophy: Trophy, skull: Skull, clock: Clock,
+};
+const FX_TONE: Record<TdFx["tone"], string> = {
+  attack: "bg-rose text-white", defense: "bg-lime text-ink", win: "bg-lime text-ink", lose: "bg-ink text-cream", info: "bg-white text-ink",
 };
 
 const towerRange = (def: TdTowerDef | undefined, level: number) => (def ? def.range + 0.25 * (level - 1) : 0);
@@ -40,12 +45,31 @@ const towerRange = (def: TdTowerDef | undefined, level: number) => (def ? def.ra
 const liveEffects = (round: TdRound | null): TdEffect[] =>
   round && round.status === "running" ? (round.effects ?? []).filter((e) => e.expiresAtGameTime > round.t) : [];
 
+/** Монета (семечко) + число: цена на кнопках и казна. */
+function Cost({ value, className = "" }: { value: number; className?: string }) {
+  return <span className={`inline-flex items-center gap-1 tabular-nums ${className}`}>{value}<SeedIcon className="h-4 w-4" /></span>;
+}
+
+/** Томаты-наёмники: одна форма, отличия — размер, шлем и корона. */
+export function TomatoGlyph({ type, size = 30 }: { type: MercType; size?: number }) {
+  const r = type === "cherry" ? 6 : type === "ripe" ? 9 : 8.5;
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden focusable="false">
+      <circle cx={12} cy={14} r={r} fill={type === "cherry" ? "#D9534F" : "#E8665A"} stroke="#3B2422" strokeWidth={1.6} />
+      <ellipse cx={12 - r * 0.35} cy={14 - r * 0.4} rx={r * 0.28} ry={r * 0.18} fill="#FFCEC2" opacity={0.85} />
+      <path d={`M12 ${14 - r} l-2.6 -1.6 M12 ${14 - r} l2.6 -1.6 M12 ${14 - r} v-2.4`} stroke="#5E6B1F" strokeWidth={1.8} strokeLinecap="round" />
+      {type === "armored" && <path d="M4.2 12.6 Q12 3.2 19.8 12.6 Z" fill="#B8A39E" stroke="#3B2422" strokeWidth={1.4} strokeLinejoin="round" />}
+      {type === "king" && <path d="M6.5 6.8 L8.2 2.8 L10.4 5.6 L12 2.2 L13.6 5.6 L15.8 2.8 L17.5 6.8 Z" fill="#F2C94C" stroke="#3B2422" strokeWidth={1.3} strokeLinejoin="round" />}
+    </svg>
+  );
+}
+
 /**
- * Tower Wars «Аксолотли против Томатиков». Компонент только рисует состояние сервера и отправляет намерения
- * (построить, улучшить, начать раунд, выпустить наёмника, заклинание, реванш). Ни урон, ни HP, ни казна,
- * ни победитель здесь не вычисляются: SVG — карта и башни, canvas (tdCanvas) — интерполяция врагов и снаряды.
+ * Tower Wars «Аксолотли против Томатиков». Компонент только рисует состояние сервера и отправляет намерения.
+ * В командном режиме у команды одна роль на перерыв: защита строит башни и усиливает оборону,
+ * атака шлёт томатов и дебаффы на поле защиты. Обе стороны видят одно поле — поле защиты.
  */
-export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }) {
+export function TowerDefense({ td, actions, fx = null }: { td: TdView; actions: TdActions; fx?: TdFx | null }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [stageId, setStageId] = useState<string>(td.defaultStageId);
   const [pending, setPending] = useState(false);
@@ -61,34 +85,33 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
   useEffect(() => () => { if (coolTimer.current) clearTimeout(coolTimer.current); }, []);
 
   const run = async (fn: () => Promise<unknown>) => { setPending(true); try { return await fn(); } finally { setPending(false); } };
-  const { map, round } = td;
-  const current = round?.current ? round : null; // раунд прошлого перерыва — не текущий
+  const { map } = td;
+  const versus = td.mode === "teams";
+  const role = versus ? td.role ?? null : null;
+  const attack = role === "attack";
+  const rival = td.rival;
+  const ownRound = td.round?.current ? td.round : null; // раунд прошлого перерыва — не текущий
+  const rivalRound = rival?.round?.current ? rival.round : null;
+  // поле в бою: у атаки — поле защиты (соперника), у защиты и в общем режиме — своё
+  const current = attack ? rivalRound : ownRound;
+  const towers = attack ? rival?.towerList ?? [] : td.towers;
   const running = current?.status === "running";
-  const towerAt = (slot: string): TdTower | undefined => td.towers.find((t) => t.slot === slot);
-  const sel = selected ? map.slots.find((s) => s.id === selected) : null;
-  const selTower = selected ? towerAt(selected) : undefined;
+  const finished = current && current.status !== "running" ? current : null;
+  const towerAt = (slot: string): TdTower | undefined => towers.find((t) => t.slot === slot);
+  const sel = !attack && selected ? map.slots.find((s) => s.id === selected) : null;
+  const selTower = sel ? towerAt(sel.id) : undefined;
   const treasury = td.treasuryCoins ?? 0;
   const stage = td.stages.find((s) => s.id === stageId) ?? td.stages[0];
-  const finished = current && current.status !== "running";
   const canAct = td.enabled && !pending;
   const hpPct = current ? Math.max(0, (current.hp / current.hpMax) * 100) : 100;
   const effects = liveEffects(current);
-  const versus = td.mode === "teams";
-  const rival = td.rival;
-  const rivalRound = rival?.round?.current ? rival.round : null;
+  const selfSpells = (td.spells ?? []).filter((s) => s.target === "self");
+  const rivalSpells = (td.spells ?? []).filter((s) => s.target === "rival");
 
-  // Куда уйдут наёмники и можно ли сейчас (окончательно решает сервер)
-  const merc: { ok: boolean; hint: string } = !versus
-    ? running ? { ok: true, hint: "Подкрепление волны: за каждого убитого наёмника казна получит ×1,5 его цены." } : { ok: false, hint: "Подкрепление волны выпускается только в идущий раунд." }
-    : !rival ? { ok: false, hint: "Соперника пока нет." }
-    : !rivalRound ? { ok: true, hint: `Команда ${rival.team} ещё не начала раунд — наёмники ждут её старта.` }
-    : rivalRound.status === "running" ? { ok: true, hint: `Наёмники выйдут на поле команды ${rival.team}.` }
-    : { ok: false, hint: "Соперник уже закончил раунд — штурмовать некого." };
-  const spellState = (target: "self" | "rival"): { ok: boolean; hint: string | null } =>
-    target === "self"
-      ? running ? { ok: true, hint: null } : { ok: false, hint: "Свои заклинания — только во время раунда." }
-      : !versus || !rival ? { ok: false, hint: "Атакующие заклинания — только в режиме «Команда A против B»: здесь соперника нет." }
-      : rivalRound?.status === "running" ? { ok: true, hint: null } : { ok: false, hint: "Соперник сейчас не в бою." };
+  // наёмники: в командном режиме — только у атаки, в общем — «подкрепление волны» в свой раунд (окончательно решает сервер)
+  const mercOk = !versus ? running : rivalRound ? rivalRound.status === "running" : true;
+  const mercHint = !versus ? (running ? "Подкрепление: за убитого — ×1,5 цены в казну" : "Подкрепление — во время раунда")
+    : !rivalRound ? "Томаты выйдут, когда начнётся раунд" : rivalRound.status === "running" ? null : "Раунд окончен";
 
   const sendUnit = async (type: MercType) => {
     await run(() => actions.sendUnit(type));
@@ -98,183 +121,113 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
     coolTimer.current = setTimeout(() => setMercCooling(false), Math.max(0, td.mercCooldownSec ?? 0) * 1000);
   };
 
+  const mercTiles = td.mercenaries?.length > 0 && (
+    <Panel title={versus ? "Томаты в атаку" : "Подкрепление"} hint={mercHint}>
+      <div className="grid grid-cols-2 gap-2" aria-label="Наёмники">
+        {td.mercenaries.map((m) => (
+          <Tile key={m.id} label={MERC_SHORT[m.id] ?? m.title} cost={m.cost} tone="rose"
+            icon={<TomatoGlyph type={m.id} size={34} />}
+            disabled={!canAct || !mercOk || mercCooling || treasury < m.cost}
+            title={`${m.title}: ${m.description}. HP ${m.hp}, урон по базе ${m.damage}${m.armor ? `, броня ${Math.round(m.armor * 100)}%` : ""}`}
+            onClick={() => sendUnit(m.id)} />
+        ))}
+      </div>
+    </Panel>
+  );
+  const spellTiles = (list: typeof selfSpells, title: string, tone: "lime" | "rose") => list.length > 0 && (
+    <Panel title={title} hint={running ? null : "Заклинания работают во время раунда"}>
+      <div className={`grid gap-2 ${list.length === 3 ? "grid-cols-3" : "grid-cols-2"}`} aria-label="Заклинания">
+        {list.map((sp) => {
+          const Icon = SPELL_ICON[sp.id] ?? Zap;
+          return (
+            <Tile key={sp.id} label={SPELL_SHORT[sp.id] ?? sp.title} cost={sp.cost} tone={tone} data-spell={sp.id}
+              icon={<Icon size={26} strokeWidth={2.4} />}
+              disabled={!canAct || !running || treasury < sp.cost}
+              title={`${sp.title}: ${sp.description} (${sp.duration} с)`}
+              onClick={() => run(() => actions.castSpell(sp.id))} />
+          );
+        })}
+      </div>
+    </Panel>
+  );
+
   return (
     <div className="flex h-full w-full flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:flex-row lg:overflow-hidden" aria-label="Tower Defense">
-      <TdField td={td} current={current} effects={effects} selected={selected} onSelect={setSelected} hpPct={hpPct} />
+      <TdField td={td} current={current} towers={towers} effects={effects} selected={attack ? null : selected} onSelect={attack ? undefined : setSelected} hpPct={hpPct} fx={fx} />
 
       {/* HUD: справа на широком экране, снизу на телефоне */}
-      <aside className="flex min-w-0 shrink-0 flex-col gap-3 text-sm text-[var(--fg)] lg:w-[22rem] lg:overflow-y-auto lg:pr-1 [scrollbar-width:thin] [&>*]:shrink-0">
+      <aside className="flex min-w-0 shrink-0 flex-col gap-3 pb-16 text-ink lg:w-[22rem] lg:overflow-y-auto lg:pr-1 [scrollbar-width:thin] [&>*]:shrink-0">
         {!td.enabled ? (
-          <p role="status" className="as-card p-4 text-xs font-bold text-mute">Игра доступна только на перерыве. Сейчас — время учёбы.</p>
+          <p role="status" className="as-card p-4 text-base font-bold text-mute">Игра доступна только на перерыве. Сейчас — время учёбы.</p>
         ) : (
           <>
-            <Treasury coins={treasury} team={versus ? td.team : null} />
+            <RoleCard role={role} rivalTeam={rival?.team ?? null} coins={treasury} team={versus ? td.team : null} />
 
             {/* Раунд */}
-            <Section title={current && current.roundNo > 1 ? `Раунд ${current.roundNo} · реванш` : "Раунд"}>
+            <Panel title={current ? `Волна ${Math.max(1, current.wave)} из ${current.waves}` : attack ? "Атака" : "Раунд"}>
               {current ? (
-                <div>
-                  <div className="mb-1.5 flex justify-between gap-2 text-xs text-[var(--muted)]">
-                    <span className="min-w-0 truncate">{stageTitle(td, current.stageId)} · {STATUS_TEXT[current.status]}</span>
-                    <span className="shrink-0 tabular-nums">волна {Math.max(1, current.wave)}/{current.waves}</span>
-                  </div>
-                  <HpBar value={current.hp} max={current.hpMax} label="Здоровье базы" tone="pink" />
-                  <p className="mt-1.5 flex justify-between text-xs text-[var(--muted)]">
-                    <span>база {current.hp}/{current.hpMax}</span>
-                    <span>побеждено {current.kills}/{current.total}</span>
+                <div className="flex flex-col gap-2">
+                  <HpBar value={current.hp} max={current.hpMax} label={attack ? `Здоровье базы команды ${rival?.team}` : "Здоровье базы"} />
+                  <p className="flex justify-between text-sm font-bold text-mute">
+                    <span className="inline-flex items-center gap-1"><Heart size={15} className="fill-rose text-rose" aria-hidden />база {current.hp}/{current.hpMax}</span>
+                    <span>сбито {current.kills}/{current.total}</span>
                   </p>
                   {finished && (
-                    <p role="status" className={`mt-2 rounded-xl px-3 py-2 text-xs font-medium ${current.status === "won" ? "bg-lime text-ink" : current.status === "lost" ? "bg-rose text-white" : "bg-ink text-paper"}`}>
-                      {current.status === "won" ? "Победа! Академия выстояла. Награду получили все, кто играл в раунде." : current.status === "lost" ? "База пала. Башни остались, усильте оборону и попробуйте снова." : "Перерыв закончился, возвращаемся к учёбе."}
-                    </p>
+                    <p role="status" className={`rounded-xl px-3 py-2 text-sm font-extrabold ${resultTone(finished.status, attack)}`}>{resultText(finished.status, attack)}</p>
                   )}
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
-                  <p className="text-xs text-[var(--muted)]">Постройте башни на деньги казны и начните раунд. Игра закроется вместе с перерывом.</p>
+                <div className="flex flex-col gap-2.5">
                   <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Этап">
                     {td.stages.map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={stageId === s.id}
-                        disabled={!s.unlocked}
+                      <button key={s.id} type="button" role="radio" aria-checked={stageId === s.id} disabled={!s.unlocked}
                         title={s.unlocked ? `Награда: ${s.reward.xp} XP, ${s.reward.coins} монет` : `Откроется после узла «${s.nodeTitle}» на карте`}
                         onClick={() => setStageId(s.id)}
-                        className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${stageId === s.id ? "bg-peach text-ink" : "border-2 border-ink bg-white hover:bg-blush"} disabled:cursor-not-allowed disabled:opacity-40`}
-                      >
-                        {s.unlocked ? s.title : `🔒 ${s.nodeTitle}`}
+                        className={`inline-flex items-center gap-1 rounded-full border-2 px-3 py-1.5 text-sm font-extrabold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${stageId === s.id ? "border-ink bg-peach" : "border-ink bg-white hover:bg-blush"}`}>
+                        {!s.unlocked && <Lock size={13} aria-label="закрыто" />}{s.unlocked ? s.title : s.nodeTitle}
                       </button>
                     ))}
                   </div>
-                  <p className="text-xs text-[var(--muted)]">
-                    {stage.waves} волн · {stage.enemies} врагов · награда {stage.reward.xp} XP, {stage.reward.coins} монет{stage.wins === 0 ? " (×1,5 за первое прохождение)" : ""}
-                  </p>
-                  <button type="button" disabled={!canAct || !stage.unlocked} onClick={() => run(() => actions.start(stageId))} className="as-btn as-btn-sm as-btn-primary font-display w-full justify-center disabled:opacity-40">
-                    Начать раунд
+                  <p className="text-sm font-bold text-mute">{stage.waves} волны · {stage.enemies} врагов · {stage.reward.xp} XP</p>
+                  <button type="button" disabled={!canAct || !stage.unlocked} onClick={() => run(() => actions.start(stageId))} className="as-btn as-btn-primary as-btn-sm w-full">
+                    <Play size={18} className="fill-white" aria-hidden />{attack ? "Начать атаку" : "Начать раунд"}
                   </button>
                 </div>
               )}
-            </Section>
+            </Panel>
 
-            {/* Оборона */}
-            <Section title="Башни-аксолотли">
-              {effects.length > 0 && <EffectChips effects={effects} className="mb-2" />}
-              {!sel ? (
-                <p className="text-xs text-[var(--muted)]">Выберите место на поле, чтобы построить или улучшить башню.</p>
-              ) : selTower ? (
-                <TowerCard tower={selTower} def={td.towerTypes.find((d) => d.id === selTower.type)!} maxLevel={td.maxLevel} treasury={treasury} disabled={!canAct} onUpgrade={() => run(() => actions.upgrade(sel.id, selTower.level))} />
-              ) : (
-                <ul className="flex flex-col gap-1.5" aria-label="Построить башню">
-                  {td.towerTypes.map((d) => (
-                    <li key={d.id}>
-                      <button
-                        type="button"
-                        disabled={!canAct || treasury < d.cost}
-                        onClick={() => run(() => actions.build(sel.id, d.id))}
-                        title={treasury < d.cost ? `В казне не хватает ${d.cost - treasury} 🪙` : undefined}
-                        className="flex w-full items-center justify-between gap-2 rounded-xl border-2 border-ink bg-white px-3 py-2 text-left transition hover:bg-blush active:scale-[.98] disabled:opacity-40"
-                      >
-                        <TowerPreview type={d.id} size={34} className="shrink-0" />
-                        <span className="min-w-0 flex-1"><span className="block font-medium">{TOWER_NAME[d.id] ?? d.title}</span><span className="block text-xs text-[var(--muted)]">{d.description} · урон {d.damage}, радиус {d.range}</span></span>
-                        <span className="font-display shrink-0 text-base tabular-nums">{d.cost}🪙</span>
-                      </button>
-                    </li>
+            {attack ? (
+              <>
+                {mercTiles}
+                {spellTiles(rivalSpells, "Дебаффы защите", "rose")}
+              </>
+            ) : (
+              <>
+                <Panel title="Башни" hint={sel ? null : "Нажмите на «+» на поле"}>
+                  {sel && (selTower ? (
+                    <TowerCard tower={selTower} def={td.towerTypes.find((d) => d.id === selTower.type)!} maxLevel={td.maxLevel} treasury={treasury} disabled={!canAct} onUpgrade={() => run(() => actions.upgrade(sel.id, selTower.level))} />
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2" aria-label="Построить башню">
+                      {td.towerTypes.map((d) => (
+                        <Tile key={d.id} label={TOWER_SHORT[d.id] ?? d.title} cost={d.cost} tone="white" aria-label={`${TOWER_NAME[d.id] ?? d.title}, ${d.cost} монет`}
+                          icon={<TowerPreview type={d.id} size={40} />}
+                          disabled={!canAct || treasury < d.cost}
+                          title={`${TOWER_NAME[d.id] ?? d.title}: ${d.description} · урон ${d.damage}, радиус ${d.range}`}
+                          onClick={() => run(() => actions.build(sel.id, d.id))} />
+                      ))}
+                    </div>
                   ))}
-                </ul>
-              )}
-            </Section>
-
-            {/* Штурм и поддержка */}
-            <Section title="Штурм и поддержка">
-              {td.mercenaries?.length > 0 && (
-                <>
-                  <p className="mb-1.5 text-xs text-[var(--muted)]">{versus ? "Наёмники-томаты" : "Подкрепление волны"}</p>
-                  <div className="grid grid-cols-2 gap-1.5" aria-label="Наёмники">
-                    {td.mercenaries.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        disabled={!canAct || !merc.ok || mercCooling || treasury < m.cost}
-                        onClick={() => sendUnit(m.id)}
-                        title={`${m.title}: ${m.description}. HP ${m.hp}, урон по базе ${m.damage}${m.armor ? `, броня ${Math.round(m.armor * 100)}%` : ""}`}
-                        className="flex min-w-0 items-center gap-1.5 rounded-xl border-2 border-ink bg-white px-2.5 py-2 text-left text-xs font-bold transition hover:bg-blush active:scale-95 disabled:opacity-40"
-                      >
-                        <span aria-hidden>{MERC_ICON[m.id] ?? "🍅"}</span>
-                        <span className="min-w-0 truncate">{MERC_SHORT[m.id] ?? m.title} · {m.cost}🪙</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="mt-1.5 text-[11px] leading-snug text-[var(--muted)]" data-testid="merc-hint">{merc.hint}</p>
-                </>
-              )}
-              {td.spells?.length > 0 && (
-                <>
-                  <p className="mb-1.5 mt-3 text-xs text-[var(--muted)]">Заклинания</p>
-                  <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-1" aria-label="Заклинания">
-                    {td.spells.map((sp) => {
-                      const st = spellState(sp.target);
-                      const attack = sp.target === "rival";
-                      return (
-                        <button
-                          key={sp.id}
-                          type="button"
-                          disabled={!canAct || !st.ok || treasury < sp.cost}
-                          onClick={() => run(() => actions.castSpell(sp.id))}
-                          title={`${sp.title}: ${sp.description} (${sp.duration} с)${st.hint ? `. ${st.hint}` : ""}`}
-                          data-spell={sp.id}
-                          className={`flex min-w-0 items-center gap-1.5 rounded-xl border-2 border-ink px-2.5 py-2 text-left text-xs font-bold transition active:scale-95 disabled:opacity-40 ${attack ? "bg-blush hover:bg-peach" : "bg-lime hover:bg-[#CDD38E]"}`}
-                        >
-                          <span aria-hidden>{SPELL_ICON[sp.id] ?? "✨"}</span>
-                          <span className="min-w-0">{SPELL_SHORT[sp.id] ?? sp.title} · {sp.cost}🪙</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {!versus && <p className="mt-1.5 text-[11px] leading-snug text-[var(--muted)]" data-testid="spell-hint">Атакующие заклинания работают только в режиме «Команда A против B» — здесь соперника нет.</p>}
-                  {!running && <p className="mt-1 text-[11px] leading-snug text-[var(--muted)]">Свои заклинания — во время идущего раунда.</p>}
-                </>
-              )}
-            </Section>
-
-            {/* Соперник и реванш */}
-            {(rival || td.duel || td.rematch?.available || finished || (current?.roundNo ?? 1) > 1) && (
-              <Section title={rival ? "Соперник и Реванш" : "Реванш"}>
-                {rival && (
-                  <div className="text-xs">
-                    <p className="mb-1 font-bold">Соперник · команда {rival.team}</p>
-                    <p className="mb-1.5 flex justify-between gap-2 text-[var(--muted)]">
-                      <span>башен: {rival.towers}</span>
-                      <span className="tabular-nums">казна {rival.treasuryCoins ?? 0}🪙</span>
-                    </p>
-                    {rivalRound ? (
-                      <>
-                        <HpBar value={rivalRound.hp} max={rivalRound.hpMax} label={`Здоровье базы команды ${rival.team}`} tone="red" />
-                        <p className="mt-1 flex justify-between gap-2 text-[var(--muted)]">
-                          <span className="tabular-nums">база {rivalRound.hp}/{rivalRound.hpMax} · {STATUS_TEXT[rivalRound.status]}</span>
-                          <span className="tabular-nums">волна {Math.max(1, rivalRound.wave)}/{rivalRound.waves}</span>
-                        </p>
-                        {liveEffects(rivalRound).length > 0 && <EffectChips effects={liveEffects(rivalRound)} className="mt-1.5" />}
-                      </>
-                    ) : (
-                      <p className="text-[var(--muted)]">раунд не начат</p>
-                    )}
-                  </div>
-                )}
-                {td.duel && (
-                  <div role="status" className="mt-2 rounded-xl bg-ink px-3 py-2 text-xs font-bold text-paper">
-                    <p>{td.duel.winner === "draw" ? "Дуэль: ничья" : td.duel.winner === td.team ? "Дуэль выиграла ваша команда" : `Дуэль выиграла команда ${td.duel.winner}`}{td.duel.roundNo > 1 ? ` · раунд ${td.duel.roundNo}` : ""}</p>
-                    {Object.keys(td.duel.scores).length > 0 && (
-                      <p className="mt-0.5 tabular-nums opacity-70">{Object.entries(td.duel.scores).map(([k, v]) => `${k} ${v}`).join(" : ")}</p>
-                    )}
-                  </div>
-                )}
-                {td.rematch && <Rematch td={td} disabled={!canAct} onRematch={() => run(() => actions.rematch(current?.stageId ?? stageId))} showReason={Boolean(finished) || (current?.roundNo ?? 1) > 1} />}
-              </Section>
+                </Panel>
+                {spellTiles(selfSpells, "Усиления", "lime")}
+                {!versus && mercTiles}
+              </>
             )}
 
-            <p className="text-[11px] leading-snug text-[var(--muted)]">Базу укрепляют «Крепкие стены» (сейчас {td.base.hpMax} HP), урон башен растёт от «Усиленных башен» (×{td.base.damageMult.toFixed(1)}). Казну пополняют фокус-сессии команды.</p>
+            {td.duel && versus && (
+              <p role="status" className="rounded-[16px] border-2 border-ink bg-ink px-3 py-2 text-sm font-extrabold text-cream">
+                {td.duel.winner === td.team ? "Дуэль выиграла ваша команда" : td.duel.winner === "draw" ? "Дуэль: ничья" : `Дуэль выиграла команда ${td.duel.winner}`}
+              </p>
+            )}
           </>
         )}
       </aside>
@@ -282,23 +235,61 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
   );
 }
 
-const stageTitle = (td: TdView, id: string) => td.stages.find((s) => s.id === id)?.title ?? id;
+const resultText = (status: TdRound["status"], attack: boolean) =>
+  status === "won" ? (attack ? "Атака отбита: база выстояла" : "Победа! База выстояла")
+  : status === "lost" ? (attack ? "База взята — победа атаки!" : "База пала")
+  : "Перерыв закончился";
+const resultTone = (status: TdRound["status"], attack: boolean) =>
+  status === "expired" ? "bg-ink text-cream" : (status === "won") !== attack ? "bg-lime text-ink" : "bg-rose text-white";
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** Роль команды крупно + казна: сразу видно, что делать на этом перерыве. */
+function RoleCard({ role, rivalTeam, coins, team }: { role: "defense" | "attack" | null; rivalTeam: string | null; coins: number; team: string | null }) {
+  const Icon = role === "attack" ? Swords : Shield;
+  const title = role === "attack" ? "Вы в атаке" : role === "defense" ? "Вы в обороне" : "Оборона вместе";
+  const sub = role === "attack" ? `Шлите томатов на базу команды ${rivalTeam}` : role === "defense" ? "Стройте башни, не пустите томатов к базе" : "Стройте башни и держите базу";
   return (
-    <section aria-label={title} className="as-card p-3">
-      <h3 className="font-display mb-2 text-base uppercase leading-none text-ink">{title}</h3>
+    <section aria-label="Ваша роль" data-testid="td-role" data-role={role ?? "shared"}
+      className={`flex items-center gap-3 rounded-[24px] border-2 border-ink px-4 py-3 shadow-[0_6px_0_#3B2422] ${role === "attack" ? "bg-rose text-white" : "bg-ink text-cream"}`}>
+      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] ${role === "attack" ? "bg-white text-rose" : "bg-lime text-ink"}`}><Icon size={26} strokeWidth={2.4} aria-hidden /></span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-display text-2xl uppercase leading-none"><span className="relative top-0.5">{title}</span></span>
+        <span className="mt-1 block text-[13px] font-bold leading-snug opacity-85">{sub}</span>
+      </span>
+      <Treasury coins={coins} team={team} />
+    </section>
+  );
+}
+
+function Panel({ title, hint, children }: { title: string; hint?: string | null; children?: ReactNode }) {
+  return (
+    <section aria-label={title} className="as-card flex flex-col gap-2 p-3">
+      <h3 className="font-display text-lg uppercase leading-none"><span className="relative top-0.5">{title}</span></h3>
+      {hint && <p className="-mt-1 text-[13px] font-bold text-mute">{hint}</p>}
       {children}
     </section>
   );
 }
 
-function HpBar({ value, max, label, tone }: { value: number; max: number; label: string; tone: "pink" | "red" }) {
-  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
-  const color = pct <= 30 ? "bg-rose" : tone === "pink" ? "bg-peach" : "bg-rose";
+/** Кнопка-плитка действия: крупная иконка, короткое имя и цена. Подробности — во всплывающей подсказке. */
+function Tile({ icon, label, cost, tone, disabled, onClick, title, ...rest }: {
+  icon: ReactNode; label: string; cost: number; tone: "white" | "lime" | "rose"; disabled: boolean; onClick: () => void; title?: string; "aria-label"?: string; "data-spell"?: string;
+}) {
+  const bg = tone === "lime" ? "bg-lime hover:bg-[#CDD38E]" : tone === "rose" ? "bg-blush hover:bg-peach" : "bg-white hover:bg-blush";
   return (
-    <div className="h-3 overflow-hidden rounded-full border-2 border-ink bg-soft" role="progressbar" aria-label={label} aria-valuenow={value} aria-valuemin={0} aria-valuemax={max}>
-      <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${pct}%` }} />
+    <button type="button" disabled={disabled} onClick={onClick} title={title} {...rest}
+      className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-[16px] border-2 border-ink px-1.5 py-2 text-ink shadow-[0_3px_0_#3B2422] transition active:translate-y-0.5 active:shadow-none disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none ${bg}`}>
+      <span className="flex h-10 items-center justify-center" aria-hidden>{icon}</span>
+      <span className="max-w-full truncate text-[15px] font-extrabold leading-tight">{label}</span>
+      <Cost value={cost} className="text-sm font-extrabold" />
+    </button>
+  );
+}
+
+function HpBar({ value, max, label }: { value: number; max: number; label: string }) {
+  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  return (
+    <div className="h-4 overflow-hidden rounded-full border-2 border-ink bg-soft" role="progressbar" aria-label={label} aria-valuenow={value} aria-valuemin={0} aria-valuemax={max}>
+      <div className={`h-full rounded-full transition-all duration-500 ${pct <= 30 ? "bg-rose" : "bg-peach"}`} style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -307,12 +298,19 @@ function EffectChips({ effects, className = "" }: { effects: TdEffect[]; classNa
   const kinds = [...new Set(effects.map((e) => e.kind))];
   return (
     <div className={`flex flex-wrap gap-1 ${className}`}>
-      {kinds.map((k) => <span key={k} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${EFFECT_CHIP[k]?.cls ?? "bg-ink text-paper"}`}>{EFFECT_CHIP[k]?.text ?? k}</span>)}
+      {kinds.map((k) => {
+        const Icon = SPELL_ICON[k] ?? Zap;
+        return (
+          <span key={k} className={`inline-flex items-center gap-1 rounded-full border-2 border-ink px-2 py-0.5 text-xs font-extrabold ${EFFECT_CHIP[k]?.cls ?? "bg-ink text-paper"}`}>
+            <Icon size={13} strokeWidth={2.6} aria-hidden />{EFFECT_CHIP[k]?.text ?? k}
+          </span>
+        );
+      })}
     </div>
   );
 }
 
-/** Казна команды крупно: число «докручивается» до серверного значения, изменение всплывает. */
+/** Казна команды: число «докручивается» до серверного значения, изменение всплывает. */
 function Treasury({ coins, team }: { coins: number; team: string | null }) {
   const reduce = useReducedMotion();
   const [shown, setShown] = useState(coins);
@@ -336,63 +334,77 @@ function Treasury({ coins, team }: { coins: number; team: string | null }) {
   }, [coins]);
 
   return (
-    <div className="relative overflow-hidden rounded-[24px] border-2 border-ink bg-ink px-4 py-3 text-paper shadow-[0_6px_0_#3B2422]">
-      <p className="text-sm font-bold text-peach">{team ? `Казна команды ${team}` : "Казна команды"}</p>
-      <p className="font-display flex items-baseline gap-1.5 text-3xl tabular-nums" aria-label={`Казна команды: ${coins} монет`} data-testid="treasury" data-value={coins}>
-        <span aria-hidden className="sr-only">Казна команды:</span>
-        <span aria-hidden>{shown}</span>
-        <span aria-hidden>🪙</span>
-      </p>
+    <span className="relative flex shrink-0 flex-col items-end" title={team ? `Казна команды ${team}` : "Казна команды"}>
+      <span className="font-display flex items-center gap-1 rounded-full bg-cream px-2.5 py-1 text-xl tabular-nums text-ink" aria-label={`Казна команды: ${coins} монет`} data-testid="treasury" data-value={coins}>
+        <span className="sr-only">Казна команды:</span>
+        <span aria-hidden className="relative top-0.5">{shown}</span>
+        <SeedIcon className="h-5 w-5" />
+      </span>
       <AnimatePresence>
         {delta && (
-          <motion.span
-            key={delta.id}
-            aria-hidden
-            className={`absolute right-3 top-2 rounded-full px-2 py-0.5 text-xs font-bold ${delta.d > 0 ? "bg-lime text-ink" : "bg-rose text-white"}`}
-            initial={{ opacity: 0, y: 8, scale: 0.8 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: reduce ? 0 : 0.3 }}
-          >
+          <motion.span key={delta.id} aria-hidden
+            className={`absolute -top-3 right-0 rounded-full border-2 border-ink px-1.5 text-xs font-extrabold ${delta.d > 0 ? "bg-lime text-ink" : "bg-white text-ink"}`}
+            initial={{ opacity: 0, y: 8, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: reduce ? 0 : 0.3 }}>
             {delta.d > 0 ? `+${delta.d}` : `−${Math.abs(delta.d)}`}
           </motion.span>
         )}
       </AnimatePresence>
-    </div>
-  );
-}
-
-function Rematch({ td, disabled, onRematch, showReason }: { td: TdView; disabled: boolean; onRematch: () => void; showReason: boolean }) {
-  const r = td.rematch;
-  const bonus = r.bonusTeam && r.counterattackCoins > 0
-    ? r.bonusTeam === td.team
-      ? `Контратака: проигравшим дуэль +${r.counterattackCoins}🪙 в казну — это вам!`
-      : `Контратака: команда ${r.bonusTeam} получит +${r.counterattackCoins}🪙 в казну.`
-    : null;
-  return (
-    <div className="mt-2 flex flex-col gap-1.5">
-      {r.available ? (
-        <button type="button" disabled={disabled} onClick={onRematch} className="as-btn as-btn-sm as-btn-light font-display w-full justify-center disabled:opacity-40">
-          Смена ролей / Реванш (Раунд {Math.max(2, r.roundNo)})
-        </button>
-      ) : (
-        showReason && r.reason && <p className="text-xs text-[var(--muted)]" data-testid="rematch-reason">Реванш недоступен: {r.reason}</p>
-      )}
-      {bonus && <p className="text-xs font-bold text-rose">{bonus}</p>}
-    </div>
+    </span>
   );
 }
 
 function TowerCard({ tower, def, maxLevel, treasury, disabled, onUpgrade }: { tower: TdTower; def: TdTowerDef; maxLevel: number; treasury: number; disabled: boolean; onUpgrade: () => void }) {
   const cost = tower.level < maxLevel ? def.upgradeCosts[tower.level - 1] : null;
   return (
-    <div>
-      <p className="font-bold">{TOWER_NAME[def.id] ?? def.title} · уровень {tower.level}/{maxLevel}</p>
-      <p className="text-xs text-[var(--muted)]">Построил: {tower.ownerName}. {def.description}.</p>
-      <button type="button" disabled={disabled || cost === null || treasury < (cost ?? 0)} onClick={onUpgrade} className="as-btn as-btn-sm as-btn-primary font-display mt-2 w-full justify-center disabled:opacity-40">
-        {cost === null ? "Максимальный уровень" : `Улучшить · ${cost}🪙`}
-      </button>
+    <div className="flex items-center gap-3">
+      <TowerPreview type={def.id} level={tower.level} size={52} className="shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="font-extrabold">{TOWER_SHORT[def.id] ?? def.title} · ур. {tower.level}/{maxLevel}</p>
+        <p className="truncate text-xs text-mute" title={def.description}>построил {tower.ownerName}</p>
+        <button type="button" disabled={disabled || cost === null || treasury < (cost ?? 0)} onClick={onUpgrade} className="as-btn as-btn-primary as-btn-sm mt-2 w-full">
+          {cost === null ? "Максимальный уровень" : <>Улучшить · <Cost value={cost} /></>}
+        </button>
+      </div>
     </div>
+  );
+}
+
+/** Баннер посреди поля: событие сервера (fx) или новая волна. Сам исчезает через пару секунд. */
+function FieldBanner({ fx }: { fx: TdFx | null }) {
+  const reduce = useReducedMotion();
+  const [shown, setShown] = useState<TdFx | null>(fx);
+  useEffect(() => {
+    setShown(fx);
+    if (!fx) return;
+    const timer = setTimeout(() => setShown((x) => (x?.id === fx.id ? null : x)), fx.small ? 1600 : 2300);
+    return () => clearTimeout(timer);
+  }, [fx]);
+  const Icon = shown ? FX_ICON[shown.icon] ?? Swords : Swords;
+  return (
+    <AnimatePresence>
+      {shown && (
+        <motion.div key={shown.id} role="status" data-testid="td-banner"
+          className={`pointer-events-none absolute inset-0 z-20 flex justify-center p-4 ${shown.small ? "items-start pt-12" : "items-center"}`}
+          initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.08 }}
+          transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 320, damping: 20 }}>
+          {shown.small ? (
+            <div className={`flex max-w-full items-center gap-2 rounded-full border-2 border-ink px-3 py-1.5 shadow-[0_3px_0_#3B2422] ${FX_TONE[shown.tone]}`}>
+              <TomatoGlyph type="ripe" size={22} />
+              <span className="font-display text-base uppercase leading-none"><span className="relative top-0.5">{shown.title}</span></span>
+              {shown.sub && <span className="hidden text-sm font-bold sm:inline">{shown.sub}</span>}
+            </div>
+          ) : (
+            <div className={`flex max-w-full flex-col items-center gap-1 rounded-[24px] border-[3px] border-ink px-5 py-3 text-center shadow-[0_6px_0_#3B2422] sm:px-8 sm:py-4 ${FX_TONE[shown.tone]}`}>
+              <span className="flex items-center gap-3">
+                {shown.icon === "tomato" ? <TomatoGlyph type="ripe" size={36} /> : <Icon size={32} strokeWidth={2.6} aria-hidden />}
+                <span className="font-display text-2xl uppercase leading-none sm:text-4xl"><span className="relative top-1">{shown.title}</span></span>
+              </span>
+              {shown.sub && <span className="text-sm font-extrabold sm:text-base">{shown.sub}</span>}
+            </div>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -461,8 +473,8 @@ function Decor({ kind }: { kind: number }) {
  * Поле: SVG-слой (луг, тропа, портал, Академия, места и башни) + canvas поверх (враги, снаряды, всплывающий урон).
  * Оба слоя лежат в одном контейнере с пропорциями карты — координаты совпадают.
  */
-function TdField({ td, current, effects, selected, onSelect, hpPct }: {
-  td: TdView; current: TdRound | null; effects: TdEffect[]; selected: string | null; onSelect: (id: string | null) => void; hpPct: number;
+function TdField({ td, current, towers, effects, selected, onSelect, hpPct, fx }: {
+  td: TdView; current: TdRound | null; towers: TdTower[]; effects: TdEffect[]; selected: string | null; onSelect?: (id: string | null) => void; hpPct: number; fx: TdFx | null;
 }) {
   const { map } = td;
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -477,7 +489,7 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
   const pathPoints = map.path.map(([x, y]) => `${x},${y}`).join(" ");
   const start = map.path[0];
   const end = map.path[map.path.length - 1];
-  const towerAt = (slot: string) => td.towers.find((t) => t.slot === slot);
+  const towerAt = (slot: string) => towers.find((t) => t.slot === slot);
   const sel = selected ? map.slots.find((s) => s.id === selected) : null;
   const selTower = selected ? towerAt(selected) : undefined;
   const hasted = effects.some((e) => e.kind === "haste");
@@ -507,8 +519,21 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
   // Новый объект раунда = новое серверное состояние: время получения — опора для интерполяции
   useEffect(() => { rendererRef.current?.setRound(current, performance.now()); }, [current]);
 
-  const toggle = (id: string) => onSelect(selected === id ? null : id);
-  const finished = current && current.status !== "running" ? current.status : null;
+  const toggle = (id: string) => onSelect?.(selected === id ? null : id);
+  const readOnly = !onSelect; // атака смотрит на поле защиты, строить там нельзя
+
+  // Новая волна → баннер «Волна N»; события сервера (fx) приходят снаружи — показываем самое свежее
+  const [waveFx, setWaveFx] = useState<TdFx | null>(null);
+  const lastWave = useRef<{ id: string; wave: number } | null>(null);
+  useEffect(() => {
+    if (!current || current.status !== "running") return;
+    const prev = lastWave.current;
+    lastWave.current = { id: current.id, wave: current.wave };
+    if (prev && prev.id === current.id && current.wave > prev.wave && current.wave > 1) {
+      setWaveFx({ id: Date.now() + Math.random(), title: `Волна ${current.wave}`, sub: current.wave === current.waves ? "Последняя — держитесь!" : `из ${current.waves}`, tone: "attack", icon: "swords" });
+    }
+  }, [current]);
+  const banner = [fx, waveFx].filter(Boolean).sort((a, b) => b!.id - a!.id)[0] ?? null;
 
   return (
     <div
@@ -575,13 +600,13 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
               <g
                 key={s.id}
                 transform={`translate(${s.x} ${s.y})`}
-                role="button"
-                tabIndex={0}
+                role={readOnly ? undefined : "button"}
+                tabIndex={readOnly ? -1 : 0}
                 aria-label={tw ? `Башня «${title}», уровень ${tw.level}` : `Свободное место ${s.id}`}
                 aria-pressed={isSel}
                 onClick={() => toggle(s.id)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(s.id); } }}
-                className="group cursor-pointer outline-none"
+                className={`group outline-none ${readOnly ? "" : "cursor-pointer"}`}
                 data-testid={`slot-${s.id}`}
               >
                 <circle r={0.62} fill="transparent" /> {/* увеличенная область нажатия для пальца */}
@@ -590,7 +615,7 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
                     <ellipse cy={0.32} rx={0.36} ry={0.11} fill="rgba(59,36,34,.25)" />
                     <AxolotlTower type={tw.type} level={tw.level} haste={hasted} slowed={slowedTowers} disabled={disabledSlots.has(s.id)} />
                   </>
-                ) : (
+                ) : readOnly ? null : (
                   <>
                     <rect x={-0.36} y={-0.36} width={0.72} height={0.72} rx={0.14} fill="#FFFFFF" fillOpacity={isSel ? 0.95 : 0.7} stroke="#3B2422" strokeOpacity={isSel ? 0.9 : 0.45} strokeWidth={0.04} />
                     
@@ -617,29 +642,12 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
         <canvas ref={canvasRef} data-testid="td-canvas" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden />
 
         {current && (
-          <span aria-hidden className="font-display pointer-events-none absolute right-2 top-2 rounded-full border-2 border-ink bg-white px-2.5 py-1 text-xs uppercase leading-none text-ink">
-            Wave {Math.max(1, current.wave)}/{current.waves} · {current.enemies.length} 🍅
+          <span aria-hidden className="pointer-events-none absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-full border-2 border-ink bg-white px-2.5 py-1 text-sm font-extrabold leading-none text-ink">
+            Волна {Math.max(1, current.wave)}/{current.waves}<span className="text-mute">·</span>{current.enemies.length}<TomatoGlyph type="ripe" size={16} />
           </span>
         )}
-        {effects.length > 0 && <EffectChips effects={effects} className="pointer-events-none absolute left-2 top-2" />}
-
-        <AnimatePresence>
-          {finished && (
-            <motion.div
-              key={`${current!.id}-${finished}`}
-              aria-hidden
-              className="pointer-events-none absolute inset-0 flex items-center justify-center"
-              initial={{ opacity: 0, scale: 0.7 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0 }}
-              transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 18 }}
-            >
-              <span className={`rounded-2xl px-5 py-2.5 text-lg font-display border-2 border-ink shadow-[0_6px_0_#3B2422] sm:text-2xl ${finished === "won" ? "bg-lime text-ink" : finished === "lost" ? "bg-rose text-white" : "bg-ink text-paper"}`}>
-                {finished === "won" ? "Оборона выстояла!" : finished === "lost" ? "База пала" : "Перерыв закончился"}
-              </span>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {effects.length > 0 && <EffectChips effects={effects} className="pointer-events-none absolute left-2 top-2 max-w-[70%]" />}
+        <FieldBanner fx={banner} />
       </div>
     </div>
   );

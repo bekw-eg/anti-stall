@@ -433,24 +433,24 @@ describe('Tower Defense: перезапуск и WebSocket', () => {
 });
 
 describe('Tower Defense: командный режим Team A / Team B', () => {
-  test('у команд свои башни, раунды и этапы; победитель дуэли награждается один раз', async () => {
+  test('защита строит и играет раунд, атака — нет; победитель дуэли награждается один раз', async () => {
     const w = await boot();
     try {
-      const L = await onBreak(w, ['Лотти', 'Аня', 'Боря'], { teamMode: true }); // A: Лотти, Боря; B: Аня
+      const L = await onBreak(w, ['Лотти', 'Аня', 'Боря'], { teamMode: true }); // A (защита): Лотти, Боря; B (атака): Аня
       const [lotti, anya, boris] = L.users;
       fund(w, lotti, 100); fund(w, anya, 100); fund(w, boris, 100);
       const events = [];
       w.app.db.sink = (e) => events.push(...e);
 
       assert.equal((await td(L, anya)).team, 'B');
-      await build(L, lotti, 's1', 'arrow'); await build(L, boris, 's3', 'arrow'); // A обороняется
-      // у B башен нет; башни A не видны как башни B
+      await build(L, lotti, 's1', 'arrow'); await build(L, boris, 's3', 'arrow');
+      assert.equal((await build(L, anya, 's2', 'arrow')).body.error.code, 'WRONG_ROLE', 'атака башни не строит');
       assert.equal((await td(L, anya)).towers.length, 0);
       assert.equal((await td(L, lotti)).towers.length, 2);
 
       await post(L, lotti, 'start', { stageId: 'camp' });
-      await post(L, anya, 'start', { stageId: 'camp' });
-      assert.equal((await post(L, boris, 'start', {})).body.error.code, 'ROUND_EXISTS', 'у команды один раунд за перерыв');
+      assert.equal((await post(L, boris, 'start', {})).body.error.code, 'ROUND_EXISTS', 'один раунд за перерыв');
+      assert.equal((await post(L, anya, 'start', {})).body.error.code, 'ROUND_EXISTS', 'и у атаки тоже');
       const rivalView = (await td(L, anya)).rival;
       assert.equal(rivalView.team, 'A');
       assert.equal(rivalView.towers, 2);
@@ -458,7 +458,7 @@ describe('Tower Defense: командный режим Team A / Team B', () => {
       await solid(w, L);
       const a = await td(L, lotti), b = await td(L, anya);
       assert.equal(a.round.status, 'won');
-      assert.equal(b.round.status, 'lost');
+      assert.equal(b.round, null);
       assert.equal(a.duel.winner, 'A');
       assert.deepEqual(a.duel, b.duel);
       assert.equal((await kinds(lotti, 'td_duel')).length, 1);
@@ -474,11 +474,10 @@ describe('Tower Defense: командный режим Team A / Team B', () => {
     const w = await boot({ config: { economy: { td: { dailyRewardedRounds: 0 } } } });
     try {
       const L = await onBreak(w, ['Лотти', 'Аня', 'Боря'], { teamMode: true }); // A: Лотти, Боря; B: Аня
-      const [lotti, anya, boris] = L.users;
+      const [lotti, , boris] = L.users;
       fund(w, lotti, 100); fund(w, boris, 100);
       await build(L, lotti, 's1', 'arrow'); await build(L, boris, 's3', 'arrow');
       await post(L, lotti, 'start', { stageId: 'camp' });
-      await post(L, anya, 'start', { stageId: 'camp' });
       await solid(w, L);
       assert.equal((await td(L, lotti)).duel.winner, 'A', 'дуэль решена');
       for (const u of [lotti, boris]) {
@@ -488,32 +487,21 @@ describe('Tower Defense: командный режим Team A / Team B', () => {
     } finally { await w.close(); }
   });
 
-  test('ничья без наград при двух поражениях; в реванше этап открывает победа только своей команде', async () => {
+  test('база пала — дуэль выиграла атака; этапы выбираются по карте защиты', async () => {
     const w = await boot();
     try {
       const L = await onBreak(w, ['Лотти', 'Аня', 'Боря'], { teamMode: true }); // A: Лотти, Боря; B: Аня
       const [lotti, anya] = L.users;
+      setTreasury(w, L, 'B', 100);
       assert.equal((await post(L, anya, 'start', { stageId: 'forest' })).body.error.code, 'STAGE_LOCKED');
       await post(L, lotti, 'start', { stageId: 'camp' });
-      await post(L, anya, 'start', { stageId: 'camp' });
+      assert.equal((await post(L, anya, 'send-unit', { type: 'cherry', requestId: R() })).status, 201);
       await solid(w, L);
-      const d1 = await td(L, lotti);
-      assert.equal(d1.duel.winner, 'draw'); // обе без башен — обе проиграли
-      assert.equal(d1.duel.roundNo, 1);
-      assert.equal(d1.rematch.bonusTeam, null, 'при ничьей «Контратаки» нет');
-      assert.equal((await kinds(lotti, 'td_duel')).length + (await kinds(anya, 'td_duel')).length, 0);
-      // реванш: A строится и выигрывает лагерь, B снова без башен
-      const tA = await treasury(L, lotti);
-      assert.equal((await post(L, lotti, 'rematch', {})).status, 200);
-      assert.equal(await treasury(L, lotti), tA, 'без бонуса');
-      await build(L, lotti, 's1', 'arrow'); await build(L, lotti, 's3', 'arrow');
-      await solid(w, L);
-      const a = await td(L, lotti), b = await td(L, anya);
-      assert.deepEqual([a.round.roundNo, a.round.status, b.round.roundNo, b.round.status], [2, 'won', 2, 'lost']);
-      assert.equal(a.stages.find((s) => s.id === 'forest').unlocked, true);
-      assert.equal(b.stages.find((s) => s.id === 'forest').unlocked, false);
-      assert.deepEqual([a.duel.roundNo, a.duel.winner], [2, 'A']);
-      assert.equal((await kinds(lotti, 'td_duel')).length, 1);
+      const d = await td(L, anya);
+      assert.deepEqual([d.duel.winner, d.duel.roundNo], ['B', 1]);
+      assert.equal((await kinds(anya, 'td_duel')).length, 1, 'атаковавший получил бонус');
+      assert.equal((await kinds(lotti, 'td_duel')).length, 0);
+      assert.equal(d.stages.find((s) => s.id === 'forest').unlocked, false, 'поражение защиты этап не открывает');
     } finally { await w.close(); }
   });
 });

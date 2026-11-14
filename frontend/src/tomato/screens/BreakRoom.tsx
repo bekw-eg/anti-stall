@@ -1,11 +1,10 @@
 /**
  * 08 Room / Break (Figma, страница back): перерыв = время игры.
- * Слева — дорога команды к цели и поле Tower Defense (готовый компонент команды), справа — помощь/пакости и чат.
+ * Сверху — дорога команды к цели, ниже — поле Tower Defense на всю ширину. Друзья — по кнопке в шапке, чат — облачко в углу.
  */
 import { useState } from "react";
 import { Check, Flag, SkipForward } from "lucide-react";
-import { ChatPanel } from "../ChatPanel";
-import { SocialPanel } from "../SocialPanel";
+import { ChatBubble } from "../ChatBubble";
 import { TowerDefense } from "../TowerDefense";
 import type { Tomato } from "../useTomato";
 import { LIGHT_VARS } from "./RoomChrome";
@@ -50,24 +49,12 @@ export function BreakRoom({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }
   const sess = me?.session;
   const askResult = Boolean(sess && sess.status !== "active" && sent !== snap.room.cycleId && actions.includes("record_result"));
   return (
-    <div className="grid min-h-0 flex-1 gap-5 px-4 pb-4 sm:px-8 xl:grid-cols-[minmax(0,1fr)_minmax(340px,440px)] xl:gap-7 lg:px-12" style={LIGHT_VARS}>
-      <div className="flex min-w-0 flex-col gap-5">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-4 sm:px-8 lg:px-12" style={LIGHT_VARS}>
+      <div className="flex flex-col gap-3">
         <RoadStrip t={t} onOpenMap={onOpenMap} />
-        <section aria-label="Tower Defense" className="as-card as-shadow overflow-hidden border-[2.5px] bg-lime" style={{ ["--card" as string]: "#FFFFFF" }}>
-          <div className="h-auto lg:h-[min(76vh,720px)]">
-            {td ? (
-              <TowerDefense td={td} actions={{ join: t.tdJoin, start: t.tdStart, build: t.tdBuild, upgrade: t.tdUpgrade, sendUnit: t.tdSendUnit, castSpell: t.tdCastSpell, rematch: t.tdRematch }} />
-            ) : (
-              <p className="p-6 text-lg font-bold text-olive">Загружаем игру…</p>
-            )}
-          </div>
-        </section>
-      </div>
-
-      <div className="flex min-w-0 flex-col gap-5">
         {/* «Я готов» на перерыве не нужен: следующий фокус по плану начнётся сам, а после плана готовность спросит лобби */}
         {(askResult || actions.includes("skip_break")) && (
-          <section aria-label="После цикла" className="as-card flex flex-col gap-3 p-4 sm:p-5">
+          <section aria-label="После цикла" className="flex flex-wrap items-center justify-between gap-2 rounded-[20px] bg-paper px-3 py-2 sm:rounded-[28px] sm:px-5">
             {askResult && (
               <div className="flex flex-wrap items-center gap-2 text-[15px]">
                 <span className="font-bold text-mute">Как прошла сессия?</span>
@@ -77,15 +64,21 @@ export function BreakRoom({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }
               </div>
             )}
             {actions.includes("skip_break") && (
-              <button type="button" onClick={t.skipBreak} className="as-btn as-btn-secondary as-btn-sm self-start"><SkipForward size={18} aria-hidden /> Пропустить перерыв</button>
+              <button type="button" onClick={t.skipBreak} className="as-btn as-btn-secondary as-btn-sm"><SkipForward size={18} aria-hidden /> Пропустить перерыв</button>
             )}
           </section>
         )}
-        <section id="break-social" aria-label="Друзья" className="as-card scroll-mt-24 overflow-hidden"><SocialPanel t={t} /></section>
-        <section aria-label="Чат" className="flex min-h-[340px] flex-col overflow-hidden rounded-[24px] bg-paper xl:min-h-0 xl:flex-1">
-          <ChatPanel t={t} />
-        </section>
       </div>
+      <section aria-label="Tower Defense" className="as-card as-shadow overflow-hidden border-[2.5px] bg-lime" style={{ ["--card" as string]: "#FFFFFF" }}>
+        <div className="h-auto lg:h-[min(78vh,760px)]">
+          {td ? (
+            <TowerDefense td={td} actions={{ join: t.tdJoin, start: t.tdStart, build: t.tdBuild, upgrade: t.tdUpgrade, sendUnit: t.tdSendUnit, castSpell: t.tdCastSpell }} fx={t.tdFx} />
+          ) : (
+            <p className="p-6 text-lg font-bold text-olive">Загружаем игру…</p>
+          )}
+        </div>
+      </section>
+      <ChatBubble t={t} />
     </div>
   );
 }

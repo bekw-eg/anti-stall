@@ -63,10 +63,6 @@ export function describeEvent(ev: ServerEvent, myId?: string, td?: TdNames): { t
       if (myTeam && d.team !== myTeam) return null;
       return info(d.status === "won" ? "Оборона выстояла" : d.status === "lost" ? "База пала — в следующий перерыв получится лучше" : "Перерыв закончился — раунд завершён");
     case "td_duel_result": return info(d.winner === "draw" ? "Дуэль: ничья" : `Дуэль: победила команда ${d.winner}`);
-    case "td_rematch_started": {
-      const bonus = d.bonusTeam && d.bonusTeam === myTeam ? ` · «Контратака»: +${d.counterattackCoins} в казну` : "";
-      return info(`Смена ролей! Начался раунд 2 — реванш${bonus}`);
-    }
     case "td_unit_sent": {
       if (!myTeam || d.by === myId) return null;
       const title = mercTitle(td, d.type);
@@ -94,11 +90,56 @@ export function describeEvent(ev: ServerEvent, myId?: string, td?: TdNames): { t
   }
 }
 
+/** Крупный баннер посреди поля игры: начало атаки, волна, бафф/дебафф, итог раунда. */
+export type TdFxIcon = "swords" | "shield" | "zap" | "snail" | "snow" | "flame" | "heart" | "tomato" | "trophy" | "skull" | "clock";
+/** small — частые события (наёмники): компактная плашка сверху поля, чтобы не закрывать игру */
+export interface TdFx { id: number; title: string; sub?: string; tone: "attack" | "defense" | "win" | "lose" | "info"; icon: TdFxIcon; small?: boolean }
+type TdFxNames = Pick<TdView, "team" | "mercenaries" | "spells" | "defender"> | null | undefined;
+const SPELL_FX: Record<string, { title: string; icon: TdFxIcon }> = {
+  haste: { title: "башни ускорены", icon: "zap" },
+  repair: { title: "щит базы", icon: "heart" },
+  slow_towers: { title: "башни замедлены", icon: "snail" },
+  disable_tower: { title: "башня заморожена", icon: "snow" },
+  enrage_horde: { title: "ярость томатов", icon: "flame" },
+};
+
+/** Событие игры → баннер (null — событие без баннера). Поле в бою принадлежит защите (td.defender). */
+export function describeTdFx(ev: ServerEvent, td: TdFxNames): Omit<TdFx, "id"> | null {
+  if (!td) return null;
+  const d = ev.data as { team?: string; target?: string; status?: string; type?: string; spell?: string; queued?: boolean };
+  const mine = td.team;
+  const iDefend = !td.defender || td.defender === mine;
+  switch (ev.type) {
+    case "td_round_started":
+      return { title: "Атака началась!", sub: iDefend ? "Волна 1 — держите оборону" : "Волна 1 — отправляйте томатов", tone: "attack", icon: "swords" };
+    case "td_round_finished": {
+      if (d.status === "expired") return { title: "Перерыв закончился", sub: "Раунд завершён", tone: "info", icon: "clock" };
+      const held = d.status === "won";
+      const myField = !td.defender || d.team === mine;
+      if (myField) return held ? { title: "Оборона выстояла!", tone: "win", icon: "trophy" } : { title: "База пала", sub: "В следующий раз получится", tone: "lose", icon: "skull" };
+      return held ? { title: "Атака отбита", sub: "Защита оказалась крепче", tone: "lose", icon: "shield" } : { title: "База взята!", sub: "Атака победила", tone: "win", icon: "trophy" };
+    }
+    case "td_unit_sent": {
+      const title = mercTitle(td, d.type);
+      if (d.team === d.target) return { title: `Подкрепление: ${title}`, tone: "info", icon: "tomato", small: true };
+      if (d.team === mine) return { title: `${title} — в атаку!`, sub: d.queued ? "Выйдет, когда начнётся раунд" : undefined, tone: "attack", icon: "tomato", small: true };
+      return { title: "Томаты идут!", sub: `Соперник выпустил: ${title}`, tone: "attack", icon: "tomato", small: true };
+    }
+    case "td_spell_cast": {
+      const fx = SPELL_FX[d.spell ?? ""] ?? { title: spellTitle(td, d.spell), icon: "zap" as const };
+      if (d.team === d.target) return { title: `Бафф: ${fx.title}`, sub: d.team === mine ? "Ваша оборона усилена" : "Защита соперника усилилась", tone: "defense", icon: fx.icon };
+      return { title: `Дебафф: ${fx.title}`, sub: d.target === mine ? "Соперник ослабил вашу оборону" : "Оборона соперника ослаблена", tone: "attack", icon: fx.icon };
+    }
+    default:
+      return null;
+  }
+}
+
 /**
  * События игры, после которых нужен полный GET /td (этапы, дуэль, реванш).
  * Частые td_tower_*, td_unit_sent, td_spell_cast несут изменения вместе с td_state — перезагрузка не нужна.
  */
-const TD_RELOAD_EVENTS = new Set(["td_round_started", "td_round_finished", "td_rematch_started", "td_duel_result"]);
+const TD_RELOAD_EVENTS = new Set(["td_round_started", "td_round_finished", "td_duel_result"]);
 
 /**
  * Всё серверное состояние нового интерфейса. Здесь НЕТ собственного таймера сессии:
@@ -128,6 +169,7 @@ export function useTomato(initialCode?: string) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [disconnectedFor, setDisconnectedFor] = useState(0);
   const [td, setTd] = useState<TdView | null>(null);
+  const [tdFx, setTdFx] = useState<TdFx | null>(null);
   const tdRef = useRef<TdView | null>(null);
   tdRef.current = td;
   const [socket, setSocket] = useState<TomatoSocket | null>(null); // общий сокет комнаты (голос использует его же)
@@ -397,13 +439,15 @@ export function useTomato(initialCode?: string) {
           // казну присылает сервер вместе с состоянием команды (старый сервер поля не знает — оставляем прежнее)
           const treasury = (fallback: number) => (typeof d.treasuryCoins === "number" ? d.treasuryCoins : fallback);
           if (d.team === prev.team) return { ...prev, towers: d.towers, round: d.round, treasuryCoins: treasury(prev.treasuryCoins) };
-          if (prev.rival && prev.rival.team === d.team) return { ...prev, rival: { ...prev.rival, towers: d.towers.length, round: d.round, treasuryCoins: treasury(prev.rival.treasuryCoins) } };
+          if (prev.rival && prev.rival.team === d.team) return { ...prev, rival: { ...prev.rival, towers: d.towers.length, towerList: d.towers, round: d.round, treasuryCoins: treasury(prev.rival.treasuryCoins) } };
           return prev;
         });
         return;
       }
       if (TD_RELOAD_EVENTS.has(ev.type) && tdRef.current) client.td(roomId).then((v) => alive && setTd(v)).catch(() => undefined);
-      const toast = describeEvent(ev, myIdRef.current, tdRef.current);
+      const fx = describeTdFx(ev, tdRef.current);
+      if (fx) setTdFx({ ...fx, id: Date.now() + Math.random() });
+      const toast = fx ? null : describeEvent(ev, myIdRef.current, tdRef.current);
       if (toast) push(toast.text, toast.tone);
     });
 
@@ -544,7 +588,6 @@ export function useTomato(initialCode?: string) {
   }, []);
   const tdSendUnit = useCallback(async (type: MercType) => { const r = await call(() => client.tdSendUnit(rid, type, newRequestId())); if (r) setTreasury(r.treasuryCoins); return r; }, [call, rid, setTreasury]);
   const tdCastSpell = useCallback(async (spell: SpellId) => { const r = await call(() => client.tdCastSpell(rid, spell, newRequestId())); if (r) setTreasury(r.treasuryCoins); return r; }, [call, rid, setTreasury]);
-  const tdRematch = useCallback(async (stageId?: string) => { const v = await call(() => client.tdRematch(rid, stageId)); if (v) setTd(v); return v; }, [call, rid]);
 
   // Перерыв закончился — обновляем состояние игры (раунд закрыт, игра недоступна)
   const phase = snapshot?.room.phase;
@@ -585,7 +628,7 @@ export function useTomato(initialCode?: string) {
 
   return {
     boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
-    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, tdRematch, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, chat, sendChat,
+    call, push, td, tdFx, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, chat, sendChat,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

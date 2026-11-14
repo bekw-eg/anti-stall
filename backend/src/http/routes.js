@@ -99,7 +99,6 @@ export function buildRoutes({ config, users, rooms, game, social, td, voice, cha
   // Tower Wars: наёмники и заклинания оплачиваются из казны команды; реванш — раунд 2 в том же перерыве
   r.add('POST', '/api/rooms/:id/td/send-unit', ({ user, params, body }) => ok(td.sendUnit(user, params.id, body), 201));
   r.add('POST', '/api/rooms/:id/td/spell', ({ user, params, body }) => ok(td.castSpell(user, params.id, body), 201));
-  r.add('POST', '/api/rooms/:id/td/rematch', ({ user, params, body }) => ok(td.rematch(user, params.id, body)));
   r.add('GET', '/api/rooms/:id/stats', ({ user, params }) => {
     const room = rooms.findRoom(params.id);
     rooms.requireMember(room, user);

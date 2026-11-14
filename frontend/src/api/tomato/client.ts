@@ -118,7 +118,6 @@ export class TomatoClient {
   tdCastSpell = (id: string, spell: SpellId, requestId: string) =>
     this.request<TdSpellResult>("POST", `/api/rooms/${id}/td/spell`, { spell, requestId });
   /** «Смена ролей / Реванш»: раунд 2 этого перерыва */
-  tdRematch = (id: string, stageId?: string) => this.request<TdView>("POST", `/api/rooms/${id}/td/rematch`, { stageId });
 
   /** Открывает WebSocket с авто-переподключением. */
   connect(): TomatoSocket {
