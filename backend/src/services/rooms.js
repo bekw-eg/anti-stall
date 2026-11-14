@@ -377,6 +377,22 @@ export function createRoomsService(ctx, game, users, td) {
     });
   }
 
+  /**
+   * Хост пропускает фокус для всех — сразу перерыв с игрой. Это не поощряется (кейс про терпение и фокус):
+   * на клиенте два подтверждения, награда — только за реально отработанную долю фокуса,
+   * а шаг команды по карте за такой цикл не засчитывается.
+   */
+  function skipFocus(user, idOrCode) {
+    return db.tx(() => {
+      advanceInTx(findRoom(idOrCode).id);
+      const room = findRoom(idOrCode);
+      requireHost(room, user);
+      requirePhase(room, 'focus');
+      finishFocus(room, clock.now());
+      return snapshot(room.id, user.id);
+    });
+  }
+
   function skipBreak(user, idOrCode) {
     return db.tx(() => {
       advanceInTx(findRoom(idOrCode).id);
@@ -475,20 +491,23 @@ export function createRoomsService(ctx, game, users, td) {
     if (gone.length) db.emit(stateEvent(room.id));
   }
 
-  function finishFocus(room) {
-    const endAt = room.phase_ends_at;
+  /** Конец фокуса: по таймеру (skipAt не задан) или досрочно — хост пропустил фокус в момент skipAt. */
+  function finishFocus(room, skipAt = null) {
+    const skipped = skipAt !== null && skipAt < room.phase_ends_at;
+    const endAt = skipped ? skipAt : room.phase_ends_at;
     game.ensureTeams(room); // до перерыва: у каждой команды есть казна для Tower Defense
     const active = db.all("SELECT * FROM focus_sessions WHERE room_id = ? AND cycle_id = ? AND status = 'active' ORDER BY rowid", room.id, room.cycle_id);
     const rewardedUsers = [];
     for (const s of active) {
-      const res = game.completeSession(room, s, endAt);
+      const share = skipped ? (endAt - s.started_at) / (room.focus_sec * 1000) : 1;
+      const res = game.completeSession(room, { ...s, ...closeAway(s, endAt) }, endAt, skipped ? { share, reason: 'host_skip' } : {});
       if (res.rewarded) rewardedUsers.push(s.user_id);
     }
     const breakNo = room.cycle_no;
     const breakEnds = endAt + room.break_sec * 1000;
     db.run("UPDATE rooms SET phase = 'break', phase_started_at = ?, phase_ends_at = ? WHERE id = ?", endAt, breakEnds, room.id);
-    db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'focus', to: 'break', cycleId: room.cycle_id, phaseStartedAt: endAt, phaseEndsAt: breakEnds, completed: active.length, rewarded: rewardedUsers.length, breakNo, cycles: room.cycles } });
-    game.addTeamPoints(room, rewardedUsers); // завершённые фокусы — вклад в командное испытание (кейс §5.4)
+    db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'focus', to: 'break', cycleId: room.cycle_id, phaseStartedAt: endAt, phaseEndsAt: breakEnds, completed: active.length, rewarded: rewardedUsers.length, breakNo, cycles: room.cycles, ...(skipped ? { skipped: true } : {}) } });
+    if (!skipped) game.addTeamPoints(room, rewardedUsers); // завершённые фокусы — вклад в командное испытание (кейс §5.4)
     db.emit(stateEvent(room.id));
   }
 
@@ -592,6 +611,7 @@ export function createRoomsService(ctx, game, users, td) {
       if (isHost) a.push('start_focus', 'update_settings', 'close_room');
     } else if (room.phase === 'focus') {
       if (mine.status === 'focusing') a.push('abort_session');
+      if (isHost) a.push('skip_focus');
       const i = a.indexOf('set_task');
       if (mine.status === 'focusing') a.splice(i, 1);
     } else if (room.phase === 'break') {
@@ -604,7 +624,7 @@ export function createRoomsService(ctx, game, users, td) {
   return {
     findRoom, requireMember, requirePhase, memberRow, loadRoom,
     create, join, leave, close, updateSettings, setTask, setTeam, setReady, recordResult,
-    startFocus, abortSession, skipBreak, reportAttention, advance, runningRoomIds, recoverAfterRestart,
+    startFocus, abortSession, skipFocus, skipBreak, reportAttention, advance, runningRoomIds, recoverAfterRestart,
     snapshot, connectionState,
   };
 }

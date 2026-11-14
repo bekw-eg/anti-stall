@@ -3,7 +3,7 @@
  * Слева участники, в центре таймер (время — с сервера), справа закрытая карта. Игра и пакости откроются на перерыве.
  */
 import { useEffect, useRef, useState } from "react";
-import { Lock, PenLine } from "lucide-react";
+import { Lock, PenLine, SkipForward } from "lucide-react";
 import { STATUS_LABEL, formatTime } from "../format";
 import type { Tomato } from "../useTomato";
 import { StickerBoard, StickerHint, type Stickers } from "./Stickers";
@@ -35,6 +35,58 @@ function EndEarly({ t }: { t: Tomato }) {
       <span className="whitespace-nowrap font-display text-sm leading-tight text-cream sm:text-lg"><span className="relative top-0.5"><span className="sm:hidden">{confirm ? "Точно?" : "Завершить"}</span><span className="hidden sm:inline">{confirm ? "Точно завершить?" : "Завершить досрочно"}</span></span></span>
       <span className="hidden text-[13px] text-[#D8BDB6] sm:block">{confirm ? "нажмите ещё раз, награды не будет" : "монеты за этот цикл не начислятся"}</span>
     </button>
+  );
+}
+
+/**
+ * Хост пропускает фокус для всех → сразу перерыв с игрой. Пропуск не поощряется (кейс — про терпение):
+ * два подтверждения, «остаться» — главная кнопка, награда только за отработанную часть.
+ */
+function HostSkip({ t, remaining }: { t: Tomato; remaining: number }) {
+  const [step, setStep] = useState<0 | 1 | 2>(0);
+  const [busy, setBusy] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(timer.current), []);
+  // без ответа — карточка сама закрывается, чтобы случайно не пропустить потом
+  const go = (next: 0 | 1 | 2) => { clearTimeout(timer.current); setStep(next); if (next) timer.current = setTimeout(() => setStep(0), 10000); };
+  useEffect(() => {
+    if (!step) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") go(0); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step]);
+  if (!t.snapshot?.me?.allowedActions.includes("skip_focus")) return null;
+
+  if (step === 0) {
+    return (
+      <button type="button" data-testid="skip-focus" onClick={() => go(1)}
+        className="relative z-30 inline-flex items-center gap-2 rounded-full border-2 border-[#8A625C] px-4 py-1.5 text-sm font-bold text-[#D8BDB6] transition-colors hover:bg-cocoa hover:text-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-peach">
+        <SkipForward size={16} aria-hidden /> Пропустить фокус для всех
+      </button>
+    );
+  }
+  const last = step === 2;
+  return (
+    <div role="group" aria-live="polite" aria-label="Пропуск фокуса" data-testid="skip-focus-confirm"
+      className="relative z-30 flex w-full max-w-[460px] flex-col items-center gap-3 rounded-[20px] border-2 border-peach bg-cocoa px-5 py-4 text-center">
+      <p className="font-display text-lg leading-tight text-cream sm:text-xl"><span className="relative top-0.5">
+        {last ? `Точно? Осталось ${formatTime(remaining)}` : "Пропустить фокус для всех?"}
+      </span></p>
+      <p className="text-sm text-[#D8BDB6]">
+        {last ? "Терпение — тоже навык. Это последнее подтверждение." : "Перерыв с игрой начнётся сразу у всех. Награда — только за отработанное время, шаг по карте не засчитается."}
+      </p>
+      <div className="flex flex-wrap justify-center gap-2">
+        <button type="button" onClick={() => go(0)} autoFocus
+          className="rounded-full bg-cream px-4 py-2 text-sm font-bold text-ink transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-peach">
+          {last ? "Дотерплю" : "Остаться в фокусе"}
+        </button>
+        <button type="button" disabled={busy} data-testid={last ? "skip-focus-final" : "skip-focus-next"}
+          onClick={async () => { if (!last) return go(2); clearTimeout(timer.current); setBusy(true); await t.skipFocus(); setBusy(false); setStep(0); }}
+          className="inline-flex items-center gap-1.5 rounded-full border-2 border-[#8A625C] px-4 py-1.5 text-sm font-bold text-cream transition-colors hover:border-peach disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-peach">
+          <SkipForward size={15} aria-hidden /> {last ? "Пропустить сейчас" : "Да, пропустить"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -80,6 +132,7 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
           <PenLine size={20} className="shrink-0 text-peach" aria-hidden />
           <span className="break-words text-left">{watching ? "Вы наблюдаете: присоединитесь в следующем цикле" : me?.task || "Задача не указана"}</span>
         </p>
+        <HostSkip t={t} remaining={remaining} />
       </section>
 
       {/* ---------- Закрытая карта ---------- */}

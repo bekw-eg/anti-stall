@@ -77,14 +77,18 @@ export function createGame(ctx) {
     return { quality: Math.round(Math.max(0, Math.min(1, 1 - awayMs / durMs)) * 100) / 100, awayMs };
   }
 
-  /** Сервер завершает сессию сам по часовым отметкам. Возвращает итог для события session_completed. */
-  function completeSession(room, session, endAt) {
+  /**
+   * Сервер завершает сессию сам по часовым отметкам. Возвращает итог для события session_completed.
+   * opts.share — доля реально отработанного фокуса (хост пропустил фокус раньше): награда урезается пропорционально.
+   */
+  function completeSession(room, session, endAt, opts = {}) {
+    const share = Math.max(0, Math.min(1, opts.share ?? 1));
     const factor = room.demo
       ? 1
       : Math.min(eco.maxRewardFactor, Math.max(eco.minRewardFactor, room.focus_sec / (eco.standardFocusMinutes * 60)));
     const { quality, awayMs } = sessionQuality(session, endAt);
-    let xp = Math.round(eco.xpPerSession * factor * quality);
-    const coins = Math.round(eco.coinsPerSession * factor * quality);
+    let xp = Math.round(eco.xpPerSession * factor * quality * share);
+    const coins = Math.round(eco.coinsPerSession * factor * quality * share);
 
     const rewardedToday = db.get(
       'SELECT COUNT(*) c FROM focus_sessions WHERE user_id = ? AND rewarded = 1 AND ended_at > ?',
@@ -104,7 +108,7 @@ export function createGame(ctx) {
         db.run('UPDATE user_effects SET consumed_at = ? WHERE id = ?', endAt, boost.id);
       }
       granted = grant(session.user_id, `focus:${session.id}`, 'focus_session', { xp, coins }, {
-        roomId: room.id, sessionId: session.id, boostPct, quality,
+        roomId: room.id, sessionId: session.id, boostPct, quality, ...(share < 1 ? { share } : {}),
       }).granted;
     }
     // Те же монеты — в общую казну команды игрока (Tower Defense); личные монеты остаются для магазина улучшений
@@ -112,11 +116,12 @@ export function createGame(ctx) {
     db.run(
       `UPDATE focus_sessions SET status = 'completed', ended_at = ?, end_reason = ?, rewarded = ?, xp_awarded = ?, coins_awarded = ?,
          quality = ?, away_ms = ?, away_since = NULL, away_kind = NULL WHERE id = ? AND status = 'active'`,
-      endAt, capped ? 'daily_cap' : 'finished', granted ? 1 : 0, granted ? xp : 0, granted ? coins : 0, quality, awayMs, session.id,
+      endAt, capped ? 'daily_cap' : (opts.reason ?? 'finished'), granted ? 1 : 0, granted ? xp : 0, granted ? coins : 0, quality, awayMs, session.id,
     );
     const summary = {
       sessionId: session.id, roomId: room.id, status: 'completed', rewarded: granted, capped, xp: granted ? xp : 0, coins: granted ? coins : 0, boostPct,
-      quality, awaySec: Math.round(awayMs / 1000), countsForTeam: quality >= eco.quality.teamMin,
+      quality, awaySec: Math.round(awayMs / 1000), countsForTeam: share === 1 && quality >= eco.quality.teamMin,
+      ...(share < 1 ? { share, skipped: true } : {}),
     };
     db.emit({ scope: 'user', userId: session.user_id, type: 'session_completed', data: summary });
     return summary;

@@ -74,6 +74,7 @@ export function buildRoutes({ config, users, rooms, game, social, td, voice, cha
   // Внимание во время фокуса: клиент сообщает «ушёл со вкладки / вернулся» (может только снизить качество)
   r.add('POST', '/api/rooms/:id/session/attention', ({ user, params, body }) => ok(rooms.reportAttention(user, params.id, body)));
   r.add('POST', '/api/rooms/:id/session/result', ({ user, params, body }) => ok(rooms.recordResult(user, params.id, body)));
+  r.add('POST', '/api/rooms/:id/skip-focus', ({ user, params }) => ok(rooms.skipFocus(user, params.id)));
   r.add('POST', '/api/rooms/:id/skip-break', ({ user, params }) => ok(rooms.skipBreak(user, params.id)));
   r.add('POST', '/api/rooms/:id/heartbeat', ({ user, params }) => {
     rooms.requireMember(rooms.findRoom(params.id), user);

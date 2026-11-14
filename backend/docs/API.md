@@ -70,6 +70,7 @@
 | POST | `/api/rooms/:id/start` | host, `waiting` | Запуск Focus. Ответ содержит `start.participants` и `start.skipped[]` (`offline`, `busy_elsewhere`, `sandbox_mismatch` — только старые данные). Демо-комната без демо-режима → `403 DEMO_DISABLED` |
 | POST | `/api/rooms/:id/session/abort` | участник, `focus` | Досрочно завершить **свою** сессию (без награды) |
 | POST | `/api/rooms/:id/session/result` | участник | `{result:"done"|"partial"|"not_done", note?, sessionId?}` — только история |
+| POST | `/api/rooms/:id/skip-focus` | host, `focus` | Пропустить фокус для всех → сразу `break`. Награда × доля отработанного времени, шаг по карте не засчитывается |
 | POST | `/api/rooms/:id/skip-break` | host, `break` | Досрочно к `waiting` |
 | POST | `/api/rooms/:id/close` | host, `waiting|break` | Закрыть комнату |
 | POST | `/api/rooms/:id/heartbeat` | участник | Присутствие |
