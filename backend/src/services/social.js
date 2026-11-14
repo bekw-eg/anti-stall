@@ -95,6 +95,10 @@ export function createSocialService(ctx, game, rooms) {
       const teams = room.mode === 'teams';
       const targetTeam = teams ? teamOf(room, target.id) : null;
       if (teams && targetTeam === teamOf(room, user.id)) throw E.conflict('NOT_RIVAL', 'Шутки летят только в команду соперника');
+      // Кейс §5.5: игрок может отключить получение шуток (в профиле, по умолчанию включены).
+      // Его нельзя выбрать целью, и он сам их не отправляет — честно для обеих сторон.
+      if (!user.prank_enabled) throw E.conflict('PRANKS_DISABLED_SELF', 'Вы отключили шутки — отправлять их тоже нельзя');
+      if (!target.prank_enabled) throw E.conflict('PRANKS_DISABLED', 'Игрок отключил шутки');
       const t = clock.now();
       if (db.get("SELECT 1 x FROM focus_sessions WHERE user_id = ? AND status = 'active'", target.id)) {
         throw E.conflict('TARGET_FOCUSING', 'Получатель сейчас занимается — пакости ему не отправляются');

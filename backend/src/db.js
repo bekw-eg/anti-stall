@@ -219,6 +219,18 @@ CREATE TABLE IF NOT EXISTS social_actions (
   effect_ends_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS social_by_sender ON social_actions(sender_id, created_at);
+
+-- Текстовый чат комнаты (в фокусе только чтение — проверяет сервис)
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  cycle_id TEXT,
+  text TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS chat_by_room ON chat_messages(room_id, id);
+CREATE INDEX IF NOT EXISTS chat_by_user ON chat_messages(room_id, user_id, created_at);
 `;
 
 /**

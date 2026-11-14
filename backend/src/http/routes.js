@@ -4,7 +4,7 @@ import { reqInt, reqObject } from '../validate.js';
 import { Router } from './router.js';
 
 /** Привязка REST-маршрутов к сервисам. Здесь нет бизнес-логики: только разбор запроса. */
-export function buildRoutes({ config, users, rooms, game, social, td, voice, clock }) {
+export function buildRoutes({ config, users, rooms, game, social, td, voice, chat, clock }) {
   const r = new Router();
   const ok = (body, status = 200) => ({ status, body });
 
@@ -111,6 +111,9 @@ export function buildRoutes({ config, users, rooms, game, social, td, voice, clo
     return ok({ roomId: room.id, peers: voice.peers(room.id), maxPeers: config.voice.maxPeers });
   });
   r.add('GET', '/api/voice/ice-servers', ({ user }) => ok(voice.iceServers(user.id)));
+  // Текстовый чат комнаты
+  r.add('GET', '/api/rooms/:id/chat', ({ user, params, query }) => ok(chat.list(user, params.id, { limit: query?.limit })));
+  r.add('POST', '/api/rooms/:id/chat', ({ user, params, body }) => ok(chat.send(user, params.id, body), 201));
   r.add('GET', '/api/rooms/:id/social', ({ user, params }) => ok({ actions: social.recent(user, params.id) }));
   r.add('POST', '/api/rooms/:id/social/help', ({ user, params, body }) => ok(social.help(user, params.id, body), 201));
   r.add('POST', '/api/rooms/:id/social/prank', ({ user, params, body }) => ok(social.prank(user, params.id, body), 201));

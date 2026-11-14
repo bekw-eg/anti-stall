@@ -87,11 +87,11 @@ try {
     await shot(anya, 'prank-sticker.png');
   });
 
-  await step('шутки выключить нельзя: переключателя нет, старый флаг prankEnabled сервер не учитывает', async () => {
-    assert((await anya.page.getByTestId('pranks-toggle').count()) === 0, 'переключатель шуток всё ещё есть');
+  await step('Аня отключает шутки в профиле (§5.5): сервер не пропускает шутку в неё', async () => {
     await api(env, anya, 'PATCH', '/api/users/me', { prankEnabled: false });
     const r = await api(env, borya, 'POST', `/api/rooms/${roomId}/social/prank`, { targetUserId: anya.id, type: 'fog' });
-    assert(r.body?.error?.code !== 'PRANKS_DISABLED', `сервер всё ещё отключает шутки: ${JSON.stringify(r.body)}`);
+    assert(r.status === 409 && r.body.error.code === 'PRANKS_DISABLED', `сервер: ${JSON.stringify(r.body)}`);
+    assert((await api(env, anya, 'GET', '/api/users/me')).body.prankEnabled === false, 'настройка не сохранилась');
   });
 
   await step('статистика: сессии, время концентрации, уровень, достижения и командный прогресс из backend', async () => {

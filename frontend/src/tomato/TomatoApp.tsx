@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-motion";
-import { BarChart3, Map as MapIcon, Settings, Swords, Timer, Users } from "lucide-react";
+import { BarChart3, Map as MapIcon, MessageSquare, Settings, Swords, Timer, Users } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { ConnectionBanner, DemoBadge, Toasts } from "./Chrome";
 import { currentRouteCode, formatSpan } from "./format";
@@ -11,6 +11,7 @@ import { RoadMap } from "./RoadMap";
 import { RoadmapBackdrop } from "./RoadmapBackdrop";
 import { SettingsContent } from "./SettingsContent";
 import { SocialPanel } from "./SocialPanel";
+import { ChatPanel } from "./ChatPanel";
 import { StatsPanel } from "./StatsPanel";
 import { TimerBlock } from "./TimerBlock";
 import { TowerDefense } from "./TowerDefense";
@@ -21,8 +22,8 @@ import { useVoice } from "./voice/useVoice";
 import { Welcome } from "./Welcome";
 
 const PANEL_KEY = "tomato2.panel";
-type Panel = "map" | "game" | "social" | "stats" | null;
-const PANELS: Panel[] = ["map", "game", "social", "stats"];
+type Panel = "map" | "game" | "social" | "stats" | "chat" | null;
+const PANELS: Panel[] = ["map", "game", "social", "stats", "chat"];
 const LIGHT_VARS = { "--fg": "#111111", "--muted": "rgba(17,17,17,.55)", "--card": "rgba(255,255,255,.55)", "--line": "rgba(17,17,17,.16)", "--field": "#d9d9d9" };
 const DARK_VARS = { "--fg": "#ffffff", "--muted": "rgba(255,255,255,.62)", "--card": "rgba(255,255,255,.1)", "--line": "rgba(255,255,255,.2)", "--field": "#1d1d1f" };
 
@@ -92,7 +93,8 @@ export default function TomatoApp() {
   const showMap = inRoom && mapOpen && !open;
   const showSocial = inRoom && panel === "social" && !open;
   const showStats = inRoom && panel === "stats" && !open;
-  const mode = open ? "settings" : showMap || showGame || showSocial || showStats ? "map" : "room";
+  const showChat = inRoom && panel === "chat" && !open;
+  const mode = open ? "settings" : showMap || showGame || showSocial || showStats || showChat ? "map" : "room";
   const phase = room?.phase;
   const { loadTd } = t;
   // Свежее состояние игры; два повода сразу (начало перерыва + раскрытие панели) — один запрос
@@ -194,6 +196,9 @@ export default function TomatoApp() {
                       <button type="button" onClick={() => toggle("social")} aria-pressed={panel === "social"} data-testid="open-social" className={headBtn} aria-label={panel === "social" ? "Вернуться к таймеру" : "Друзья: помощь и шутки"}>
                         {panel === "social" ? <Timer size={16} /> : <Users size={16} />} <span className="hidden sm:inline">{panel === "social" ? "Таймер" : "Друзья"}</span>
                       </button>
+                      <button type="button" onClick={() => toggle("chat")} aria-pressed={panel === "chat"} data-testid="open-chat" className={headBtn} aria-label={panel === "chat" ? "Вернуться к таймеру" : "Чат комнаты"}>
+                        {panel === "chat" ? <Timer size={16} /> : <MessageSquare size={16} />} <span className="hidden sm:inline">{panel === "chat" ? "Таймер" : "Чат"}</span>
+                      </button>
                       <button type="button" onClick={() => toggle("stats")} aria-pressed={panel === "stats"} data-testid="open-stats" className={headBtn} aria-label={panel === "stats" ? "Вернуться к таймеру" : "Прогресс и статистика"}>
                         {panel === "stats" ? <Timer size={16} /> : <BarChart3 size={16} />} <span className="hidden sm:inline">{panel === "stats" ? "Таймер" : "Прогресс"}</span>
                       </button>
@@ -280,6 +285,15 @@ export default function TomatoApp() {
                 {showStats && (
                   <motion.section key="stats" aria-label="Прогресс" className={panelBox} style={{ color: "var(--fg)" }} {...reveal}>
                     <StatsPanel t={t} />
+                  </motion.section>
+                )}
+              </AnimatePresence>
+
+              {/* Текстовый чат комнаты: в фокусе только чтение */}
+              <AnimatePresence>
+                {showChat && (
+                  <motion.section key="chat" aria-label="Чат" className={panelBox} style={{ color: "var(--fg)" }} {...reveal}>
+                    <ChatPanel t={t} />
                   </motion.section>
                 )}
               </AnimatePresence>

@@ -102,6 +102,21 @@ describe('цикл: перерыв ведёт к следующему фокус
     } finally { await w.close(); }
   });
 
+  test('«Я готов» на перерыве: все в сети готовы → перерыв заканчивается, сразу следующий фокус', async () => {
+    const w = await boot();
+    try {
+      const L = await lobby(w, ['Лотти', 'Аня']);
+      await runFocus(w, L);
+      assert.equal((await roomOf(L)).room.phase, 'break');
+      const one = await L.host.post(L.path('/ready'), { ready: true });
+      assert.equal(one.body.room.phase, 'break', 'готов один из двух — перерыв идёт');
+      const both = await L.rest[0].post(L.path('/ready'), { ready: true });
+      assert.equal(both.body.room.phase, 'focus');
+      assert.equal(both.body.room.cycleNo, 2);
+      assert.equal(both.body.members.filter((m) => m.status === 'focusing').length, 2);
+    } finally { await w.close(); }
+  });
+
   test('«Сдаться»: без награды, сдавшийся остаётся в знаменателе команды', async () => {
     const w = await boot();
     try {
@@ -183,12 +198,14 @@ describe('шутки — командные дебаффы соперника, �
     return { L, A, B };
   }
 
-  test('своей команде шутку не отправить; сопернику — да, даже если у него стоит старый флаг prankEnabled=false', async () => {
+  test('своей команде шутку не отправить; сопернику — да; отключивший шутки (§5.5) целью не бывает и сам не шлёт', async () => {
     const w = await boot();
     try {
       const { L, A, B } = await teamsOnBreak(w);
       assert.equal((await A[0].post(L.path('/social/prank'), { type: 'fog', targetUserId: A[1].id })).body.error.code, 'NOT_RIVAL');
-      await B[0].patch('/api/users/me', { prankEnabled: false });
+      await B[1].patch('/api/users/me', { prankEnabled: false });
+      assert.equal((await A[0].post(L.path('/social/prank'), { type: 'fog', targetUserId: B[1].id })).body.error.code, 'PRANKS_DISABLED');
+      assert.equal((await B[1].post(L.path('/social/prank'), { type: 'fog', targetUserId: A[0].id })).body.error.code, 'PRANKS_DISABLED_SELF');
       const sent = await A[0].post(L.path('/social/prank'), { type: 'fog', targetUserId: B[0].id });
       assert.equal(sent.status, 201);
       assert.equal(sent.body.team, 'B');

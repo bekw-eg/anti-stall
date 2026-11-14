@@ -88,6 +88,9 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
       signalsPerSec: 200, // кандидаты ICE приходят пачками — отдельный лимит от остальных сообщений
     },
 
+    // Текстовый чат комнаты: в фокусе только чтение, антиспам и предел длины
+    chat: { maxLength: 300, minIntervalMs: 1000, perMinute: 20, historyLimit: 50 },
+
     social: {
       helpDailyLimit: 6,
       boost: { xpBonusPct: 25, ttlMs: 24 * 3600_000 },

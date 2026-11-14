@@ -219,6 +219,19 @@ export function createRoomsService(ctx, game, users, td) {
       requirePhase(room, 'waiting', 'break');
       db.run('UPDATE room_members SET is_ready = ? WHERE room_id = ? AND user_id = ?', b.ready ? 1 : 0, room.id, user.id);
       db.emit({ scope: 'room', roomId: room.id, type: 'player_ready_changed', data: { userId: user.id, isReady: b.ready } });
+      // На перерыве «Я готов» — голос за досрочный конец перерыва: готовы все в сети → следующий фокус сразу
+      if (room.phase === 'break' && b.ready) {
+        const t = clock.now();
+        const here = db.all(
+          `SELECT m.is_ready FROM room_members m JOIN users u ON u.id = m.user_id
+           WHERE m.room_id = ? AND m.left_at IS NULL AND ? - u.last_seen_at <= ?`, room.id, t, config.onlineWindowMs,
+        );
+        if (here.length > 0 && here.every((m) => m.is_ready)) {
+          db.emit({ scope: 'room', roomId: room.id, type: 'break_skipped', data: { by: 'all_ready' } });
+          endBreak(room, t);
+          return snapshot(room.id, user.id);
+        }
+      }
       db.emit(stateEvent(room.id));
       return snapshot(room.id, user.id);
     });
@@ -475,6 +488,7 @@ export function createRoomsService(ctx, game, users, td) {
     const breakEnds = endAt + room.break_sec * 1000;
     db.run("UPDATE rooms SET phase = 'break', phase_started_at = ?, phase_ends_at = ? WHERE id = ?", endAt, breakEnds, room.id);
     db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'focus', to: 'break', cycleId: room.cycle_id, phaseStartedAt: endAt, phaseEndsAt: breakEnds, completed: active.length, rewarded: rewardedUsers.length, breakNo, cycles: room.cycles } });
+    game.addTeamPoints(room, rewardedUsers); // завершённые фокусы — вклад в командное испытание (кейс §5.4)
     db.emit(stateEvent(room.id));
   }
 

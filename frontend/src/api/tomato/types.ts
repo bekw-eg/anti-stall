@@ -264,6 +264,15 @@ export interface RoomStats {
 }
 
 /** Действие помощи/пакости из ленты комнаты */
+/** Сообщение текстового чата комнаты */
+export interface ChatMessage {
+  id: number;
+  userId: string;
+  name: string;
+  text: string;
+  at: number;
+}
+
 export interface SocialAction {
   id: number;
   kind: "help" | "prank";

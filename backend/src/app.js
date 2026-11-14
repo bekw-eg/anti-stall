@@ -8,6 +8,7 @@ import { readJson } from './http/router.js';
 import { createStaticHandler } from './http/static.js';
 import { createGame } from './services/game.js';
 import { createRoomsService } from './services/rooms.js';
+import { createChatService } from './services/chat.js';
 import { createSocialService } from './services/social.js';
 import { createTd } from './services/td.js';
 import { createUsersService } from './services/users.js';
@@ -29,8 +30,9 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
   const rooms = createRoomsService(ctx, game, users, td);
   td.setRooms(rooms);
   const social = createSocialService(ctx, game, rooms);
+  const chat = createChatService(ctx, rooms);
   const voice = new VoiceRooms({ config, clock, nameOf: (id) => db.get('SELECT name FROM users WHERE id = ?', id)?.name });
-  const router = buildRoutes({ config, users, rooms, game, social, td, voice, db, clock });
+  const router = buildRoutes({ config, users, rooms, game, social, td, voice, chat, db, clock });
 
   const cors = {
     'Access-Control-Allow-Origin': config.corsOrigin,

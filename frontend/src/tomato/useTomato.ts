@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TomatoApiError, TomatoClient, WS_CLOSE_UNAUTHORIZED } from "@/api/tomato";
-import type { Connection, CreateRoomInput, Me, MercType, RoomSnapshot, ServerEvent, SocialAction, SpellId, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
+import type { ChatMessage, Connection, CreateRoomInput, Me, MercType, RoomSnapshot, ServerEvent, SocialAction, SpellId, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
 import { apiErrorText, extractRoomCode } from "./format";
 import { SHIELD_COST } from "./socialRules";
 import { useNow } from "./useMedia";
@@ -130,6 +130,7 @@ export function useTomato(initialCode?: string) {
   tdRef.current = td;
   const [socket, setSocket] = useState<TomatoSocket | null>(null); // общий сокет комнаты (голос использует его же)
   const [feed, setFeed] = useState<SocialAction[]>([]); // лента помощи и шуток комнаты
+  const [chat, setChat] = useState<ChatMessage[]>([]); // текстовый чат комнаты (последние сообщения)
 
   const offsetRef = useRef(0); // serverTime − Date.now()
   const refreshRef = useRef<() => void>(() => undefined);
@@ -319,6 +320,7 @@ export function useTomato(initialCode?: string) {
     socket.subscribe(roomId);
     setSocket(socket);
     client.socialFeed(roomId).then((r) => alive && setFeed(r.actions)).catch(() => undefined);
+    client.chat(roomId).then((r) => alive && setChat(r.messages)).catch(() => undefined);
     socket.on("hello", (ev) => {
       everOnline = true;
       setConn("online");
@@ -368,6 +370,11 @@ export function useTomato(initialCode?: string) {
         const d = ev.data as { userId: string; connection?: Connection };
         if (d.connection) setSnapshot((s) => s && { ...s, members: s.members.map((m) => (m.userId === d.userId ? { ...m, connection: d.connection! } : m)) });
       }
+      if (ev.type === "chat_message") {
+        const m = ev.data as ChatMessage;
+        setChat((c) => (c.some((x) => x.id === m.id) ? c : [...c, m].slice(-100)));
+        return;
+      }
       if (ev.type === "help_applied" || ev.type === "prank_applied") {
         const d = ev.data as { actionId: number; type: SocialAction["type"]; from: string; to: string; team?: string | null; blocked?: boolean; at: number; effectEndsAt?: number | null };
         const item: SocialAction = {
@@ -410,6 +417,7 @@ export function useTomato(initialCode?: string) {
       socket.close();
       setSocket(null);
       setFeed([]);
+      setChat([]);
       clearInterval(hb);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
@@ -535,6 +543,13 @@ export function useTomato(initialCode?: string) {
 
   const recordResult = useCallback((result: "done" | "partial" | "not_done") => call(() => client.recordResult(rid, result)), [call, rid]);
 
+  /** Отправить сообщение в чат комнаты; true — сервер принял (сообщение придёт и по WS, дубль отсекается по id). */
+  const sendChat = useCallback(async (text: string) => {
+    const m = await call(() => client.sendChat(rid, text));
+    if (m) setChat((c) => (c.some((x) => x.id === m.id) ? c : [...c, m].slice(-100)));
+    return Boolean(m);
+  }, [call, rid]);
+
   /** Получать шутки: переключатель меняется сразу, сервер подтверждает (при ошибке — откат). */
   const setPranksEnabled = useCallback(async (on: boolean) => {
     const apply = (v: boolean) => {
@@ -560,8 +575,8 @@ export function useTomato(initialCode?: string) {
   }, [focusing, rid]);
 
   return {
-    boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
-    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, tdRematch, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled,
+    boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
+    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, tdRematch, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, chat, sendChat,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

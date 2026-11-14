@@ -44,11 +44,11 @@ describe('помощь и пакости', () => {
     await w.advance(25_000, L.users);
     assert.equal((await social(lotti, 'prank', { targetUserId: boris.id, type: 'fog' })).body.error.code, 'PRANK_BREAK_LIMIT');
 
-    // --- шутки — игровая механика перерыва: старый флаг prankEnabled их больше не отключает
+    // --- отключение шуток (кейс §5.5): отключившего нельзя выбрать целью, и сам он их не шлёт
     await anya.patch('/api/users/me', { prankEnabled: false });
     await w.advance(25_000, L.users);
-    assert.equal((await social(boris, 'prank', { targetUserId: anya.id, type: 'fog' })).status, 201);
-    assert.equal((await social(anya, 'prank', { targetUserId: boris.id, type: 'fog' })).status, 201);
+    assert.equal((await social(boris, 'prank', { targetUserId: anya.id, type: 'fog' })).body.error.code, 'PRANKS_DISABLED');
+    assert.equal((await social(anya, 'prank', { targetUserId: boris.id, type: 'fog' })).body.error.code, 'PRANKS_DISABLED_SELF');
 
     // --- бонус реально применяется на следующей сессии, пакости не отнимают прогресс
     const xpBefore = (await anya.progress()).xp;

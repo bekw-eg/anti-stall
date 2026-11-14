@@ -130,10 +130,10 @@ describe('защита от читов (как в cheat-check)', () => {
     assert.equal((await txOf(G3, 'focus_session')).length, 1);
   });
 
-  test('старый флаг prankEnabled=false шутки не отключает: это игровая механика перерыва', async () => {
+  test('пакость игроку с отключёнными пакостями отклоняется (кейс §5.5)', async () => {
     const r = await H.post(A.path('/social/prank'), { targetUserId: G3.id, type: 'fog' });
-    assert.notEqual(r.body.error?.code, 'PRANKS_DISABLED');
-    assert.equal(r.status, 201);
+    assert.equal(r.status, 409);
+    assert.equal(r.body.error.code, 'PRANKS_DISABLED');
   });
 
   test('повтор requestId постройки (последовательно и параллельно) списывает монеты один раз; цена — из каталога', async () => {

@@ -29,6 +29,9 @@ export function disabledReason(type: ActionType, target: Member, t: Pick<Tomato,
   }
   // Шутки — дебафф команде соперника (выключить нельзя): своим не отправляются
   if (snap.room.mode === "teams" && target.team === me.team) return "Шутки летят только в команду соперника";
+  // Кейс §5.5: получение шуток можно отключить в профиле
+  if (me.prankEnabled === false) return "Вы отключили шутки в профиле";
+  if (target.prankEnabled === false) return "Игрок отключил шутки";
   if (target.status === "focusing") return "Игрок занимается";
   return null;
 }

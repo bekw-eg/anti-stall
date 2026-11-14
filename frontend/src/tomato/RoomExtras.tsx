@@ -11,6 +11,8 @@ import type { Voice } from "./voice/useVoice";
 const btn =
   "rounded-full px-6 py-2.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current";
 
+const BREAK_READY_HINT = "Все в сети нажали «Я готов» — следующий фокус начнётся сразу";
+
 /** Кнопка основного действия под таймером: что можно сделать прямо сейчас (решает сервер). */
 function Controls({ t }: { t: Tomato }) {
   const snap = t.snapshot!;
@@ -92,9 +94,12 @@ function Controls({ t }: { t: Tomato }) {
   }
   if (actions.includes("skip_break")) {
     return (
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        {readyButton}
-        <button type="button" onClick={t.skipBreak} className={`${btn} border border-[var(--line)] text-[var(--muted)] hover:text-[var(--fg)]`}>Пропустить перерыв</button>
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {readyButton}
+          <button type="button" onClick={t.skipBreak} className={`${btn} border border-[var(--line)] text-[var(--muted)] hover:text-[var(--fg)]`}>Пропустить перерыв</button>
+        </div>
+        <p className="text-xs text-[var(--muted)]">{BREAK_READY_HINT}</p>
       </div>
     );
   }
@@ -102,6 +107,7 @@ function Controls({ t }: { t: Tomato }) {
     phase === "waiting" ? "Ждём, пока создатель запустит сессию"
     : phase === "focus" ? "Вы наблюдаете — присоединитесь в следующем цикле"
     : phase === "completed" ? "Комната закрыта"
+    : phase === "break" ? BREAK_READY_HINT
     : "";
   return (
     <div className="flex flex-col items-center gap-2">
