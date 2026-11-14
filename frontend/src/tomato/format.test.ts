@@ -78,3 +78,13 @@ describe("currentRouteCode", () => {
     expect(currentRouteCode()).toBe("");
   });
 });
+
+describe("cycleLabel", () => {
+  it("в плане — «цикл N из M», после плана — «сверх плана»", async () => {
+    const { cycleLabel } = await import("./format");
+    expect(cycleLabel(1, 4)).toBe("цикл 1 из 4");
+    expect(cycleLabel(4, 4)).toBe("цикл 4 из 4");
+    expect(cycleLabel(7, 4)).toBe("цикл 7, сверх плана");
+    expect(cycleLabel(0, 4)).toBe("цикл 1 из 4"); // до первого старта
+  });
+});

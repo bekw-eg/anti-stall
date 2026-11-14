@@ -47,7 +47,7 @@ export function DemoBadge({ compact = false, className = "" }: { compact?: boole
     >
       <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
       <span aria-hidden className={compact ? "truncate" : ""}>
-        Демо-песочница<span className={compact ? "hidden xl:inline" : ""}>: {DEMO_NOTE}</span>
+        Демо-песочница<span className={compact ? "hidden 2xl:inline" : ""}>: {DEMO_NOTE}</span>
       </span>
     </span>
   );

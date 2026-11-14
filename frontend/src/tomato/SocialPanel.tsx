@@ -46,7 +46,7 @@ export function SocialPanel({ t }: { t: Tomato }) {
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-5 sm:p-6" data-testid="social-panel">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.2em]">Друзья · {snap.members.length}</h2>
+        <h2 className="font-display text-xl">Друзья · {snap.members.length}</h2>
         <p className="text-xs text-[var(--muted)]" data-testid="social-phase-note">
           {onBreak
             ? teams ? "Перерыв: бафф своим, дебафф соперникам — шутки ослабляют башни их команды" : "Перерыв: помогите другу или подшутите"
@@ -54,7 +54,7 @@ export function SocialPanel({ t }: { t: Tomato }) {
         </p>
       </div>
 
-      <div className={`grid gap-3 ${teams ? "lg:grid-cols-2" : ""}`}>
+      <div className="grid gap-3">
         {groups.map((g) => (
           <section key={g.key} aria-label={g.title} className="rounded-2xl bg-[var(--card)] px-4 py-3" style={{ borderLeft: `5px solid ${TEAM_COLOR[g.key] ?? TEAM_COLOR.shared}` }} data-team={g.key}>
             <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
@@ -95,9 +95,8 @@ export function SocialPanel({ t }: { t: Tomato }) {
       </div>
 
       <p className="text-xs leading-relaxed text-[var(--muted)]">
-        Бонус: +{t.boostPct}% XP за следующую сессию. Щит поглощает одну шутку соперника.
-        {teams ? " Туман уменьшает дальность башен команды соперника, липучка замедляет их стрельбу — " : " Шутки — короткие эффекты на экране друга, "}
-        не дольше конца перерыва; до {t.prankRules.maxPerBreak} шуток за перерыв.
+        Бонус: +{t.boostPct}% опыта за следующую сессию. Щит отражает одну шутку.
+        {teams ? " Туман и липучка ослабляют башни соперника до конца перерыва." : " Шутки действуют до конца перерыва."} Не больше {t.prankRules.maxPerBreak} за перерыв.
       </p>
     </div>
   );

@@ -3,9 +3,9 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DemoBadge } from "./Chrome";
 import { FakeWebSocket, booted, health, me, mockServer, registered, renderHook, roomRoutes, snapshot } from "./hookTestUtils";
-import { SettingsContent, type FormState } from "./SettingsContent";
+import { JoinScreen } from "./screens/JoinScreen";
+import { Landing } from "./screens/Landing";
 import { client, type Tomato } from "./useTomato";
-import { Welcome } from "./Welcome";
 
 describe("демо-песочница: аккаунт и комнаты", () => {
   beforeEach(() => {
@@ -99,11 +99,11 @@ describe("демо-песочница: интерфейс", () => {
     return { host, unmount: () => { act(() => root.unmount()); host.remove(); } };
   };
 
-  it("Welcome показывает плашку только на демо-сервере", () => {
-    const on = mount(<Welcome ready serverOk demo onStart={() => undefined} />);
+  it("лендинг показывает плашку только на демо-сервере", () => {
+    const on = mount(<Landing ready serverOk demo onStart={() => undefined} onJoin={() => undefined} />);
     expect(on.host.querySelector('[data-testid="demo-badge"]')?.textContent).toBe("Демо-песочница: ускоренное время, прогресс не переносится в реальный аккаунт");
     on.unmount();
-    const off = mount(<Welcome ready serverOk demo={false} onStart={() => undefined} />);
+    const off = mount(<Landing ready serverOk demo={false} onStart={() => undefined} onJoin={() => undefined} />);
     expect(off.host.querySelector('[data-testid="demo-badge"]')).toBeNull();
     off.unmount();
   });
@@ -116,18 +116,28 @@ describe("демо-песочница: интерфейс", () => {
     m.unmount();
   });
 
-  it("на демо-сервере чекбокс «Демо-режим» включён, заблокирован и объясняет почему; комната создаётся демо", () => {
+  it("на демо-сервере экран входа предупреждает о песочнице и создаёт демо-комнату с короткими таймингами", () => {
     const createRoom = vi.fn(async () => true);
     const t = { snapshot: null, user: null, name: "Лотти", setName: () => undefined, demoMode: true, busy: false, createRoom, joinRoom: vi.fn() } as unknown as Tomato;
-    const form: FormState = { work: 25, rest: 15, demo: false, teamMode: false, cycles: 4, setCycles: vi.fn(), setWork: vi.fn(), setRest: vi.fn(), setDemo: vi.fn(), setTeamMode: vi.fn() };
-    const m = mount(<SettingsContent t={t} form={form} onCollapse={() => undefined} />);
-    const box = m.host.querySelector<HTMLInputElement>('input[aria-describedby="demo-mode-note"]')!;
-    expect(box.checked).toBe(true);
-    expect(box.disabled).toBe(true);
-    expect(m.host.querySelector("#demo-mode-note")?.textContent).toMatch(/демо-песочница/);
-    const create = [...m.host.querySelectorAll("button")].find((b) => b.textContent === "Создать комнату")!;
+    const m = mount(<JoinScreen t={t} initialMode="create" onBack={() => undefined} />);
+    expect(m.host.querySelector('[data-testid="demo-badge"]')).not.toBeNull();
+    const create = [...m.host.querySelectorAll("button")].find((b) => b.textContent === "Создать комнату" && b.getAttribute("type") === "submit")!;
     act(() => create.click());
-    expect(createRoom).toHaveBeenCalledWith("Лотти", { demo: true, focusSeconds: 25, breakSeconds: 15, cycles: 4, teamMode: false }); // длительности — из формы, в секундах
+    expect(createRoom).toHaveBeenCalledWith("Лотти", { demo: true, focusSeconds: 25, breakSeconds: 15, cycles: 4, teamMode: true });
     m.unmount();
+  });
+
+  it("на обычном сервере комната создаётся с 25 / 5 минутами, а по коду — входит в комнату", () => {
+    const createRoom = vi.fn(async () => true);
+    const joinRoom = vi.fn(async () => true);
+    const t = { snapshot: null, user: null, name: "Аня", setName: () => undefined, demoMode: false, busy: false, createRoom, joinRoom } as unknown as Tomato;
+    const m = mount(<JoinScreen t={t} initialMode="create" onBack={() => undefined} />);
+    act(() => m.host.querySelector<HTMLButtonElement>('button[type="submit"]')!.click());
+    expect(createRoom).toHaveBeenCalledWith("Аня", { focusSeconds: 1500, breakSeconds: 300, cycles: 4, teamMode: true });
+    m.unmount();
+    const j = mount(<JoinScreen t={t} initialMode="join" initialCode="https://x.kz/room/k7qm2x" onBack={() => undefined} />);
+    act(() => j.host.querySelector<HTMLButtonElement>('button[type="submit"]')!.click());
+    expect(joinRoom).toHaveBeenCalledWith("Аня", "https://x.kz/room/k7qm2x");
+    j.unmount();
   });
 });

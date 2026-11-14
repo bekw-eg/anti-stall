@@ -275,7 +275,9 @@ describe("клиент ↔ backend: Team A/B", () => {
   it("режим команд: автобаланс, смена команды, раздельная карта и казна", async () => {
     const lotti = await player("Тим-1");
     const anya = await player("Тим-2");
-    const snap = await lotti.createRoom({ name: "A vs B", focusMinutes: 25, breakMinutes: 5, teamMode: true });
+    // Один запланированный цикл: после перерыва комната ждёт (иначе сервер сам стартует следующий фокус),
+    // и смену команды «между циклами» можно проверить.
+    const snap = await lotti.createRoom({ name: "A vs B", focusMinutes: 25, breakMinutes: 5, teamMode: true, cycles: 1 });
     expect(snap.room.mode).toBe("teams");
     const joined = await anya.joinByCode(snap.room.code);
     expect(joined.members.map((m) => m.team)).toEqual(["A", "B"]);

@@ -65,7 +65,7 @@ export function StatsPanel({ t }: { t: Tomato }) {
       {errorBox}
       <section aria-labelledby="me-stats-h" className="flex min-w-0 flex-col gap-5">
         <div className="flex items-baseline justify-between">
-          <h2 id="me-stats-h" className="text-sm font-semibold uppercase tracking-[0.2em]">Ваш прогресс</h2>
+          <h2 id="me-stats-h" className="font-display text-xl">Ваш прогресс</h2>
           <span className="text-xs text-[var(--muted)] tabular-nums">{stats.coins} монет</span>
         </div>
 
@@ -85,7 +85,7 @@ export function StatsPanel({ t }: { t: Tomato }) {
         </div>
 
         <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--muted)]">Последние 7 дней</p>
+          <p className="mb-2 text-[15px] font-bold text-[var(--muted)]">Последние 7 дней</p>
           <div className="flex h-24 gap-2" aria-label="Время концентрации по дням">
             {stats.daily.map((d) => (
               <div key={d.dayStart} className="flex h-full flex-1 flex-col items-center gap-1" title={`${formatDuration(d.focusSeconds)} · сессий: ${d.sessions}`}>
@@ -99,7 +99,7 @@ export function StatsPanel({ t }: { t: Tomato }) {
         </div>
 
         <div>
-          <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--muted)]">
+          <p className="mb-2 text-[15px] font-bold text-[var(--muted)]">
             Достижения · <span data-testid="stats-achievements">{stats.achievements.unlocked} из {stats.achievements.total}</span>
           </p>
           <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
@@ -115,7 +115,7 @@ export function StatsPanel({ t }: { t: Tomato }) {
 
       <section aria-labelledby="team-stats-h" className="flex min-w-0 flex-col gap-5">
         <div className="flex items-baseline justify-between">
-          <h2 id="team-stats-h" className="text-sm font-semibold uppercase tracking-[0.2em]">Командный прогресс</h2>
+          <h2 id="team-stats-h" className="font-display text-xl">Командный прогресс</h2>
           {room && <span className="text-xs text-[var(--muted)]">циклов: {room.cycles}</span>}
         </div>
         {!room ? <p className="text-sm text-[var(--muted)]">{error ? "Командная статистика не загрузилась" : "Загружаем…"}</p> : (

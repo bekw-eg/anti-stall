@@ -2,61 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
-
+/*
+ * Дизайн-система AntiStall (макет Figma «AntiStall-ainara», страница back).
+ * Цвета: ink #3B2422, rose #A0726D, peach #EAA695, blush #FFCEC2, paper #F6EFEC, mute #7D625E, lime #D9DE9F.
+ * Жёсткие тени без размытия (0 6px 0 ink), скругления 14–28px, обводка 2px.
+ * HSL-переменные ниже нужны компонентам shadcn (toast, dialog) — они тоже в палитре макета.
+ */
 @layer base {
   :root {
-    --background: 155 45% 17%;
-    --foreground: 0 0% 100%;
-
-    --card: 155 45% 20%;
-    --card-foreground: 0 0% 100%;
-
-    --popover: 155 45% 20%;
-    --popover-foreground: 0 0% 100%;
-
-    --primary: 50 93% 66%;
-    --primary-foreground: 155 45% 17%;
-
-    --secondary: 50 93% 66%;
-    --secondary-foreground: 155 45% 17%;
-
-    --muted: 155 45% 25%;
-    --muted-foreground: 0 0% 85%;
-
-    --accent: 50 93% 66%;
-    --accent-foreground: 155 45% 17%;
-
-    --destructive: 0 84.2% 60.2%;
+    --background: 0 0% 100%;
+    --foreground: 5 27% 18%;
+    --card: 0 0% 100%;
+    --card-foreground: 5 27% 18%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 5 27% 18%;
+    --primary: 5 20% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 15 33% 95%;
+    --secondary-foreground: 5 27% 18%;
+    --muted: 15 33% 95%;
+    --muted-foreground: 6 14% 43%;
+    --accent: 12 68% 75%;
+    --accent-foreground: 5 27% 18%;
+    --destructive: 4 70% 52%;
     --destructive-foreground: 0 0% 100%;
-
-    --border: 155 45% 30%;
-    --input: 155 45% 25%;
-    --ring: 50 93% 66%;
-
-    --radius: 0.75rem;
-
-    --success: 150 60% 50%;
+    --border: 8 22% 75%;
+    --input: 8 22% 75%;
+    --ring: 5 20% 53%;
+    --radius: 1.25rem;
+    --success: 69 56% 27%;
     --success-foreground: 0 0% 100%;
-
-    --gradient-primary: linear-gradient(135deg, hsl(50 93% 66%), hsl(50 93% 76%));
-    --gradient-secondary: linear-gradient(135deg, hsl(50 93% 66%), hsl(50 93% 76%));
-    --gradient-bg: linear-gradient(180deg, hsl(155 45% 17%), hsl(155 45% 20%));
-
-    --shadow-soft: 0 2px 8px hsl(0 0% 0% / 0.3);
-    --shadow-card: 0 4px 16px hsl(0 0% 0% / 0.4);
-    --shadow-elevated: 0 8px 24px hsl(0 0% 0% / 0.5);
-
-    --sidebar-background: 155 45% 17%;
-    --sidebar-foreground: 0 0% 100%;
-    --sidebar-primary: 50 93% 66%;
-    --sidebar-primary-foreground: 155 45% 17%;
-    --sidebar-accent: 155 45% 25%;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 155 45% 30%;
-    --sidebar-ring: 50 93% 66%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 5 27% 18%;
+    --sidebar-primary: 5 20% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 15 33% 95%;
+    --sidebar-accent-foreground: 5 27% 18%;
+    --sidebar-border: 8 22% 75%;
+    --sidebar-ring: 5 20% 53%;
   }
 }
 img { pointer-events: none; }
@@ -68,11 +51,11 @@ img { pointer-events: none; }
 
   html {
     overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
-    @apply bg-gradient-to-b from-background to-muted/20 text-foreground min-h-screen;
-    background-image: var(--gradient-bg);
+    @apply min-h-screen bg-white font-sans text-ink antialiased;
     overscroll-behavior: none;
     overflow-x: hidden;
   }
@@ -92,26 +75,41 @@ img { pointer-events: none; }
   }
 }
 
-@layer utilities {
-  .gradient-primary {
-    background: var(--gradient-primary);
+@layer components {
+  /* Заголовки и цифры. У Luckiest Guy один вес — запрещаем браузеру «дорисовывать» жирность. */
+  .font-display {
+    font-family: "Luckiest Guy", Rubik, Nunito, system-ui, sans-serif;
+    font-weight: 800;
+    font-synthesis: none;
+    letter-spacing: 0.01em;
   }
 
-  .gradient-secondary {
-    background: var(--gradient-secondary);
+  /* Кнопки макета: Primary / Secondary / Light / Disabled */
+  .as-btn {
+    @apply inline-flex min-h-[3.5rem] items-center justify-center gap-2 rounded-[20px] border-2 border-transparent px-7 text-center text-lg leading-tight transition-[transform,box-shadow,background-color] duration-100 sm:min-h-[4rem] sm:text-xl;
+    @apply font-display;
+    box-shadow: 0 6px 0 #3B2422;
   }
+  .as-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 #3B2422; }
+  .as-btn-primary { @apply bg-rose text-white hover:bg-[#946660]; }
+  .as-btn-secondary { @apply border-ink bg-white text-ink hover:bg-paper; }
+  .as-btn-light { @apply bg-peach text-ink hover:bg-[#E29A88]; }
+  /* нажатая «Я готов»: лаймовая, с обводкой — состояние видно сразу */
+  .as-btn-ready { @apply border-ink bg-lime text-ink hover:bg-[#CDD38E]; }
+  .as-btn:disabled { @apply cursor-not-allowed border-transparent bg-[#EDE3E0] text-[#A08A86]; box-shadow: none; transform: none; }
+  .as-btn-sm { @apply min-h-[2.75rem] rounded-[14px] px-4 text-base sm:min-h-[3rem]; box-shadow: 0 4px 0 #3B2422; }
+  .as-btn-sm:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #3B2422; }
 
-  .shadow-soft {
-    box-shadow: var(--shadow-soft);
+  /* Карточки и поля */
+  .as-card { @apply rounded-[24px] border-2 border-ink bg-white; }
+  .as-shadow { box-shadow: 0 6px 0 #3B2422; }
+  .as-shadow-sm { box-shadow: 0 4px 0 #3B2422; }
+  .as-label { @apply text-base font-bold text-ink sm:text-[17px]; }
+  .as-input {
+    @apply h-14 w-full min-w-0 rounded-[20px] border-2 border-line bg-white px-5 text-lg text-ink outline-none transition-colors placeholder:text-[#A08A86] focus:border-ink disabled:cursor-not-allowed disabled:bg-paper sm:h-16 sm:text-xl;
   }
-
-  .shadow-card {
-    box-shadow: var(--shadow-card);
-  }
-
-  .shadow-elevated {
-    box-shadow: var(--shadow-elevated);
-  }
+  .as-pill { @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-bold; }
+  .as-eyebrow { @apply text-[15px] font-bold text-mute; }
 }
 
 /* Tomato: при prefers-reduced-motion гасим и CSS-переходы (полоски прогресса, цвета) */

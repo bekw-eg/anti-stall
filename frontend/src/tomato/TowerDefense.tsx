@@ -103,7 +103,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
       <TdField td={td} current={current} effects={effects} selected={selected} onSelect={setSelected} hpPct={hpPct} />
 
       {/* HUD: справа на широком экране, снизу на телефоне */}
-      <aside className="flex min-w-0 shrink-0 flex-col gap-3 text-sm text-[var(--fg)] lg:w-[22rem] lg:overflow-y-auto lg:pr-1 [scrollbar-width:thin]">
+      <aside className="flex min-w-0 shrink-0 flex-col gap-3 text-sm text-[var(--fg)] lg:w-[22rem] lg:overflow-y-auto lg:pr-1 [scrollbar-width:thin] [&>*]:shrink-0">
         {!td.enabled ? (
           <p role="status" className="rounded-2xl bg-[var(--card)] p-4 text-xs text-[var(--muted)]">Игра доступна только на перерыве. Сейчас — время учёбы.</p>
         ) : (
@@ -125,13 +125,13 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                   </p>
                   {finished && (
                     <p role="status" className={`mt-2 rounded-xl px-3 py-2 text-xs font-medium ${current.status === "won" ? "bg-emerald-400 text-emerald-950" : current.status === "lost" ? "bg-red-500 text-white" : "bg-[var(--fg)] text-[var(--field)]"}`}>
-                      {current.status === "won" ? "Победа! Академия выстояла — награду начислил сервер (только участникам раунда)." : current.status === "lost" ? "База пала. Башни остались — усильте оборону и попробуйте снова." : "Перерыв закончился — раунд завершён, продолжаем учёбу."}
+                      {current.status === "won" ? "Победа! Академия выстояла. Награду получили все, кто играл в раунде." : current.status === "lost" ? "База пала. Башни остались, усильте оборону и попробуйте снова." : "Перерыв закончился, возвращаемся к учёбе."}
                     </p>
                   )}
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  <p className="text-xs text-[var(--muted)]">Стройте башни из казны команды и начните раунд. Игра закрывается вместе с перерывом — учёба важнее.</p>
+                  <p className="text-xs text-[var(--muted)]">Постройте башни на деньги казны и начните раунд. Игра закроется вместе с перерывом.</p>
                   <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Этап">
                     {td.stages.map((s) => (
                       <button
@@ -159,7 +159,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
             </Section>
 
             {/* Оборона */}
-            <Section title="Оборона (Башни Аксолотлей)">
+            <Section title="Башни-аксолотли">
               {effects.length > 0 && <EffectChips effects={effects} className="mb-2" />}
               {!sel ? (
                 <p className="text-xs text-[var(--muted)]">Выберите место на поле, чтобы построить или улучшить башню.</p>
@@ -187,7 +187,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
             </Section>
 
             {/* Штурм и поддержка */}
-            <Section title="Штурм и Поддержка">
+            <Section title="Штурм и поддержка">
               {td.mercenaries?.length > 0 && (
                 <>
                   <p className="mb-1.5 text-xs text-[var(--muted)]">{versus ? "Наёмники-томаты" : "Подкрепление волны"}</p>
@@ -287,7 +287,7 @@ const stageTitle = (td: TdView, id: string) => td.stages.find((s) => s.id === id
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section aria-label={title} className="rounded-2xl bg-[var(--card)] p-3 ring-1 ring-inset ring-[var(--line)]">
-      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">{title}</h3>
+      <h3 className="mb-2 text-sm font-bold text-[var(--muted)]">{title}</h3>
       {children}
     </section>
   );
@@ -337,7 +337,7 @@ function Treasury({ coins, team }: { coins: number; team: string | null }) {
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-amber-300 to-amber-400 px-4 py-3 text-amber-950 shadow-[0_6px_24px_-8px_rgba(251,191,36,.6)]">
-      <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70">{team ? `Казна команды ${team}` : "Казна команды"}</p>
+      <p className="text-sm font-bold opacity-70">{team ? `Казна команды ${team}` : "Казна команды"}</p>
       <p className="flex items-baseline gap-1.5 text-2xl font-bold tabular-nums" aria-label={`Казна команды: ${coins} монет`} data-testid="treasury" data-value={coins}>
         <span aria-hidden>Казна команды:</span>
         <span aria-hidden>{shown}</span>
@@ -629,7 +629,7 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
               exit={{ opacity: 0 }}
               transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 18 }}
             >
-              <span className={`rounded-2xl px-5 py-2.5 text-lg font-extrabold uppercase tracking-wide shadow-xl sm:text-2xl ${finished === "won" ? "bg-emerald-400 text-emerald-950" : finished === "lost" ? "bg-red-600 text-white" : "bg-zinc-900/85 text-white"}`}>
+              <span className={`rounded-2xl px-5 py-2.5 text-lg font-display border-2 border-ink shadow-[0_6px_0_#3B2422] sm:text-2xl ${finished === "won" ? "bg-emerald-400 text-emerald-950" : finished === "lost" ? "bg-red-600 text-white" : "bg-zinc-900/85 text-white"}`}>
                 {finished === "won" ? "Оборона выстояла!" : finished === "lost" ? "База пала" : "Перерыв закончился"}
               </span>
             </motion.div>

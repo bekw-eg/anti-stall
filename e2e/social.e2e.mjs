@@ -30,14 +30,14 @@ try {
     await anya.page.getByTestId('open-social').click();
     await social(anya).waitFor();
     assert((await anya.page.getByTestId('social-phase-note').textContent()).includes('откроются на перерыве'), 'нет пояснения');
-    const btns = social(anya).locator('button[data-action]');
-    assert((await btns.count()) === 8, 'должно быть 4 действия × 2 друга');
-    for (let i = 0; i < 8; i++) assert(await btns.nth(i).isDisabled(), 'кнопка действия активна вне перерыва');
+    // вне перерыва кнопок помощи и шуток нет вовсе (панель показывает только участников и пояснение)
+    assert((await social(anya).locator('[data-member]').count()) === 3, 'в списке не все участники');
+    assert((await social(anya).locator('button[data-action]').count()) === 0, 'кнопки действий видны вне перерыва');
   });
 
   await step('в фокусе шутки не проходят ни через интерфейс, ни через API', async () => {
     // хост запускает фокус, когда все участники в сети нажали «Я готов»
-    // (у Ани открыта панель «Друзья» — она закрывает кнопки таймера, поэтому сначала возвращаемся к таймеру)
+    // (у Ани открыта панель «Друзья» — повторное нажатие закрывает её)
     await anya.page.getByTestId('open-social').click();
     for (const u of [lotti, anya, borya]) await u.page.getByRole('button', { name: 'Я готов' }).click();
     await until(async () => lotti.page.getByRole('button', { name: 'Начать фокус' }).isEnabled(), { msg: '«Начать фокус» не активировалась после готовности всех' });
@@ -48,7 +48,7 @@ try {
     const r = await api(env, borya, 'POST', `/api/rooms/${roomId}/social/prank`, { targetUserId: anya.id, type: 'fog' });
     assert(r.status === 409, `сервер пропустил шутку в фокусе: ${r.status}`);
     assert((await anya.page.getByTestId('prank-fog').count()) === 0, 'туман в фокусе');
-    assert(await social(anya).locator('button[data-action="fog"]').first().isDisabled(), 'кнопка шутки активна в фокусе');
+    assert((await social(anya).locator('button[data-action="fog"]').count()) === 0, 'кнопка шутки доступна в фокусе');
   });
 
   await step('перерыв сам открывает игру; Лотти даёт Ане бонус — у Ани эффект появляется сразу', async () => {

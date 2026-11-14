@@ -38,12 +38,12 @@ export function ChatPanel({ t }: { t: Tomato }) {
   return (
     <div className="flex h-full flex-col gap-3 p-5 sm:p-6" data-testid="chat-panel">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-[0.2em]">Чат комнаты</h2>
-        <p className="text-xs text-[var(--muted)]">{readOnly ? "Идёт фокус — чат только для чтения" : "Можно писать"}</p>
+        <h2 className="font-display text-xl">Чат комнаты</h2>
+        {readOnly && <p className="text-xs text-[var(--muted)]">Идёт фокус: писать можно на перерыве</p>}
       </div>
 
       <ol ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1" aria-label="Сообщения" aria-live="polite">
-        {t.chat.length === 0 && <li className="text-sm text-[var(--muted)]">Пока тихо — напишите первым на перерыве.</li>}
+        {t.chat.length === 0 && <li className="text-sm text-[var(--muted)]">{readOnly ? "Пока тихо." : "Пока тихо. Напишите первым."}</li>}
         {t.chat.map((m) => {
           const mine = m.userId === meId;
           return (

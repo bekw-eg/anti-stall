@@ -120,11 +120,13 @@ export async function openUser(browser, env, name, { denyMic = false } = {}) {
   return { name, page, context, errors };
 }
 
-/** Welcome → «Начать» → имя → «Создать комнату». Возвращает код комнаты. */
+/** Лендинг → «Начать» → имя → «Создать комнату». Возвращает код комнаты. */
 export async function createRoom(u, env) {
   await u.page.goto(env.url + '/');
-  await u.page.getByRole('button', { name: 'Начать' }).click();
+  await u.page.getByRole('button', { name: 'Начать', exact: true }).first().click(); // в меню и в первом экране лендинга
   await u.page.getByPlaceholder('Например, Лотти').fill(u.name);
+  // сценарии проверяют общую комнату; режим «Две команды» по умолчанию включён — снимаем галочку
+  await u.page.getByRole('checkbox', { name: /Две команды/ }).uncheck();
   await u.page.getByRole('button', { name: 'Создать комнату' }).click();
   await u.page.waitForURL(/\/room\/[A-Z0-9]{6}$/);
   return u.page.url().split('/room/')[1];

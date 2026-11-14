@@ -107,7 +107,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
       {/* Подробности: этап, прогресс общего испытания, вклад участников */}
       <aside className="flex shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl bg-[var(--card)] p-4 text-sm text-[var(--fg)] lg:w-72">
         <div>
-          <p className="text-xs uppercase tracking-wider text-[var(--muted)]">{NODE_STATUS_LABEL[selected.status]}</p>
+          <p className="text-[15px] font-bold text-[var(--muted)]">{NODE_STATUS_LABEL[selected.status]}</p>
           <p className="mt-1 text-base font-medium">{selected.title}</p>
           <p className="mt-1 text-xs text-[var(--muted)]">
             {requirementLong(road, selected)}
@@ -165,7 +165,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
         </div>
 
         <div>
-          <p className="mb-1.5 text-xs uppercase tracking-wider text-[var(--muted)]">Вклад</p>
+          <p className="mb-1.5 text-[15px] font-bold text-[var(--muted)]">Вклад</p>
           {road.contributions.length === 0 ? (
             <p className="text-xs text-[var(--muted)]">Пока никто не внёс очков.</p>
           ) : (

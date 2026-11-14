@@ -96,3 +96,9 @@ export function formatAgo(atMs: number, nowMs: number) {
  * а параметр роутера при этом остаётся прежним — поэтому читаем window.location, а не useParams.
  */
 export const currentRouteCode = (path = typeof window === "undefined" ? "" : window.location.pathname) => extractRoomCode(path) ?? "";
+
+/** «цикл 3 из 4» или, когда план уже выполнен и создатель продолжил, «цикл 7, сверх плана». */
+export function cycleLabel(cycleNo: number, planned: number) {
+  const n = Math.max(1, cycleNo);
+  return n <= planned ? `цикл ${n} из ${planned}` : `цикл ${n}, сверх плана`;
+}
