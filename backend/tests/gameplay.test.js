@@ -4,7 +4,7 @@ import { boot, lobby, runBreak, runFocus } from './helpers.js';
 
 /**
  * Правила после просмотра прототипа (ветка fixes/gameplay-feedback):
- * свободные длительности, качество фокуса, автостарт цикла, «Сдаться» вместо пропуска фокуса,
+ * свободные длительности, качество фокуса, автостарт цикла, «Сдаться» (свой выход) и пропуск фокуса хостом,
  * шутки — командные дебаффы без выключателя.
  */
 const roomOf = async (L) => (await L.host.get(L.path())).body;
@@ -70,7 +70,7 @@ describe('цикл: перерыв ведёт к следующему фокус
     } finally { await w.close(); }
   });
 
-  test('хост пропускает перерыв → сразу следующий фокус; пропустить фокус нельзя никому', async () => {
+  test('хост пропускает перерыв → сразу следующий фокус', async () => {
     const w = await boot();
     try {
       const L = await lobby(w, ['Лотти', 'Аня']);
@@ -82,6 +82,22 @@ describe('цикл: перерыв ведёт к следующему фокус
       const skipped = await L.host.post(L.path('/skip-break'));
       assert.equal(skipped.body.room.phase, 'focus');
       assert.equal(skipped.body.room.cycleNo, 2);
+    } finally { await w.close(); }
+  });
+
+  test('хост пропускает фокус → сразу перерыв, награда за отработанную долю, только хосту', async () => {
+    const w = await boot();
+    try {
+      const L = await lobby(w, ['Лотти', 'Аня']);
+      await L.host.post(L.path('/start'));
+      assert.ok((await roomOf(L)).me.allowedActions.includes('skip_focus'));
+      assert.ok(!(await L.rest[0].get(L.path())).body.me.allowedActions.includes('skip_focus'));
+      await w.advance(10 * 60_000, L.users); // 10 из 25 минут
+      assert.equal((await L.rest[0].post(L.path('/skip-focus'))).body.error.code, 'NOT_HOST');
+      const r = await L.host.post(L.path('/skip-focus'));
+      assert.equal(r.body.room.phase, 'break');
+      assert.equal((await focusTx(L.rest[0]))[0].xp, 40); // 100 XP × 10/25
+      assert.equal((await L.host.post(L.path('/skip-focus'))).body.error.code, 'WRONG_PHASE');
     } finally { await w.close(); }
   });
 

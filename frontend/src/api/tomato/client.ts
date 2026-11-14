@@ -85,6 +85,7 @@ export class TomatoClient {
   reportAttention = (id: string, state: "away" | "back") => this.request<{ tracked: boolean }>("POST", `/api/rooms/${id}/session/attention`, { state });
   recordResult = (id: string, result: "done" | "partial" | "not_done", note?: string) =>
     this.request("POST", `/api/rooms/${id}/session/result`, { result, note });
+  skipFocus = (id: string) => this.request<RoomSnapshot>("POST", `/api/rooms/${id}/skip-focus`);
   skipBreak = (id: string) => this.request<RoomSnapshot>("POST", `/api/rooms/${id}/skip-break`);
   roadmap = (id: string) => this.request<Roadmap>("GET", `/api/rooms/${id}/roadmap`);
   help = (id: string, targetUserId: string, type: "boost" | "shield") =>

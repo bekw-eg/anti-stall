@@ -51,13 +51,14 @@ export function describeEvent(ev: ServerEvent, myId?: string, td?: TdNames): { t
   const d = ev.data as {
     winner?: string; team?: string; draw?: boolean; kind?: string; xp?: number; coins?: number; levelUp?: boolean; level?: number; title?: string;
     rewarded?: boolean; status?: string; to?: string; blocked?: boolean; target?: string; type?: string; spell?: string; queued?: boolean; by?: string;
-    startedBy?: string; bonusTeam?: string | null; counterattackCoins?: number;
+    startedBy?: string; bonusTeam?: string | null; counterattackCoins?: number; skipped?: boolean;
   };
   const info = (text: string | null, tone: Toast["tone"] = "info") => (text ? { text, tone } : null);
   switch (ev.type) {
     case "reward_granted": return info(d.kind === "achievement" ? null : `+${d.xp} XP · +${d.coins} монет${d.levelUp ? ` · уровень ${d.level}` : ""}`, "reward");
     case "achievement_unlocked": return info(`Достижение: ${d.title}`, "reward");
-    case "session_completed": return info(d.rewarded ? null : d.status === "completed" ? "Сессия завершена, дневной лимит наград исчерпан" : "Сессия прервана — без награды");
+    case "phase_changed": return info(d.skipped ? "Хост пропустил фокус — начался перерыв" : null);
+    case "session_completed": return info(d.skipped ? (d.rewarded ? null : "Фокус пропущен слишком рано — награды нет") : d.rewarded ? null : d.status === "completed" ? "Сессия завершена, дневной лимит наград исчерпан" : "Сессия прервана — без награды");
     case "td_round_finished":
       if (myTeam && d.team !== myTeam) return null;
       return info(d.status === "won" ? "Оборона выстояла" : d.status === "lost" ? "База пала — в следующий перерыв получится лучше" : "Перерыв закончился — раунд завершён");
@@ -518,6 +519,7 @@ export function useTomato(initialCode?: string) {
   }, [leaveLocal, report, rid]);
   const startFocus = useCallback(() => call(() => client.startFocus(rid)), [call, rid]);
   const abortSession = useCallback(() => call(() => client.abortSession(rid)), [call, rid]);
+  const skipFocus = useCallback(() => call(() => client.skipFocus(rid)), [call, rid]);
   const skipBreak = useCallback(() => call(() => client.skipBreak(rid)), [call, rid]);
   const setTeam = useCallback((team: "A" | "B") => call(() => client.setTeam(rid, team)), [call, rid]);
   const setReady = useCallback(async (ready: boolean) => {
@@ -583,7 +585,7 @@ export function useTomato(initialCode?: string) {
 
   return {
     boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
-    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, tdRematch, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, chat, sendChat,
+    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, tdRematch, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, chat, sendChat,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;
