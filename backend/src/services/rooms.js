@@ -377,6 +377,26 @@ export function createRoomsService(ctx, game, users, td) {
     });
   }
 
+  /**
+   * Создатель комнаты заканчивает фокус досрочно: перерыв (и игра) начинается сразу у всех.
+   * Сессии участников завершаются «сейчас», а награда считается пропорционально отработанному времени
+   * (game.completeSession) — нажать «стоп» через секунду и получить полный цикл нельзя.
+   */
+  function endFocus(user, idOrCode) {
+    return db.tx(() => {
+      advanceInTx(findRoom(idOrCode).id);
+      const room = findRoom(idOrCode);
+      requireHost(room, user);
+      requirePhase(room, 'focus');
+      const t = clock.now();
+      db.run("UPDATE focus_sessions SET scheduled_end_at = ? WHERE room_id = ? AND cycle_id = ? AND status = 'active' AND scheduled_end_at > ?", t, room.id, room.cycle_id, t);
+      db.run('UPDATE rooms SET phase_ends_at = ? WHERE id = ?', t, room.id);
+      db.emit({ scope: 'room', roomId: room.id, type: 'focus_ended_early', data: { by: user.id, cycleId: room.cycle_id, at: t } });
+      finishFocus(loadRoom(room.id));
+      return snapshot(room.id, user.id);
+    });
+  }
+
   function skipBreak(user, idOrCode) {
     return db.tx(() => {
       advanceInTx(findRoom(idOrCode).id);
@@ -592,6 +612,7 @@ export function createRoomsService(ctx, game, users, td) {
       if (isHost) a.push('start_focus', 'update_settings', 'close_room');
     } else if (room.phase === 'focus') {
       if (mine.status === 'focusing') a.push('abort_session');
+      if (isHost) a.push('end_focus');
       const i = a.indexOf('set_task');
       if (mine.status === 'focusing') a.splice(i, 1);
     } else if (room.phase === 'break') {
@@ -604,7 +625,7 @@ export function createRoomsService(ctx, game, users, td) {
   return {
     findRoom, requireMember, requirePhase, memberRow, loadRoom,
     create, join, leave, close, updateSettings, setTask, setTeam, setReady, recordResult,
-    startFocus, abortSession, skipBreak, reportAttention, advance, runningRoomIds, recoverAfterRestart,
+    startFocus, abortSession, endFocus, skipBreak, reportAttention, advance, runningRoomIds, recoverAfterRestart,
     snapshot, connectionState,
   };
 }

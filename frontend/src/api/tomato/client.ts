@@ -86,6 +86,8 @@ export class TomatoClient {
   recordResult = (id: string, result: "done" | "partial" | "not_done", note?: string) =>
     this.request("POST", `/api/rooms/${id}/session/result`, { result, note });
   skipBreak = (id: string) => this.request<RoomSnapshot>("POST", `/api/rooms/${id}/skip-break`);
+  /** Создатель заканчивает фокус досрочно: сразу перерыв и игра (награда по доле отработанного времени) */
+  endFocus = (id: string) => this.request<RoomSnapshot>("POST", `/api/rooms/${id}/end-focus`);
   roadmap = (id: string) => this.request<Roadmap>("GET", `/api/rooms/${id}/roadmap`);
   help = (id: string, targetUserId: string, type: "boost" | "shield") =>
     this.request("POST", `/api/rooms/${id}/social/help`, { targetUserId, type });

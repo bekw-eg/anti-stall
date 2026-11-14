@@ -8,17 +8,17 @@ import { TowerPreview } from "../tdSprites";
 import { Avatar, Logo, RoadmapArt, Tag } from "./ui";
 
 const wrap = "mx-auto w-full max-w-[1488px] px-4 sm:px-8 lg:px-12";
-const h2 = "font-display text-[clamp(2rem,5vw,3.5rem)] leading-[1.05]";
-const lead = "mt-4 max-w-2xl text-lg text-mute sm:text-2xl sm:leading-snug";
+const h2 = "font-display text-[clamp(1.6rem,3.6vw,2.6rem)] leading-[1.05]";
+const lead = "mt-3 max-w-2xl text-base text-mute sm:text-lg sm:leading-snug";
 
 function Eyebrow({ children, light = false }: { children: string; light?: boolean }) {
-  return <p className={`mb-3 text-base font-bold sm:text-lg ${light ? "text-blush" : "text-rose"}`}>{children}</p>;
+  return <p className={`mb-2 text-sm font-bold sm:text-base ${light ? "text-blush" : "text-rose"}`}>{children}</p>;
 }
 
 function Bullet({ children, dark = false }: { children: string; dark?: boolean }) {
   return (
-    <li className="flex items-start gap-3 text-base sm:text-[19px]">
-      <span className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${dark ? "bg-peach" : "bg-olive"}`} aria-hidden />
+    <li className="flex items-start gap-2.5 text-[15px] sm:text-base">
+      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dark ? "bg-peach" : "bg-olive"}`} aria-hidden />
       <span>{children}</span>
     </li>
   );
@@ -50,25 +50,24 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
 
       <main id="top">
         {/* ---------- Hero ---------- */}
-        <section className={`${wrap} pb-14 pt-8 sm:pb-20 sm:pt-12`}>
+        <section className={`${wrap} pb-10 pt-6 sm:pb-14 sm:pt-10`}>
           {demo && <DemoBadge className="mb-5" />}
-          <h1 className="font-display text-[clamp(3.25rem,11vw,8rem)] leading-[0.95] text-peach">Учимся вместе.</h1>
-          <div className="mt-6 h-1.5 rounded-full bg-peach sm:mt-8" aria-hidden />
-          <div className="mt-6 flex flex-col gap-6 sm:mt-8 lg:flex-row lg:items-start lg:justify-between">
-            <p className="max-w-3xl text-xl leading-snug sm:text-[28px]">
-              Один таймер на всю комнату: 25 минут учёбы с друзьями в голосе, потом 5 минут командной tower defense.
-              Пока идёт фокус, игра закрыта.
+          <h1 className="font-display text-[clamp(2.5rem,7vw,5rem)] leading-[0.95] text-peach">Учимся вместе.</h1>
+          <div className="mt-4 h-1 rounded-full bg-peach sm:mt-6" aria-hidden />
+          <div className="mt-4 flex flex-col gap-4 sm:mt-6 lg:flex-row lg:items-center lg:justify-between">
+            <p className="max-w-2xl text-lg leading-snug sm:text-xl">
+              Общий таймер: 25 минут учёбы с друзьями, потом 5 минут командной tower defense.
             </p>
             <div className="flex shrink-0 flex-col items-start gap-2 lg:items-end">
               <button type="button" onClick={onStart} disabled={!ready} className="as-btn as-btn-light w-full xs:w-auto sm:px-10">
                 {ready ? "Начать" : "Загружаем…"}
               </button>
-              <p className="text-[15px] text-mute sm:text-[17px]">Бесплатно. Можно войти гостем.</p>
+              <p className="text-sm text-mute">Бесплатно, можно гостем.</p>
               {offline && <p role="alert" className="text-sm font-bold text-[#B5402F]">Сервер не отвечает. Попробуйте обновить страницу.</p>}
             </div>
           </div>
 
-          <div className="relative mx-auto mt-10 max-w-[1190px] pt-10 sm:mt-14">
+          <div className="relative mx-auto mt-8 max-w-[880px] pt-10 sm:mt-10">
             <div className="absolute inset-x-0 top-0 flex flex-wrap justify-between gap-2 px-[4%]">
               <Tag className="-rotate-2">Лагерь пройден</Tag>
               <Tag dot="#3B2422" className="hidden rotate-1 xs:inline-flex">Команда здесь</Tag>
@@ -78,48 +77,35 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
           </div>
         </section>
 
-        {/* ---------- Problem ---------- */}
-        <section className="bg-paper py-14 sm:py-24">
-          <motion.div {...appear} className={`${wrap} grid gap-6 lg:grid-cols-[1.2fr_1fr] lg:items-center lg:gap-16`}>
-            <h2 className={h2}>Сел учиться. Сорок минут спустя смотришь <span className="text-rose">шестое видео.</span></h2>
-            <p className="text-lg text-mute sm:text-2xl sm:leading-snug">
-              Одному легко откладывать. Рядом с друзьями сложнее: когда все уже начали, начинаешь и ты.
-              Для этого и сделана комната: общий таймер, голоса на фоне и повод вернуться завтра.
-            </p>
-          </motion.div>
-        </section>
-
         {/* ---------- Cycle ---------- */}
-        <section id="how" className="scroll-mt-20 py-14 sm:py-24">
+        <section id="how" className="scroll-mt-20 bg-paper py-10 sm:py-14">
           <div className={wrap}>
             <Eyebrow>Как это работает</Eyebrow>
             <h2 className={h2}>25 учимся, 5 играем.</h2>
-            <p className={lead}>Пока идёт таймер, игра закрыта, а чат только для чтения. На перерыве всё открывается.</p>
+            <p className={lead}>Пока идёт таймер, игра закрыта. На перерыве всё открывается.</p>
 
-            <motion.div {...appear} className="mt-10 grid items-stretch gap-5 lg:grid-cols-[1fr_auto_1fr] lg:gap-6">
-              <article className="as-card as-shadow flex flex-col gap-5 border-ink bg-ink p-6 text-cream sm:p-8">
-                <p className="text-lg font-bold text-blush">25:00 · Фокус</p>
-                <p className="font-display text-[clamp(4.5rem,14vw,9.5rem)] leading-none">18:42</p>
+            <motion.div {...appear} className="mt-6 grid items-stretch gap-4 md:grid-cols-[1fr_auto_1fr] lg:gap-5">
+              <article className="as-card as-shadow flex flex-col gap-3 border-ink bg-ink p-5 text-cream sm:p-6">
+                <p className="text-base font-bold text-blush">Фокус · 25 минут</p>
+                <p className="font-display text-[clamp(2.75rem,6vw,4rem)] leading-none">18:42</p>
                 <div className="flex -space-x-2">{["Лотти", "Айгерим", "Тимур", "Сабина"].map((n) => <Avatar key={n} name={n} id={n} ring="#FFF4EF" />)}</div>
                 <ul className="flex flex-col gap-2.5">
-                  <Bullet dark>Карта размыта и закрыта</Bullet>
-                  <Bullet dark>Чат только для чтения</Bullet>
+                  <Bullet dark>Игра закрыта, можно вести стикеры-заметки</Bullet>
                   <Bullet dark>Голос работает, микрофон можно выключить</Bullet>
-                  <Bullet dark>Ушёл раньше времени, и цикл не засчитан</Bullet>
+                  <Bullet dark>Ушёл раньше — цикл не засчитан</Bullet>
                 </ul>
               </article>
               <div className="flex items-center justify-center gap-3 text-center lg:flex-col">
-                <span className="font-display text-2xl text-rose sm:text-[28px]">потом</span>
-                <span className="text-[15px] text-mute sm:text-[17px]">и так<br className="hidden lg:block" /> несколько циклов</span>
+                <span className="font-display text-xl text-rose sm:text-2xl">потом</span>
+                <span className="text-sm text-mute">и так<br className="hidden md:block" /> по кругу</span>
               </div>
-              <article className="as-card as-shadow flex flex-col gap-5 bg-lime p-6 sm:p-8">
-                <p className="text-lg font-bold text-olive">05:00 · Перерыв</p>
-                <p className="font-display text-[clamp(4.5rem,14vw,9.5rem)] leading-none">04:12</p>
+              <article className="as-card as-shadow flex flex-col gap-3 bg-lime p-5 sm:p-6">
+                <p className="text-base font-bold text-olive">Перерыв · 5 минут</p>
+                <p className="font-display text-[clamp(2.75rem,6vw,4rem)] leading-none">04:12</p>
                 <ul className="flex flex-col gap-2.5">
-                  <Bullet>Открываются карта и поле башен</Bullet>
-                  <Bullet>Казна команды строит оборону</Bullet>
-                  <Bullet>Можно помочь другу и подшутить над соперником</Bullet>
-                  <Bullet>Следующий фокус начнётся сам, когда кончится перерыв</Bullet>
+                  <Bullet>Строите башни-аксолотли на казну команды</Bullet>
+                  <Bullet>Помогаете своим, подшучиваете над соперником</Bullet>
+                  <Bullet>Следующий фокус начнётся сам</Bullet>
                 </ul>
               </article>
             </motion.div>
@@ -127,34 +113,34 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
         </section>
 
         {/* ---------- Game ---------- */}
-        <section id="game" className="scroll-mt-20 bg-paper py-14 sm:py-24">
+        <section id="game" className="scroll-mt-20 py-10 sm:py-14">
           <div className={wrap}>
             <Eyebrow>Игра</Eyebrow>
             <h2 className={h2}>Учитесь, чтобы строить башни.</h2>
-            <p className={lead}>Две команды в одной комнате, у каждой своя дорога к Крепости экзамена. Следующий узел открывает победа в tower defense на перерыве.</p>
-            <motion.ol {...appear} className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <p className={lead}>Две команды, у каждой своя дорога к Крепости экзамена. Следующий этап открывает победа в игре.</p>
+            <motion.ol {...appear} className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {[
-                ["Учитесь", "Полный цикл фокуса приносит монеты и опыт, часть уходит в казну команды."],
-                ["Стройте", "На перерыве ставьте башни-аксолотли на деньги казны."],
-                ["Держите волну", "Бой считает сервер. Победа двигает команду к следующему узлу."],
-                ["Мешайте соперникам", "Наёмники-томаты и заклинания против второй команды."],
+                ["Учитесь", "Фокус приносит монеты в казну команды."],
+                ["Стройте", "Ставьте башни-аксолотли на перерыве."],
+                ["Держите волну", "Победа двигает команду по карте."],
+                ["Мешайте", "Наёмники-томаты против соперника."],
               ].map(([title, text], i) => (
-                <li key={title} className="as-card flex flex-col gap-2 p-5 sm:p-6">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-ink bg-peach font-display text-2xl" aria-hidden><span className="mt-1">{i + 1}</span></span>
-                  <h3 className="font-display text-2xl sm:text-[28px]">{title}</h3>
-                  <p className="text-base text-mute sm:text-[17px]">{text}</p>
+                <li key={title} className="as-card flex items-start gap-3 p-4">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-ink bg-peach font-display text-lg" aria-hidden><span className="mt-1">{i + 1}</span></span>
+                  <span className="min-w-0"><h3 className="font-display text-lg sm:text-xl">{title}</h3>
+                  <p className="text-sm text-mute sm:text-[15px]">{text}</p></span>
                 </li>
               ))}
             </motion.ol>
-            <ul className="mt-6 grid gap-4 md:grid-cols-3" aria-label="Башни">
+            <ul className="mt-4 grid gap-3 md:grid-cols-3" aria-label="Башни">
               {([["arrow", "Лучник", "Быстрые одиночные выстрелы", 15], ["cannon", "Пушка", "Медленный урон по площади", 30], ["frost", "Мороз", "Замедляет врагов вдвое", 20]] as const).map(([type, name, text, cost]) => (
-                <li key={type} className="flex items-center gap-4 rounded-[20px] border-2 border-ink bg-white p-4">
+                <li key={type} className="flex items-center gap-3 rounded-[18px] border-2 border-soft bg-white p-3">
                   <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-paper"><TowerPreview type={type} size={44} /></span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-xl font-extrabold">{name}</span>
-                    <span className="block text-[15px] text-mute">{text}</span>
+                    <span className="block text-base font-extrabold">{name}</span>
+                    <span className="block text-sm text-mute">{text}</span>
                   </span>
-                  <span className="font-display text-2xl">{cost}</span>
+                  <span className="font-display text-lg">{cost}</span>
                 </li>
               ))}
             </ul>
@@ -162,84 +148,59 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
         </section>
 
         {/* ---------- Social ---------- */}
-        <section className="py-14 sm:py-24">
+        <section className="bg-paper py-10 sm:py-14">
           <div className={wrap}>
             <Eyebrow>Помощь и пакости</Eyebrow>
             <h2 className={h2}>Поддержи своих, подшути над чужими.</h2>
-            <p className={lead}>На перерыве можно помочь другу или беззлобно над ним подшутить. Пакости не мешают фокусу и не трогают награды.</p>
-            <motion.div {...appear} className="mt-10 grid gap-5 md:grid-cols-2">
-              <article className="as-card as-shadow bg-lime p-6 sm:p-8">
-                <h3 className="font-display text-3xl sm:text-[40px]">Помочь другу</h3>
-                <dl className="mt-5 flex flex-col gap-3">
-                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-xl font-extrabold">Бонус к опыту</dt><dd className="text-mute">+25% опыта за следующую сессию друга</dd></div>
-                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-xl font-extrabold">Щит</dt><dd className="text-mute">Отражает одну шутку, направленную в друга</dd></div>
+            <p className={lead}>Только на перерыве: фокусу не мешает, награды не трогает.</p>
+            <motion.div {...appear} className="mt-6 grid gap-4 md:grid-cols-2">
+              <article className="as-card bg-lime p-5">
+                <h3 className="font-display text-2xl">Помочь другу</h3>
+                <dl className="mt-3 flex flex-col gap-2">
+                  <div className="rounded-[14px] border-2 border-ink bg-white px-3 py-2"><dt className="text-base font-extrabold">Бонус к опыту</dt><dd className="text-sm text-mute">+25% опыта за следующую сессию друга</dd></div>
+                  <div className="rounded-[14px] border-2 border-ink bg-white px-3 py-2"><dt className="text-base font-extrabold">Щит</dt><dd className="text-sm text-mute">Отражает одну шутку, направленную в друга</dd></div>
                 </dl>
               </article>
-              <article className="as-card as-shadow bg-blush p-6 sm:p-8">
-                <h3 className="font-display text-3xl sm:text-[40px]">Подшутить</h3>
-                <dl className="mt-5 flex flex-col gap-3">
-                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-xl font-extrabold">Туман</dt><dd className="text-mute">На несколько секунд затуманивает экран</dd></div>
-                  <div className="rounded-[18px] border-2 border-ink bg-white p-4"><dt className="text-xl font-extrabold">Стикер</dt><dd className="text-mute">Смешная наклейка поверх экрана</dd></div>
+              <article className="as-card bg-blush p-5">
+                <h3 className="font-display text-2xl">Подшутить</h3>
+                <dl className="mt-3 flex flex-col gap-2">
+                  <div className="rounded-[14px] border-2 border-ink bg-white px-3 py-2"><dt className="text-base font-extrabold">Туман</dt><dd className="text-sm text-mute">На несколько секунд затуманивает экран</dd></div>
+                  <div className="rounded-[14px] border-2 border-ink bg-white px-3 py-2"><dt className="text-base font-extrabold">Стикер</dt><dd className="text-sm text-mute">Смешная наклейка поверх экрана</dd></div>
                 </dl>
               </article>
             </motion.div>
-            <p className="mt-6 text-lg font-semibold text-mute">Пакости приходят только на перерыве. Если не хочется, их можно выключить в профиле.</p>
+            
           </div>
         </section>
 
         {/* ---------- Fair play ---------- */}
-        <section id="fair" className="scroll-mt-20 bg-ink py-14 text-cream sm:py-24">
+        <section id="fair" className="scroll-mt-20 bg-ink py-10 text-cream sm:py-14">
           <div className={wrap}>
             <Eyebrow light>Честная игра</Eyebrow>
             <h2 className={h2}>Цикл не подделать.</h2>
-            <p className="mt-4 max-w-2xl text-lg text-[#D8BDB6] sm:text-2xl sm:leading-snug">Награды что-то значат, только если их нельзя накрутить. Поэтому правила живут на сервере, а не в браузере.</p>
-            <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <p className="mt-3 max-w-2xl text-base text-[#D8BDB6] sm:text-lg">Таймер и все правила живут на сервере, а не в браузере.</p>
+            <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {[
                 ["Время считает сервер", "Таймер идёт на сервере, экран только показывает его."],
                 ["Полный цикл или ничего", "Награда приходит после полного фокуса. Закрыл вкладку, и цикл не засчитан."],
                 ["Одна комната за раз", "Один аккаунт не может вести два фокуса одновременно."],
                 ["Каждая трата проверяется", "Нельзя потратить больше, чем есть. Двойной клик не спишет дважды."],
               ].map(([title, text]) => (
-                <li key={title} className="border-t-2 border-cocoa pt-5">
-                  <h3 className="font-display text-2xl text-blush sm:text-[28px]">{title}</h3>
-                  <p className="mt-2 text-base text-[#E9D6D1] sm:text-[19px]">{text}</p>
+                <li key={title} className="border-t-2 border-cocoa pt-3">
+                  <h3 className="font-display text-lg text-blush sm:text-xl">{title}</h3>
+                  <p className="mt-1 text-sm text-[#E9D6D1] sm:text-[15px]">{text}</p>
                 </li>
               ))}
             </ul>
           </div>
         </section>
 
-        {/* ---------- Progress ---------- */}
-        <section className="py-14 sm:py-24">
-          <div className={`${wrap} grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-center`}>
-            <div>
-              <Eyebrow>Прогресс</Eyebrow>
-              <h2 className={h2}>Возвращайтесь завтра.</h2>
-              <p className={lead}>Уровень, монеты и достижения сохраняются между сессиями. На монеты покупаются улучшения для команды.</p>
-            </div>
-            <motion.div {...appear} className="as-card as-shadow flex flex-col gap-6 p-6 sm:p-8">
-              <div>
-                <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"><p className="font-display text-4xl">Уровень 4</p><p className="text-lg text-mute">340 / 500 XP</p></div>
-                <div className="mt-3 h-4 overflow-hidden rounded-full border-2 border-ink bg-paper"><div className="h-full w-[68%] bg-rose" /></div>
-              </div>
-              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="Достижения">
-                {[["Первый фокус", "первая сессия"], ["Пятёрочка", "5 сессий"], ["Регулярность", "3 дня подряд"], ["Командный игрок", "вклад в цель"], ["Оборона держится", "первая победа"], ["Опытный ботан", "5 уровень"]].map(([title, text], i) => (
-                  <li key={title} className={`rounded-[18px] border-2 p-3 ${i < 3 ? "border-ink bg-paper" : "border-dashed border-line"}`}>
-                    <p className="font-extrabold leading-tight">{title}</p>
-                    <p className="text-sm text-mute">{text}</p>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
-          </div>
-        </section>
-
         {/* ---------- CTA ---------- */}
-        <section className={`${wrap} pb-14 sm:pb-24`}>
-          <div className="flex flex-col items-start gap-6 rounded-[32px] border-2 border-ink bg-rose p-6 text-white as-shadow sm:p-10 lg:flex-row lg:items-center lg:justify-between lg:rounded-full lg:px-16">
+        <section className={`${wrap} py-10 sm:py-14`}>
+          <div className="flex flex-col items-start gap-5 rounded-[28px] border-2 border-ink bg-rose p-5 text-white as-shadow sm:p-8 lg:flex-row lg:items-center lg:justify-between lg:rounded-full lg:px-12">
             <div>
-              <h2 className="font-display text-[clamp(1.9rem,4.5vw,3.25rem)] leading-tight">Создайте комнату и позовите друзей.</h2>
-              <p className="mt-2 text-lg text-blush sm:text-[22px]">Друзья заходят по ссылке или коду. Первый цикл начинается, когда все готовы.</p>
+              <h2 className="font-display text-[clamp(1.5rem,3vw,2.25rem)] leading-tight">Создайте комнату и позовите друзей.</h2>
+              <p className="mt-1 text-base text-blush sm:text-lg">Друзья заходят по ссылке или коду.</p>
             </div>
             <div className="flex w-full flex-col gap-3 xs:w-auto xs:flex-row">
               <button type="button" onClick={onStart} disabled={!ready} className="as-btn as-btn-secondary">Создать комнату</button>

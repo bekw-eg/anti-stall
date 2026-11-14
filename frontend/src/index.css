@@ -43,6 +43,8 @@
   }
 }
 img { pointer-events: none; }
+/* атрибут hidden сильнее утилит display (flex, grid): вкладки и свёрнутые блоки прячутся надёжно */
+[hidden] { display: none !important; }
 
 @layer base {
   * {
@@ -86,7 +88,7 @@ img { pointer-events: none; }
 
   /* Кнопки макета: Primary / Secondary / Light / Disabled */
   .as-btn {
-    @apply inline-flex min-h-[3.5rem] items-center justify-center gap-2 rounded-[20px] border-2 border-transparent px-7 text-center text-lg leading-tight transition-[transform,box-shadow,background-color] duration-100 sm:min-h-[4rem] sm:text-xl;
+    @apply inline-flex min-h-[3.5rem] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[20px] border-2 border-transparent px-7 text-center text-lg leading-tight transition-[transform,box-shadow,background-color] duration-100 sm:min-h-[4rem] sm:text-xl;
     @apply font-display;
     box-shadow: 0 6px 0 #3B2422;
   }

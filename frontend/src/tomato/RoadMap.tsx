@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import { Castle, Check, Flag, Lock } from "lucide-react";
 import type { Roadmap, RoadmapNode } from "@/api/tomato";
 import { NODE_STATUS_LABEL, defaultNode, edgeFill, isTdRoad, nodeById } from "./roadmapGeometry";
 
+const TEAM_DOT: Record<string, string> = { A: "#EAA695", B: "#D9DE9F", shared: "#EAA695" };
 const MARKER_SPRING = { type: "spring", stiffness: 90, damping: 18, mass: 1 } as const;
 /** Название этапа TD: этапы привязаны к узлам карты (id этапа = id узла) */
 const stageName = (road: Roadmap, stageId: string) => road.nodes.find((n) => n.id === stageId)?.title ?? stageId;
@@ -35,81 +37,90 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
   const nextText = road.next ? (road.next.stageId ? `До «${road.next.title}»: победа на этапе «${stageName(road, road.next.stageId)}»` : `До «${road.next.title}»: ещё ${road.next.pointsNeeded}`) : null;
 
   return (
-    <div className="flex h-full w-full flex-col gap-3 overflow-hidden p-3 sm:p-5 lg:flex-row" aria-label={`Road Map: ${road.title}`}>
-      {/* Карта */}
-      <div className="relative min-h-[11rem] flex-1">
-        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-          {road.edges.map(([a, b]) => {
-            const na = nodeById(road, a)!, nb = nodeById(road, b)!;
-            const fill = edgeFill(road, a, b);
-            const common = { x1: na.x * 100, y1: na.y * 100, x2: nb.x * 100, y2: nb.y * 100, vectorEffect: "non-scaling-stroke" as const };
+    <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-3 sm:p-5 lg:flex-row lg:overflow-hidden" aria-label={`Road Map: ${road.title}`}>
+      {/* Карта — «доска» в стиле лендинга: толстая дорога, крупные жетоны этапов, флажки команд над узлом */}
+      <div className="relative min-h-[19rem] flex-1 overflow-hidden rounded-[28px] border-2 border-ink bg-rose shadow-[0_6px_0_#3B2422] lg:min-h-0">
+        <div className="pointer-events-none absolute inset-0 opacity-30" aria-hidden style={{ backgroundImage: "radial-gradient(#7A504B 1.5px, transparent 1.5px)", backgroundSize: "22px 22px" }} />
+        <div className="absolute inset-x-[9%] bottom-[16%] top-[20%]">
+          <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+            {road.edges.map(([a, b]) => {
+              const na = nodeById(road, a)!, nb = nodeById(road, b)!;
+              const fill = edgeFill(road, a, b);
+              const common = { x1: na.x * 100, y1: na.y * 100, x2: nb.x * 100, y2: nb.y * 100, vectorEffect: "non-scaling-stroke" as const, strokeLinecap: "round" as const };
+              return (
+                <g key={`${a}-${b}`}>
+                  <line {...common} stroke="#7A504B" strokeWidth={18} />
+                  <line {...common} stroke="#FFCEC2" strokeOpacity={0.9} strokeWidth={5} strokeDasharray="1 14" />
+                  <motion.line {...common} stroke="#EAA695" strokeWidth={12} initial={false} animate={{ pathLength: fill }} transition={reduce ? instant : { duration: 0.9, ease: "easeInOut" }} />
+                </g>
+              );
+            })}
+          </svg>
+
+          {road.nodes.map((n, i) => {
+            const isSel = selected.id === n.id;
+            const boss = n.type === "boss";
+            const tone = n.status === "completed" ? "border-ink bg-peach text-ink" : n.status === "current" ? "border-ink bg-cream text-ink" : n.status === "next" ? "border-dashed border-cream bg-rose text-cream" : "border-[#7A504B] bg-[#8E625D] text-[#D8BDB6]";
             return (
-              <g key={`${a}-${b}`}>
-                <line {...common} stroke="currentColor" strokeOpacity={0.22} strokeWidth={2} strokeDasharray={fill >= 1 ? undefined : "2 6"} strokeLinecap="round" />
-                <motion.line {...common} stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" initial={false} animate={{ pathLength: fill }} transition={reduce ? instant : { duration: 0.9, ease: "easeInOut" }} />
-              </g>
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => setPicked(n.id)}
+                aria-label={`${n.title}: ${NODE_STATUS_LABEL[n.status]}, ${requirementShort(road, n)}`}
+                aria-pressed={isSel}
+                className="group absolute z-[1] flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 focus-visible:outline-none"
+                style={{ left: `${n.x * 100}%`, top: `${n.y * 100}%` }}
+              >
+                <span
+                  className={`flex items-center justify-center rounded-full border-[3px] transition-[transform,background-color] duration-300 group-hover:scale-105 group-focus-visible:ring-4 group-focus-visible:ring-cream ${boss ? "h-14 w-14 sm:h-16 sm:w-16" : "h-11 w-11 sm:h-12 sm:w-12"} ${tone} ${isSel ? "ring-4 ring-cream/80" : ""} ${n.status === "current" ? "shadow-[0_4px_0_#3B2422]" : ""}`}
+                >
+                  {n.status === "completed" ? <Check size={boss ? 26 : 22} strokeWidth={3} aria-hidden />
+                    : n.status === "current" ? <Flag size={boss ? 24 : 20} strokeWidth={2.6} aria-hidden />
+                    : n.status === "locked" ? (boss ? <Castle size={24} aria-hidden /> : <Lock size={18} aria-hidden />)
+                    : boss ? <Castle size={24} aria-hidden /> : <span className="font-display text-lg leading-none"><span className="relative top-0.5">{i + 1}</span></span>}
+                </span>
+                <span className={`max-w-[7.5rem] whitespace-normal rounded-full px-2.5 py-0.5 text-center text-xs font-extrabold leading-tight sm:text-[13px] ${n.status === "locked" ? "bg-[#8E625D] text-[#F3E1DC]" : "border-2 border-ink bg-white text-ink"}`}>{n.title}</span>
+              </button>
             );
           })}
-        </svg>
 
-        {road.nodes.map((n) => {
-          const done = n.status === "completed" || n.status === "current";
-          const isSel = selected.id === n.id;
-          return (
-            <button
-              key={n.id}
-              type="button"
-              onClick={() => setPicked(n.id)}
-              aria-label={`${n.title}: ${NODE_STATUS_LABEL[n.status]}, ${requirementShort(road, n)}`}
-              aria-pressed={isSel}
-              className="group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 focus-visible:outline-none"
-              style={{ left: `${n.x * 100}%`, top: `${n.y * 100}%` }}
-            >
-              <span
-                className={`flex items-center justify-center rounded-full border-2 transition-colors duration-500 group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-focus-visible:ring-[var(--fg)] ${n.type === "boss" ? "h-8 w-8 sm:h-10 sm:w-10" : "h-5 w-5 sm:h-7 sm:w-7"} ${
-                  done ? "border-[var(--fg)] bg-[var(--fg)]" : n.status === "next" ? "border-[var(--fg)] border-dashed bg-transparent" : "border-[var(--line)] bg-transparent opacity-60"
-                } ${isSel ? "ring-2 ring-[var(--fg)] ring-offset-2 ring-offset-transparent" : ""}`}
+          {/* Флажки команд: переезжают по серверной позиции. Две команды на одном узле расходятся в стороны. */}
+          {road.teams.map((team) => {
+            const at = nodeById(road, team.positionNodeId);
+            if (!at) return null;
+            const same = road.teams.filter((x) => x.positionNodeId === team.positionNodeId);
+            const offset = (same.indexOf(team) - (same.length - 1) / 2) * 64;
+            const mine = team.key === road.teamKey;
+            return (
+              <motion.div
+                key={team.key}
+                data-testid={`marker-${team.key}`}
+                className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2"
+                initial={false}
+                animate={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }}
+                transition={reduce ? instant : MARKER_SPRING}
+                aria-hidden
               >
-                {n.type === "boss" && <span className={`h-2 w-2 rounded-full ${done ? "bg-[var(--field)]" : "bg-[var(--fg)]"}`} />}
-              </span>
-              <span className={`max-w-[6.5rem] text-center text-[11px] leading-tight sm:text-xs ${n.status === "locked" ? "text-[var(--muted)] opacity-70" : "text-[var(--fg)]"}`}>{n.title}</span>
-            </button>
-          );
-        })}
-
-        {/* Маркеры команд: переезжают по серверной позиции. Две команды на одном узле расходятся в стороны. */}
-        {road.teams.map((team, i) => {
-          const at = nodeById(road, team.positionNodeId);
-          if (!at) return null;
-          const same = road.teams.filter((x) => x.positionNodeId === team.positionNodeId);
-          const offset = (same.indexOf(team) - (same.length - 1) / 2) * 64;
-          const mine = team.key === road.teamKey;
-          const filled = i === 0;
-          return (
-            <motion.div
-              key={team.key}
-              data-testid={`marker-${team.key}`}
-              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2"
-              initial={false}
-              animate={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }}
-              transition={reduce ? instant : MARKER_SPRING}
-              aria-hidden
-            >
-              <span className="relative -top-7 flex flex-col items-center sm:-top-9" style={{ marginLeft: offset }}>
-                <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${filled ? "bg-[var(--fg)] text-[var(--field)]" : "border border-[var(--fg)] bg-[var(--field)] text-[var(--fg)]"} ${mine && road.mode === "teams" ? "ring-2 ring-[var(--fg)] ring-offset-1 ring-offset-transparent" : ""}`}>{team.name}</span>
-                <span className="h-2 w-px bg-[var(--fg)]" />
-              </span>
-            </motion.div>
-          );
-        })}
+                <span className="relative -top-12 flex flex-col items-center sm:-top-14" style={{ marginLeft: offset }}>
+                  <span title={team.name} className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-ink px-2 py-1 text-xs font-extrabold shadow-[0_3px_0_#3B2422] ${mine ? "bg-ink text-cream" : "bg-white text-ink"}`}>
+                    <span className="h-2.5 w-2.5 rounded-full border-[1.5px] border-current" style={{ background: TEAM_DOT[team.key] ?? "#EAA695" }} />
+                    {road.mode === "teams" ? `${team.key}${mine ? " · мы" : ""}` : "Мы"}
+                  </span>
+                  <span className="h-3 w-0.5 bg-ink" />
+                </span>
+              </motion.div>
+            );
+          })}
+        </div>
+        <p className="absolute bottom-3 left-4 right-4 text-center text-xs font-bold text-[#F3E1DC] sm:text-[13px]">Нажмите на этап, чтобы узнать, как его открыть</p>
       </div>
 
       {/* Подробности: этап, прогресс общего испытания, вклад участников */}
-      <aside className="flex shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl bg-[var(--card)] p-4 text-sm text-[var(--fg)] lg:w-72">
+      <aside className="flex shrink-0 flex-col gap-4 overflow-y-auto rounded-[24px] border-2 border-soft bg-[var(--card)] p-4 text-sm text-[var(--fg)] sm:p-5 lg:w-80">
         <div>
           <p className="text-[15px] font-bold text-[var(--muted)]">{NODE_STATUS_LABEL[selected.status]}</p>
-          <p className="mt-1 text-base font-medium">{selected.title}</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
+          <p className="mt-1 font-display text-2xl leading-tight"><span className="relative top-0.5">{selected.title}</span></p>
+          <p className="mt-1.5 text-sm text-[var(--muted)]">
             {requirementLong(road, selected)}
             {selected.reward && ` · награда ${selected.reward.xp} XP, ${selected.reward.coins} монет`}
             {selected.reachedAt && ` · пройден ${new Date(selected.reachedAt).toLocaleTimeString()}`}

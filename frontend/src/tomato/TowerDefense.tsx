@@ -50,6 +50,8 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
   const [stageId, setStageId] = useState<string>(td.defaultStageId);
   const [pending, setPending] = useState(false);
   const [mercCooling, setMercCooling] = useState(false);
+  // Панель справа разбита на вкладки, чтобы глаза не бегали по десятку кнопок: оборона — главное, атака и соперник — по запросу
+  const [tab, setTab] = useState<"defense" | "attack" | "rival">("defense");
   const coolTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const joined = useRef(false);
 
@@ -110,6 +112,14 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
           <>
             <Treasury coins={treasury} team={versus ? td.team : null} />
 
+            <div role="tablist" aria-label="Разделы игры" className="grid grid-flow-col gap-1 rounded-[16px] border-2 border-ink bg-white p-1">
+              {([["defense", "🛡️ Оборона"], ["attack", "⚔️ Атака"], ...(rival || td.duel || td.rematch?.available || finished || (current?.roundNo ?? 1) > 1 ? [["rival", versus ? "🏁 Соперник" : "🔁 Реванш"]] : [])] as [typeof tab, string][]).map(([id, label]) => (
+                <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+                  className={`whitespace-nowrap rounded-[11px] px-2 py-2 text-[13px] font-extrabold transition-colors ${tab === id ? "bg-ink text-cream" : "text-ink hover:bg-paper"}`}>{label}</button>
+              ))}
+            </div>
+
+            <div hidden={tab !== "defense"} className="flex flex-col gap-3">
             {/* Раунд */}
             <Section title={current && current.roundNo > 1 ? `Раунд ${current.roundNo} · реванш` : "Раунд"}>
               {current ? (
@@ -162,7 +172,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
             <Section title="Башни-аксолотли">
               {effects.length > 0 && <EffectChips effects={effects} className="mb-2" />}
               {!sel ? (
-                <p className="text-xs text-[var(--muted)]">Выберите место на поле, чтобы построить или улучшить башню.</p>
+                <p className="rounded-xl bg-paper px-3 py-2.5 text-[13px] font-bold text-ink">👆 Нажмите на <span className="rounded bg-white px-1 ring-1 ring-ink">+</span> на поле, чтобы поставить аксолотля, или на аксолотля — чтобы улучшить.</p>
               ) : selTower ? (
                 <TowerCard tower={selTower} def={td.towerTypes.find((d) => d.id === selTower.type)!} maxLevel={td.maxLevel} treasury={treasury} disabled={!canAct} onUpgrade={() => run(() => actions.upgrade(sel.id, selTower.level))} />
               ) : (
@@ -177,7 +187,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                         className="flex w-full items-center justify-between gap-2 rounded-xl border-2 border-ink bg-white px-3 py-2 text-left transition hover:bg-blush active:scale-[.98] disabled:opacity-40"
                       >
                         <TowerPreview type={d.id} size={34} className="shrink-0" />
-                        <span className="min-w-0 flex-1"><span className="block font-medium">{TOWER_NAME[d.id] ?? d.title}</span><span className="block text-xs text-[var(--muted)]">{d.description} · урон {d.damage}, радиус {d.range}</span></span>
+                        <span className="min-w-0 flex-1"><span className="block font-extrabold">{TOWER_NAME[d.id] ?? d.title}</span><span className="block text-xs text-[var(--muted)]">{d.description}</span></span>
                         <span className="font-display shrink-0 text-base tabular-nums">{d.cost}🪙</span>
                       </button>
                     </li>
@@ -186,7 +196,10 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
               )}
             </Section>
 
+            </div>
+
             {/* Штурм и поддержка */}
+            <div hidden={tab !== "attack"} className="flex flex-col gap-3">
             <Section title="Штурм и поддержка">
               {td.mercenaries?.length > 0 && (
                 <>
@@ -238,7 +251,10 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
               )}
             </Section>
 
+            </div>
+
             {/* Соперник и реванш */}
+            <div hidden={tab !== "rival"} className="flex flex-col gap-3">
             {(rival || td.duel || td.rematch?.available || finished || (current?.roundNo ?? 1) > 1) && (
               <Section title={rival ? "Соперник и Реванш" : "Реванш"}>
                 {rival && (
@@ -274,7 +290,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
               </Section>
             )}
 
-            <p className="text-[11px] leading-snug text-[var(--muted)]">Базу укрепляют «Крепкие стены» (сейчас {td.base.hpMax} HP), урон башен растёт от «Усиленных башен» (×{td.base.damageMult.toFixed(1)}). Казну пополняют фокус-сессии команды.</p>
+            </div>
           </>
         )}
       </aside>
@@ -397,6 +413,20 @@ function TowerCard({ tower, def, maxLevel, treasury, disabled, onUpgrade }: { to
 }
 
 // ---------------------------------------------------------------------------------------- поле
+
+/** Подпись на поле (база, вход томатов): белая плашка, чтобы читалась поверх травы. */
+function FieldLabel({ x, y, text, cols, rows, strong = false }: { x: number; y: number; text: string; cols: number; rows: number; strong?: boolean }) {
+  const w = text.length * 0.16 + 0.34;
+  // подпись над объектом; у верхнего края — под ним; по горизонтали не выходит за поле
+  const cx = Math.min(Math.max(w / 2 + 0.08, x), cols - w / 2 - 0.08);
+  const cy = y - 0.95 < 0.3 ? Math.min(rows - 0.3, y + 0.95) : y - 0.95;
+  return (
+    <g transform={`translate(${cx} ${cy})`} pointerEvents="none" aria-hidden>
+      <rect x={-w / 2} y={-0.2} width={w} height={0.36} rx={0.18} fill={strong ? "#3B2422" : "#FFFFFF"} stroke="#3B2422" strokeWidth={0.035} />
+      <text y={0.07} textAnchor="middle" fontSize={0.22} fontWeight={800} fill={strong ? "#FFF4EF" : "#3B2422"} fontFamily="Nunito, sans-serif">{text}</text>
+    </g>
+  );
+}
 
 /** Расстояние от точки до полилинии тропы — только чтобы не сажать цветы на дорогу. */
 function distToPath(x: number, y: number, path: [number, number][]) {
@@ -556,10 +586,12 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
           {/* Портал томатов и Академия Аксолотлей */}
           <circle cx={start[0]} cy={start[1]} r={0.95} fill={`url(#${ids.glowPortal})`} />
           <g transform={`translate(${start[0]} ${start[1]})`} data-testid="portal"><TomatoPortal /></g>
+          <FieldLabel x={start[0]} y={start[1]} text="старт" cols={map.cols} rows={map.rows} />
           <circle cx={end[0]} cy={end[1]} r={1.05} fill={`url(#${ids.glowBase})`} />
           <g transform={`translate(${end[0]} ${end[1]})`} data-testid="base" aria-label={current ? `Академия: ${current.hp}/${current.hpMax}` : "Академия Аксолотлей"}>
             <AcademyBase hpPct={hpPct} shielded={shielded} />
           </g>
+          <FieldLabel x={end[0]} y={end[1]} text="база" cols={map.cols} rows={map.rows} strong />
 
           {/* Радиус выбранной башни */}
           {sel && selTower && (
@@ -587,14 +619,19 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
                 <circle r={0.62} fill="transparent" /> {/* увеличенная область нажатия для пальца */}
                 {tw ? (
                   <>
+                    {/* постамент: светлый круг с обводкой — аксолотля видно на траве с первого взгляда */}
+                    <circle r={0.47} fill="#FFF4EF" stroke="#3B2422" strokeWidth={0.06} />
                     <ellipse cy={0.32} rx={0.36} ry={0.11} fill="rgba(59,36,34,.25)" />
                     <AxolotlTower type={tw.type} level={tw.level} haste={hasted} slowed={slowedTowers} disabled={disabledSlots.has(s.id)} />
+                    <g transform="translate(0.36 -0.36)" aria-hidden>
+                      <circle r={0.17} fill="#3B2422" />
+                      <text y={0.065} textAnchor="middle" fontSize={0.2} fontWeight={800} fill="#FFF4EF" fontFamily="Nunito, sans-serif">{tw.level}</text>
+                    </g>
                   </>
                 ) : (
                   <>
-                    <rect x={-0.36} y={-0.36} width={0.72} height={0.72} rx={0.14} fill="#FFFFFF" fillOpacity={isSel ? 0.95 : 0.7} stroke="#3B2422" strokeOpacity={isSel ? 0.9 : 0.45} strokeWidth={0.04} />
-                    
-                    <path d="M-0.1 0H0.1M0 -0.1V0.1" stroke="#A0726D" strokeWidth={0.06} strokeLinecap="round" />
+                    <rect x={-0.34} y={-0.34} width={0.68} height={0.68} rx={0.16} fill="#FFFFFF" fillOpacity={isSel ? 1 : 0.8} stroke="#3B2422" strokeOpacity={isSel ? 1 : 0.55} strokeWidth={0.05} strokeDasharray={isSel ? undefined : "0.12 0.08"} />
+                    <path d="M-0.13 0H0.13M0 -0.13V0.13" stroke="#3B2422" strokeWidth={0.07} strokeLinecap="round" />
                   </>
                 )}
                 <circle r={0.54} fill="none" stroke="#3B2422" strokeWidth={0.05} className="opacity-0 group-focus-visible:opacity-100" />

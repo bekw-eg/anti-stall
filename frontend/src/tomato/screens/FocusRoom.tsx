@@ -3,7 +3,7 @@
  * Слева участники, в центре таймер (время — с сервера), справа закрытая карта. Игра и пакости откроются на перерыве.
  */
 import { useEffect, useRef, useState } from "react";
-import { Lock, PenLine } from "lucide-react";
+import { FastForward, Lock, PenLine, StickyNote, X } from "lucide-react";
 import { STATUS_LABEL, formatTime } from "../format";
 import type { Tomato } from "../useTomato";
 import { StickerBoard, type Stickers } from "./Stickers";
@@ -30,10 +30,10 @@ function EndEarly({ t }: { t: Tomato }) {
         if (!confirm) { setConfirm(true); timer.current = setTimeout(() => setConfirm(false), 4000); return; }
         clearTimeout(timer.current); setConfirm(false); t.abortSession();
       }}
-      className={`flex flex-col items-start rounded-[16px] border-2 px-3 py-1.5 text-left transition-colors sm:px-4 sm:py-2 ${confirm ? "border-peach bg-cocoa" : "border-[#8A625C] hover:bg-cocoa"}`}
+      title={confirm ? "Нажмите ещё раз — награды за цикл не будет" : "Выйти из своей сессии: монеты за этот цикл не начислятся"}
+      className={`flex h-11 items-center sm:w-[11.5rem] justify-center rounded-[14px] border-2 px-3 text-center transition-colors ${confirm ? "border-peach bg-cocoa" : "border-[#8A625C] hover:bg-cocoa"}`}
     >
-      <span className="font-display text-base leading-tight text-cream sm:text-lg"><span className="relative top-0.5">{confirm ? "Точно завершить?" : "Завершить досрочно"}</span></span>
-      <span className="hidden text-[13px] text-[#D8BDB6] sm:block">{confirm ? "нажмите ещё раз, награды не будет" : "монеты за этот цикл не начислятся"}</span>
+      <span className="whitespace-nowrap font-display text-[15px] leading-tight text-cream"><span className="relative top-0.5">{confirm ? "Точно? Без награды" : "Выйти из фокуса"}</span></span>
     </button>
   );
 }
@@ -69,6 +69,7 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
 
       {/* ---------- Таймер ---------- */}
       <section aria-label="Фокус" className="order-1 flex min-w-0 flex-col items-center justify-center gap-6 py-4 sm:gap-7 lg:order-none">
+        {stickers && <StickerHint stickers={stickers} />}
         <p role="timer" aria-label={`Фокус: ${formatTime(remaining)}`} style={TIMER_SHADOW} className="pointer-events-none relative z-10 font-display text-[clamp(4.5rem,min(13vw,30vh),18.75rem)] leading-none pt-[0.1em] text-cream tabular-nums">
           {formatTime(remaining)}
         </p>
@@ -82,7 +83,8 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
       </section>
 
       {/* ---------- Закрытая карта ---------- */}
-      <aside aria-label="Карта закрыта" className="order-3 lg:order-none">
+      {/* на телефоне закрытая карта — лишняя карточка: про игру и так сказано в шапке и подсказке */}
+      <aside aria-label="Карта закрыта" className="order-3 hidden lg:order-none lg:block">
         <div className="relative flex h-full min-h-[180px] items-center justify-center overflow-hidden rounded-[28px] bg-rose sm:min-h-[220px] lg:min-h-[480px]">
           <RoadmapArt className="absolute h-auto w-[150%] max-w-none opacity-80 blur-[2px] lg:w-[155%] lg:rotate-90" />
           <div className="relative flex flex-col items-center gap-3 bg-ink/45 px-6 py-6 text-center lg:absolute lg:inset-0 lg:justify-center">
@@ -97,4 +99,58 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
   );
 }
 
-export { EndEarly };
+/**
+ * Кнопки фокуса в шапке: создатель может закончить фокус для всех (сразу перерыв и игра),
+ * участник — «Завершить досрочно» только свою сессию. Обе — с подтверждением вторым нажатием.
+ */
+function FocusControls({ t }: { t: Tomato }) {
+  const canEnd = t.snapshot?.me?.allowedActions.includes("end_focus") ?? false;
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2">
+      {canEnd && <HostEndFocus t={t} />}
+      <EndEarly t={t} />
+    </div>
+  );
+}
+
+function HostEndFocus({ t }: { t: Tomato }) {
+  const [confirm, setConfirm] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return (
+    <button
+      type="button"
+      data-testid="end-focus"
+      disabled={t.busy}
+      onClick={() => {
+        if (!confirm) { setConfirm(true); timer.current = setTimeout(() => setConfirm(false), 4000); return; }
+        clearTimeout(timer.current); setConfirm(false); t.endFocus();
+      }}
+      title={confirm ? "Нажмите ещё раз: у всех начнётся перерыв" : "Закончить фокус для всех — сразу перерыв и игра"}
+      className={`flex h-11 items-center sm:w-[13.5rem] justify-center gap-2 rounded-[14px] border-2 px-3 transition-colors ${confirm ? "border-ink bg-lime text-ink" : "border-peach bg-peach text-ink hover:bg-[#E29A88]"}`}
+    >
+      <FastForward size={18} className="shrink-0" aria-hidden />
+      <span className="whitespace-nowrap font-display text-[15px] leading-tight"><span className="relative top-0.5">{confirm ? "Точно? Ещё раз" : "Закончить → игра"}</span></span>
+    </button>
+  );
+}
+
+const HINT_KEY = "antistall.stickerHint.hidden";
+/** Подсказка сверху: во время фокуса можно делать заметки-стикеры. Закрывается навсегда (в этом браузере). */
+function StickerHint({ stickers }: { stickers: Stickers }) {
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(HINT_KEY) === "1"; } catch { return false; } });
+  if (hidden) return null;
+  const close = () => { setHidden(true); try { localStorage.setItem(HINT_KEY, "1"); } catch { /* приватный режим */ } };
+  return (
+    <div role="note" data-testid="sticker-hint" className="relative z-20 flex w-full max-w-[640px] items-center gap-3 rounded-[16px] border-2 border-dashed border-[#8A625C] px-3 py-2 text-left sm:px-4">
+      <StickyNote size={20} className="shrink-0 text-peach" aria-hidden />
+      <p className="min-w-0 flex-1 text-[14px] leading-snug text-[#F3E1DC] sm:text-[15px]">
+        Пока идёт фокус, можно вести <b className="text-cream">стикеры</b>: план, заметки, формулы, рисунки. Их видите только вы, свернуть можно кнопкой «−».
+      </p>
+      <button type="button" onClick={stickers.add} disabled={stickers.full} className="hidden shrink-0 rounded-[12px] border-2 border-peach px-3 py-1 text-sm font-extrabold text-cream hover:bg-cocoa disabled:opacity-50 xs:block">+ Стикер</button>
+      <button type="button" onClick={close} aria-label="Скрыть подсказку" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#D8BDB6] hover:bg-cocoa"><X size={16} /></button>
+    </div>
+  );
+}
+
+export { EndEarly, FocusControls };

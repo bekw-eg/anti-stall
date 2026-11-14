@@ -2,12 +2,20 @@ import type { AudioSink, LevelMeter } from "./VoiceClient";
 
 /** Браузерные реализации зависимостей VoiceClient. */
 
+/**
+ * Голос (WebRTC) работает и по HTTP: слушать собеседников можно везде. Микрофон браузер даёт только
+ * на HTTPS или localhost — без него клиент входит слушателем (см. VoiceClient: mic = "denied").
+ */
 export const voiceSupported = () =>
   typeof window !== "undefined" &&
-  typeof RTCPeerConnection !== "undefined" &&
-  Boolean(navigator.mediaDevices?.getUserMedia);
+  typeof RTCPeerConnection !== "undefined";
+
+/** Можно ли здесь говорить: микрофон доступен только в защищённом контексте (HTTPS / localhost). */
+export const micAllowedHere = () =>
+  typeof window !== "undefined" && window.isSecureContext !== false && Boolean(navigator.mediaDevices?.getUserMedia);
 
 export function getMicrophone() {
+  if (!micAllowedHere()) return Promise.reject(new DOMException("Микрофон доступен только по HTTPS", "SecurityError"));
   return navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     video: false,

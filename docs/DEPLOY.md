@@ -41,6 +41,38 @@ REST `/api` и WebSocket `/ws` на одном порту) и поднимает
 3. Джоба `deploy:vm` в конце проверяет `/api/health` обоих стендов и пишет адреса:
    `http://<DEPLOY_HOST>` и `http://<DEPLOY_HOST>:8081`.
 
+## 3.1. HTTPS (нужен для голосового чата)
+
+Браузер даёт микрофон только сайтам по HTTPS. По `http://<IP>` голос работает в режиме «только слушать».
+Чтобы говорить, поднимите профиль `https` (Caddy сам получит сертификат Let's Encrypt). Если домена нет,
+используйте `<IP>.sslip.io` — он резолвится в этот же IP. Порты 80 и 443 должны быть открыты.
+
+```bash
+cd ~/app
+echo "APP_PORT=8080" >> .env
+echo "PUBLIC_HOST=$(curl -s ifconfig.me).sslip.io" >> .env
+sudo docker compose --profile https up -d app https
+```
+
+После этого сайт открывается по `https://<IP>.sslip.io`.
+
+## 3.2. TURN (чтобы голос проходил из любой сети)
+
+HTTPS даёт микрофон, но звук идёт напрямую между браузерами. Через мобильный интернет и строгие NAT
+прямое соединение часто не устанавливается — нужен ретранслятор TURN (coturn, профиль `turn`).
+Откройте в файрволе облака порты `3478/udp`, `3478/tcp` и `49160-49200/udp`, затем:
+
+```bash
+cd ~/app
+IP=$(curl -s ifconfig.me)
+echo "PUBLIC_IP=$IP" >> .env
+echo "TOMATO_TURN_SECRET=$(openssl rand -hex 24)" >> .env
+echo "TOMATO_TURN_URLS=turn:$IP:3478?transport=udp,turn:$IP:3478?transport=tcp" >> .env
+sudo docker compose --profile https --profile turn up -d app https turn
+```
+
+Проверка: `curl -s https://$IP.sslip.io/api/config` → `voice.turnConfigured: true`.
+
 ## 4. Данные, обновление, откат
 
 - Прогресс игроков хранится в томах `tomato-data` и `tomato-demo-data` и **переживает** обновление образа.

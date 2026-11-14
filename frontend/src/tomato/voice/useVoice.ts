@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { TomatoClient, TomatoSocket } from "@/api/tomato";
-import { createLevelMeter, getMicrophone, playStream, voiceSupported } from "./browser";
+import { createLevelMeter, getMicrophone, micAllowedHere, playStream, voiceSupported } from "./browser";
 import { VoiceClient, type VoiceSnapshot } from "./VoiceClient";
 
 const IDLE: VoiceSnapshot = { status: "idle", mic: "unknown", muted: false, deafened: false, speaking: false, peers: [], links: {}, error: null, relay: false };
@@ -58,7 +58,7 @@ export function useVoice(api: TomatoClient, socket: TomatoSocket | null, roomId:
 
   const inVoice = state.status !== "idle";
   const micOn = state.mic === "granted" && !state.muted && !state.deafened;
-  return { ...state, supported, ready: Boolean(vc), inVoice, micOn, join, leave, toggleMute, toggleDeafen };
+  return { ...state, supported, canTalk: micAllowedHere(), ready: Boolean(vc), inVoice, micOn, join, leave, toggleMute, toggleDeafen };
 }
 
 export type Voice = ReturnType<typeof useVoice>;

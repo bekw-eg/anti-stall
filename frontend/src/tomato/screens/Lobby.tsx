@@ -81,7 +81,6 @@ function Members({ t }: { t: Tomato }) {
     return (
       <div className="flex flex-col gap-2.5" role="group" aria-label="Участники">
         <p className="as-label">В комнате · {snap.members.length}</p>
-        <p className="-mt-1 text-sm text-mute">Комната без команд: все идут к цели вместе. Команды A и B включаются при создании комнаты.</p>
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">{snap.members.map(row)}</ul>
       </div>
     );
@@ -141,7 +140,7 @@ export function Lobby({ t }: { t: Tomato }) {
   return (
     <div className="grid flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] xl:grid-cols-[minmax(0,1fr)_minmax(360px,540px)]">
       {/* ---------- Setup ---------- */}
-      <section className="flex flex-col items-center justify-center gap-5 px-4 py-8 sm:px-8 sm:py-10 lg:px-16 lg:py-6 2xl:gap-7" aria-label="Подготовка к циклу">
+      <section className="flex flex-col items-center justify-center gap-4 px-4 py-6 sm:gap-5 sm:px-8 sm:py-10 lg:px-16 lg:py-6 2xl:gap-7" aria-label="Подготовка к циклу">
         <div className="flex flex-col items-center gap-2 text-center">
           <p className="text-lg font-bold text-mute sm:text-xl">{closed ? "сессия завершена" : planDone ? "дополнительный цикл длится" : room.cycleNo > 0 ? "следующий цикл длится" : "первый цикл длится"}</p>
           <p className="font-display text-[clamp(4rem,min(17vw,19vh),13.75rem)] leading-none pt-[0.12em] text-rose" data-testid="lobby-timer">{formatTime(focusSec)}</p>
@@ -160,14 +159,14 @@ export function Lobby({ t }: { t: Tomato }) {
                 Все запланированные циклы пройдены ({room.settings.cycles ?? 4}). Можно продолжить: следующий цикл пойдёт сверх плана.
               </p>
             )}
-            <p className="max-w-[640px] text-center text-base text-mute">
+            <p className="max-w-[640px] text-center text-sm text-mute sm:text-base">
               {isHost ? "Настройки меняете вы. " : "Настройки меняет создатель комнаты. "}Награда — только за полный цикл фокуса.
             </p>
             <div className="w-full max-w-[600px]"><TaskInput t={t} /></div>
 
             {/* Своё состояние крупно и словами: «готов / не готов» не должно читаться только по цвету кнопки */}
             <div role="status" data-testid="my-ready" data-ready={isReady ? "true" : "false"}
-              className={`flex w-full max-w-[600px] items-center gap-3 rounded-[18px] border-2 px-4 py-3 ${isReady ? "border-olive bg-[#EEF0D2]" : "border-dashed border-line bg-paper"}`}>
+              className={`hidden w-full max-w-[600px] items-center gap-3 rounded-[18px] border-2 px-4 py-3 sm:flex ${isReady ? "border-olive bg-[#EEF0D2]" : "border-dashed border-line bg-paper"}`}>
               <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 ${isReady ? "border-olive bg-lime text-olive" : "border-line bg-white text-mute"}`} aria-hidden>
                 {isReady ? <Check size={22} strokeWidth={3} /> : <Clock size={20} />}
               </span>
@@ -198,10 +197,10 @@ export function Lobby({ t }: { t: Tomato }) {
       </section>
 
       {/* ---------- Room panel ---------- */}
-      <aside className="flex min-h-0 flex-col gap-7 border-t-2 border-soft bg-paper px-4 py-7 sm:px-8 lg:border-l-2 lg:border-t-0 lg:px-9 lg:py-8" aria-label="Комната">
+      <aside className="flex min-h-0 flex-col gap-5 border-t-2 sm:gap-7 border-soft bg-paper px-4 py-7 sm:px-8 lg:border-l-2 lg:border-t-0 lg:px-9 lg:py-8" aria-label="Комната">
         <Invite code={room.code} />
         <Members t={t} />
-        <div className="flex min-h-[340px] flex-1 flex-col overflow-hidden rounded-[22px] border-2 border-line bg-white">
+        <div className="flex min-h-[280px] flex-1 flex-col overflow-hidden rounded-[22px] border-2 border-line bg-white sm:min-h-[340px]">
           <ChatPanel t={t} />
         </div>
       </aside>

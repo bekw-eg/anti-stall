@@ -77,7 +77,8 @@ export function SheetPanel({ t, sheet, onClose, top = 0 }: { t: Tomato; sheet: S
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 flex justify-end" style={{ top }} role="dialog" aria-label={title}>
       <button type="button" aria-label="Закрыть" tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" />
-      <section className="relative flex h-full w-full flex-col border-l-2 border-ink bg-white sm:w-[min(640px,92vw)] lg:w-[min(880px,70vw)]" style={LIGHT_VARS}>
+      {/* text-ink обязателен: на фокусе корень комнаты светлый текст на тёмном — без него заголовки и имена белые на белом */}
+      <section className="relative flex h-full w-full flex-col border-l-2 border-ink bg-white text-ink sm:w-[min(640px,92vw)] lg:w-[min(880px,70vw)]" style={LIGHT_VARS}>
         <header className="flex items-center justify-between gap-3 border-b-2 border-soft px-5 py-4 sm:px-6">
           <h2 className="font-display text-2xl sm:text-3xl">{title}</h2>
           <button ref={closeRef} type="button" onClick={onClose} aria-label="Закрыть панель" className="flex h-11 w-11 items-center justify-center rounded-[14px] border-2 border-ink bg-white as-shadow-sm"><X size={20} /></button>

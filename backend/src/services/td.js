@@ -391,6 +391,12 @@ export function createTd(ctx, game) {
       const { room, team } = context(user, roomKey);
       requireBreak(room, user);
       if (db.get('SELECT 1 x FROM td_rounds WHERE room_id = ? AND team_key = ? AND cycle_id = ?', room.id, team, room.cycle_id)) {
+        // Раунд запустил соперник (синхронный старт), а своя команда ещё не жала «Начать» — просто подключаемся к нему
+        const ownStart = db.get("SELECT 1 x FROM td_actions WHERE room_id = ? AND team_key = ? AND cycle_id = ? AND kind = 'start'", room.id, team, cycleOf(room));
+        if (!ownStart && runningRound(room, team)) {
+          recordAction(room, team, user.id, 'start');
+          return view(room, user.id);
+        }
         throw E.conflict('ROUND_EXISTS', 'Раунд вашей команды в этот перерыв уже был');
       }
       const stage = b.stageId === undefined ? furthestStage(room, team) : stageDef(reqString(b.stageId, 'stageId', { max: 20 }));
@@ -401,6 +407,18 @@ export function createTd(ctx, game) {
       createRound(room, team, stage, 1, user.id);
       recordAction(room, team, user.id, 'start');
       emitState(room, team);
+      // Команды против друг друга играют синхронно: старт одной запускает раунд и соперника (его дальний открытый этап),
+      // иначе дуэль шла бы со сдвигом, а наёмники ждали бы, пока соперник «проснётся».
+      const rival = rivalOf(room, team);
+      if (rival && !db.get('SELECT 1 x FROM td_rounds WHERE room_id = ? AND team_key = ? AND cycle_id = ?', room.id, rival, room.cycle_id)
+        && db.get('SELECT 1 x FROM room_members WHERE room_id = ? AND team_key = ? AND left_at IS NULL', room.id, rival)) {
+        const rivalStage = furthestStage(room, rival);
+        if (rivalStage) {
+          game.ensureTeamProgress(room.id, rival);
+          createRound(room, rival, rivalStage, 1, user.id);
+          emitState(room, rival);
+        }
+      }
       return view(room, user.id);
     });
   }

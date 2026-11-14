@@ -57,6 +57,7 @@ export function describeEvent(ev: ServerEvent, myId?: string, td?: TdNames): { t
   switch (ev.type) {
     case "reward_granted": return info(d.kind === "achievement" ? null : `+${d.xp} XP · +${d.coins} монет${d.levelUp ? ` · уровень ${d.level}` : ""}`, "reward");
     case "achievement_unlocked": return info(`Достижение: ${d.title}`, "reward");
+    case "focus_ended_early": return info(d.by === myId ? null : "Создатель закончил фокус — перерыв, время игры!");
     case "session_completed": return info(d.rewarded ? null : d.status === "completed" ? "Сессия завершена, дневной лимит наград исчерпан" : "Сессия прервана — без награды");
     case "td_round_finished":
       if (myTeam && d.team !== myTeam) return null;
@@ -512,6 +513,7 @@ export function useTomato(initialCode?: string) {
   const startFocus = useCallback(() => call(() => client.startFocus(rid)), [call, rid]);
   const abortSession = useCallback(() => call(() => client.abortSession(rid)), [call, rid]);
   const skipBreak = useCallback(() => call(() => client.skipBreak(rid)), [call, rid]);
+  const endFocus = useCallback(async () => { const s = await call(() => client.endFocus(rid)); if (s) applySnapshot(s); return s; }, [applySnapshot, call, rid]);
   const setTeam = useCallback((team: "A" | "B") => call(() => client.setTeam(rid, team)), [call, rid]);
   const setReady = useCallback(async (ready: boolean) => {
     const s = await call(() => client.setReady(rid, ready));
@@ -576,7 +578,7 @@ export function useTomato(initialCode?: string) {
 
   return {
     boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
-    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, tdRematch, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, chat, sendChat,
+    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, tdRematch, createRoom, joinRoom, leaveRoom, startFocus, abortSession, endFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, chat, sendChat,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

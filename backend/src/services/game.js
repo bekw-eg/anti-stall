@@ -83,8 +83,12 @@ export function createGame(ctx) {
       ? 1
       : Math.min(eco.maxRewardFactor, Math.max(eco.minRewardFactor, room.focus_sec / (eco.standardFocusMinutes * 60)));
     const { quality, awayMs } = sessionQuality(session, endAt);
-    let xp = Math.round(eco.xpPerSession * factor * quality);
-    const coins = Math.round(eco.coinsPerSession * factor * quality);
+    // Фокус, который создатель закончил досрочно, награждается по доле отработанного времени
+    const plannedMs = (session.duration_sec ?? room.focus_sec) * 1000;
+    const workedMs = Math.min(endAt, session.scheduled_end_at) - session.started_at;
+    const part = plannedMs > 0 ? Math.max(0, Math.min(1, workedMs / plannedMs)) : 1;
+    let xp = Math.round(eco.xpPerSession * factor * quality * part);
+    const coins = Math.round(eco.coinsPerSession * factor * quality * part);
 
     const rewardedToday = db.get(
       'SELECT COUNT(*) c FROM focus_sessions WHERE user_id = ? AND rewarded = 1 AND ended_at > ?',

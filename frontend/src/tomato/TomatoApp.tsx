@@ -5,7 +5,7 @@ import { ConnectionBanner, DemoBadge, Toasts } from "./Chrome";
 import { cycleLabel, formatTime } from "./format";
 import { PrankOverlay } from "./PrankOverlay";
 import { BreakRoom } from "./screens/BreakRoom";
-import { EndEarly, FocusRoom } from "./screens/FocusRoom";
+import { FocusControls, FocusRoom } from "./screens/FocusRoom";
 import { JoinScreen, type JoinMode } from "./screens/JoinScreen";
 import { Landing } from "./screens/Landing";
 import { Lobby } from "./screens/Lobby";
@@ -84,9 +84,7 @@ export default function TomatoApp() {
           <div className="flex min-h-[100dvh] flex-col">
             {/* высота по содержимому: если стикеров или участников много, страница прокручивается, полоса голоса прилипает к низу */}
             <RoomHeader t={t} headerRef={headerRef} active={sheet} stickers={stickers} onOpen={(s) => {
-              // на перерыве «Друзья» уже на экране — прокручиваем к ним, а не открываем вторую копию
-              if (s === "social" && phase === "break") { setSheet(null); document.getElementById("break-social")?.scrollIntoView({ behavior: "smooth", block: "center" }); }
-              else setSheet((cur) => (cur === s ? null : s)); // повторное нажатие закрывает панель
+              setSheet((cur) => (cur === s ? null : s)); // повторное нажатие закрывает панель
             }} />
             {phase === "focus" ? <FocusRoom t={t} stickers={stickers} /> : phase === "break" ? <BreakRoom t={t} onOpenMap={() => setSheet("map")} /> : <Lobby t={t} />}
             <div className="sticky bottom-0 z-20 px-3 pb-3 pt-1 sm:px-8 sm:pb-5 lg:px-12">
@@ -153,7 +151,7 @@ function RoomHeader({ t, onOpen, headerRef, active, stickers }: { t: Tomato; onO
               <span className="font-display text-lg sm:text-xl"><span className="relative top-0.5">перерыв</span></span>
               <span className="rounded-full bg-white px-4 py-1 font-display text-3xl tabular-nums sm:text-[36px]"><span className="relative top-1">{formatTime(remaining)}</span></span>
             </div>
-          ) : <EndEarly t={t} />}
+          ) : <FocusControls t={t} />}
         </div>
       )}
 
