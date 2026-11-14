@@ -358,7 +358,10 @@ export function createRoomsService(ctx, game, users, td) {
   function endBreak(room, at) {
     // Автостарт, только если план не выполнен и в комнате есть кто-то в сети (иначе пустые циклы «прокрутились» бы сами)
     const someoneHere = db.get('SELECT 1 x FROM room_members m JOIN users u ON u.id = m.user_id WHERE m.room_id = ? AND m.left_at IS NULL AND ? - u.last_seen_at <= ?', room.id, at, config.graceMs);
-    const auto = room.cycle_no < room.cycles && Boolean(someoneHere) && !(room.demo && !config.demoMode);
+    // Перерыв, кончившийся «в прошлом» (сервер догоняет фазы после простоя), автостарт не даёт:
+    // иначе сервер насоздавал бы задним числом фокусы, которых никто не проводил, и наградил за них.
+    const fresh = clock.now() - at <= config.graceMs;
+    const auto = fresh && room.cycle_no < room.cycles && Boolean(someoneHere) && !(room.demo && !config.demoMode);
     if (!auto) return toWaiting(room, at);
     td.closeRounds(room, at);
     beginCycle(room, at, null);
