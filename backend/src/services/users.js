@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { E } from '../errors.js';
 import { reqBool, reqObject, reqString } from '../validate.js';
+import { avatarOf, parseAvatar } from '../avatar.js';
 
 const hashToken = (token) => createHash('sha256').update(token).digest('hex');
 
@@ -51,7 +52,7 @@ export function createUsersService(ctx, game) {
     );
     return {
       id: row.id, name: row.name, ...game.levelInfo(row.xp), coins: row.coins,
-      prankEnabled: Boolean(row.prank_enabled), sandbox: Boolean(row.sandbox), createdAt: row.created_at,
+      prankEnabled: Boolean(row.prank_enabled), sandbox: Boolean(row.sandbox), createdAt: row.created_at, avatar: avatarOf(row),
       activeSession: activeSession ?? null, rooms,
     };
   }
@@ -60,8 +61,12 @@ export function createUsersService(ctx, game) {
     const b = reqObject(body);
     if (b.name !== undefined) db.run('UPDATE users SET name = ? WHERE id = ?', reqString(b.name, 'name', { min: 1, max: config.limits.userNameMax }), userId);
     if (b.prankEnabled !== undefined) db.run('UPDATE users SET prank_enabled = ? WHERE id = ?', reqBool(b.prankEnabled, 'prankEnabled') ? 1 : 0, userId);
-    // имя и «получать шутки» видны всей комнате: остальные сразу получают свежий снимок
-    if (b.name !== undefined || b.prankEnabled !== undefined) {
+    if (b.avatar !== undefined) {
+      const row = db.get('SELECT xp FROM users WHERE id = ?', userId);
+      db.run('UPDATE users SET avatar = ? WHERE id = ?', JSON.stringify(parseAvatar(b.avatar, game.levelInfo(row.xp).level)), userId);
+    }
+    // имя, «получать шутки» и образ видны всей комнате: остальные сразу получают свежий снимок
+    if (b.name !== undefined || b.prankEnabled !== undefined || b.avatar !== undefined) {
       for (const r of db.all('SELECT room_id FROM room_members WHERE user_id = ? AND left_at IS NULL', userId)) {
         db.emit({ scope: 'room_state', roomId: r.room_id });
       }

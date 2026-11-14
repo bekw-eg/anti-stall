@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TomatoApiError, TomatoClient, WS_CLOSE_UNAUTHORIZED } from "@/api/tomato";
-import type { ChatMessage, Connection, CreateRoomInput, Me, MercType, RoomSnapshot, ServerEvent, SocialAction, SpellId, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
+import type { AvatarLook, AvatarSkin, ChatMessage, Connection, CreateRoomInput, Me, MercType, RoomSnapshot, ServerEvent, SocialAction, SpellId, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
 import { apiErrorText, extractRoomCode } from "./format";
 import { SHIELD_COST } from "./socialRules";
 import { useNow } from "./useMedia";
+import { teamTitle } from "./socialRules";
 
 export const client = new TomatoClient();
 
@@ -35,7 +36,27 @@ export const DEFAULT_LIMITS: TimerLimits = { focusSeconds: [60, 86_400], breakSe
 export type Conn = "idle" | "connecting" | "online" | "reconnecting" | "offline";
 export interface Toast { id: number; text: string; tone: "info" | "reward" | "warning" | "error" }
 
-const teamLabel = (team?: string) => (team === "A" || team === "B" ? `${team}: ` : "");
+/** Каталог образов (как на сервере; актуальный приходит из /api/config). */
+export interface AvatarCatalog {
+  skins: { id: AvatarSkin; title: string; minLevel: number }[];
+  slots: string[];
+  items: { id: string; slot: "head" | "face" | "neck"; title: string; minLevel: number }[];
+}
+export const DEFAULT_AVATAR_CATALOG: AvatarCatalog = {
+  skins: [
+    { id: "pink", title: "Розовый", minLevel: 1 }, { id: "blue", title: "Голубой", minLevel: 1 }, { id: "mint", title: "Мятный", minLevel: 1 },
+    { id: "yellow", title: "Лимонный", minLevel: 2 }, { id: "purple", title: "Лавандовый", minLevel: 3 }, { id: "orange", title: "Персиковый", minLevel: 4 },
+  ],
+  slots: ["head", "face", "neck"],
+  items: [
+    { id: "beanie", slot: "head", title: "Шапка", minLevel: 1 }, { id: "bow", slot: "head", title: "Бантик", minLevel: 1 },
+    { id: "glasses", slot: "face", title: "Очки", minLevel: 1 }, { id: "scarf", slot: "neck", title: "Шарф", minLevel: 2 },
+    { id: "headphones", slot: "head", title: "Наушники", minLevel: 2 }, { id: "party", slot: "head", title: "Колпак", minLevel: 3 },
+    { id: "shades", slot: "face", title: "Тёмные очки", minLevel: 4 }, { id: "crown", slot: "head", title: "Корона", minLevel: 5 },
+  ],
+};
+
+const teamLabel = (team?: string) => (team === "A" || team === "B" ? `${teamTitle(team)}: ` : "");
 
 /** Справочники игры для подписей событий (названия наёмников и заклинаний приходят с сервера) */
 type TdNames = Pick<TdView, "team" | "mercenaries" | "spells"> | null | undefined;
@@ -80,7 +101,7 @@ export function describeEvent(ev: ServerEvent, myId?: string, td?: TdNames): { t
       return info(d.target === myTeam ? `Команда усилила оборону: «${title}»` : `Команда наложила на соперника «${title}»`);
     }
     case "node_reached": return info(`${teamLabel(d.team)}этап пройден: ${d.title}`.replace(/^./, (c) => c.toUpperCase()), "reward");
-    case "challenge_completed": return info(d.draw ? "Ничья: обе команды достигли цели" : d.team === "shared" ? "Команда достигла цели" : `Команда ${d.team} победила`, "reward");
+    case "challenge_completed": return info(d.draw ? "Ничья: обе команды достигли цели" : d.team === "shared" ? "Команда достигла цели" : `Победили ${teamTitle(d.team).toLowerCase()}`, "reward");
     case "help_applied": {
       const h = ev.data as { type?: string };
       return info(d.to === myId ? (h.type === "shield" ? "Вам подарили щит от шуток" : "Вам помогли: бонус к XP в следующей сессии") : null);
@@ -154,6 +175,7 @@ export function useTomato(initialCode?: string) {
   // Параметры сервера (GET /api/config, hello): значения по умолчанию — на случай, если их там нет
   const [graceSec, setGraceSec] = useState(30);
   const [shieldCost, setShieldCost] = useState(SHIELD_COST);
+  const [avatarCatalog, setAvatarCatalog] = useState<AvatarCatalog>(DEFAULT_AVATAR_CATALOG);
   const [boostPct, setBoostPct] = useState(25); // бонус к XP от помощи — актуальный приходит из /api/config
   // правила шуток для подсказки в «Друзьях»; в демо-комнатах свой, короткий кулдаун
   const [prankRules, setPrankRules] = useState({ cooldownMs: 20_000, demoCooldownMs: 20_000, maxPerBreak: 3 });
@@ -275,6 +297,8 @@ export function useTomato(initialCode?: string) {
             return { cooldownMs, demoCooldownMs: typeof pr.demoCooldownMs === "number" ? pr.demoCooldownMs : cooldownMs, maxPerBreak: typeof pr.maxPerBreak === "number" ? pr.maxPerBreak : p.maxPerBreak };
           });
           if (typeof cfg.presence?.graceMs === "number" && cfg.presence.graceMs > 0) setGraceSec(Math.round(cfg.presence.graceMs / 1000));
+          const av = (c as { avatar?: AvatarCatalog }).avatar;
+          if (av && Array.isArray(av.skins) && Array.isArray(av.items)) setAvatarCatalog(av);
         }).catch(() => undefined);
         const code = initialCode ? extractRoomCode(initialCode) : null;
         try {
@@ -603,6 +627,16 @@ export function useTomato(initialCode?: string) {
   }, [call, rid]);
 
   /** Получать шутки: переключатель меняется сразу, сервер подтверждает (при ошибке — откат). */
+  /** Сохранить образ аксолотля. Сервер проверяет уровень; комната получает новый снимок и видит образ. */
+  const saveAvatar = useCallback(async (look: AvatarLook) => {
+    const r = await call(() => client.updateMe({ avatar: look }));
+    if (!r) return false;
+    const saved = r.avatar ?? look;
+    setUser((u) => (u ? { ...u, avatar: saved } : u));
+    setSnapshot((s) => (s?.me ? { ...s, me: { ...s.me, avatar: saved }, members: s.members.map((m) => (m.userId === s.me!.userId ? { ...m, avatar: saved } : m)) } : s));
+    return true;
+  }, [call]);
+
   const setPranksEnabled = useCallback(async (on: boolean) => {
     const apply = (v: boolean) => {
       setSnapshot((s) => (s?.me ? { ...s, me: { ...s.me, prankEnabled: v }, members: s.members.map((m) => (m.userId === s.me!.userId ? { ...m, prankEnabled: v } : m)) } : s));
@@ -628,7 +662,7 @@ export function useTomato(initialCode?: string) {
 
   return {
     boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
-    call, push, td, tdFx, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, chat, sendChat,
+    call, push, td, tdFx, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, saveAvatar, avatarCatalog, chat, sendChat,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

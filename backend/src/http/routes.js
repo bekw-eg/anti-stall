@@ -1,4 +1,4 @@
-import { ACHIEVEMENTS, BASE_HP, HELP_TYPES, PRANK_TYPES, ROADMAP, UPGRADES, upgradeCost, xpForLevel } from '../catalog.js';
+import { ACHIEVEMENTS, AVATAR, BASE_HP, HELP_TYPES, PRANK_TYPES, ROADMAP, UPGRADES, upgradeCost, xpForLevel } from '../catalog.js';
 import { E } from '../errors.js';
 import { reqInt, reqObject } from '../validate.js';
 import { Router } from './router.js';
@@ -25,6 +25,7 @@ export function buildRoutes({ config, users, rooms, game, social, td, voice, cha
     upgrades: Object.values(UPGRADES).map((u) => ({ ...u, costs: Array.from({ length: u.maxLevel }, (_, i) => upgradeCost(u, i)) })),
     achievements: Object.values(ACHIEVEMENTS).map(({ condition, ...a }) => a),
     roadmap: { ...ROADMAP, baseHp: BASE_HP },
+    avatar: AVATAR,
     voice: { maxPeers: config.voice.maxPeers, turnConfigured: config.voice.turnUrls.length > 0 && Boolean(config.voice.turnSecret || config.voice.turnCredential) },
   }), { auth: false });
 

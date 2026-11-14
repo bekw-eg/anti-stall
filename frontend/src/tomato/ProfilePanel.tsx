@@ -1,18 +1,36 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { BarChart3, Check, Clock, Flame, History, Lock, LogOut, Palette, RotateCcw, Settings, Shirt, Sparkles, Target, Trophy } from "lucide-react";
 import { client } from "./useTomato";
 import type { Tomato } from "./useTomato";
-import type { Progress, StudySession } from "@/api/tomato";
+import type { AvatarLook, Progress, StudySession } from "@/api/tomato";
 import { formatDuration } from "./format";
+import { Axolotl, ItemIcon, SKIN_BG, lookOf } from "./Axolotl";
+import { DemoBadge } from "./Chrome";
+import { SeedIcon } from "./screens/ui";
 
-type Tab = "upgrades" | "achievements" | "history";
+type Tab = "look" | "upgrades" | "achievements" | "history" | "settings";
+const TABS: [Tab, string, ReactNode][] = [
+  ["look", "Образ", <Shirt key="i" size={17} aria-hidden />],
+  ["upgrades", "Улучшения", <Sparkles key="i" size={17} aria-hidden />],
+  ["achievements", "Достижения", <Trophy key="i" size={17} aria-hidden />],
+  ["history", "История", <History key="i" size={17} aria-hidden />],
+  ["settings", "Настройки", <Settings key="i" size={17} aria-hidden />],
+];
 const SESSION_LABEL: Record<string, string> = { completed: "завершена", aborted: "досрочно", abandoned: "нет связи", active: "идёт" };
 const RESULT_LABEL: Record<string, string> = { done: "сделал", partial: "частично", not_done: "не успел" };
+const xpForLevel = (n: number) => 50 * n * (n - 1); // как на сервере (catalog.js)
 
-const card = "rounded-xl bg-white/60 px-4 py-3 text-sm text-zinc-800";
+/* Тёмная палитра страницы образа (по референсу): шоколадный фон, карточки чуть светлее, акцент — персик. */
+const CARD = "rounded-[24px] border-2 border-[#6A4A45] bg-[#46302D]";
+const MUTED = "text-[#D8BDB6]";
+const sameLook = (a: AvatarLook, b: AvatarLook) => a.skin === b.skin && a.head === b.head && a.face === b.face && a.neck === b.neck;
 
-/** Профиль игрока: данные целиком с сервера (прогресс, улучшения, достижения, история). */
-export function ProfilePanel({ t }: { t: Tomato }) {
-  const [tab, setTab] = useState<Tab>("upgrades");
+/**
+ * Профиль = страница образа аксолотля: превью, инвентарь вещей и выбор цвета, сохранение на сервер.
+ * Остальное — во вкладках: улучшения, достижения, история, настройки. Данные целиком с сервера.
+ */
+export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }) {
+  const [tab, setTab] = useState<Tab>("look");
   const [progress, setProgress] = useState<Progress | null>(null);
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const me = t.snapshot?.me;
@@ -29,80 +47,35 @@ export function ProfilePanel({ t }: { t: Tomato }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [refreshKey]);
 
-  if (!progress) return <p className="text-sm text-zinc-500">Загружаем профиль…</p>;
-  const span = progress.nextLevelXp - progress.levelStartXp;
-  const pct = Math.min(100, ((progress.xp - progress.levelStartXp) / span) * 100);
+  if (!progress) return <p className={`p-6 text-sm ${MUTED}`}>Загружаем профиль…</p>;
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="rounded-xl bg-white/60 p-4">
-        <div className="flex items-baseline justify-between">
-          <p className="text-lg font-medium text-zinc-900">{progress.name}</p>
-          <p className="text-sm text-zinc-600">Уровень {progress.level}</p>
-        </div>
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-black/10" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
-          <div className="h-full rounded-full bg-zinc-900 transition-all duration-500" style={{ width: `${pct}%` }} />
-        </div>
-        <p className="mt-2 flex justify-between text-xs text-zinc-500">
-          <span className="tabular-nums">{progress.xp} / {progress.nextLevelXp} XP</span>
-          <span className="tabular-nums">{progress.coins} монет · занятий: {progress.stats.completedSessions} · {formatDuration(progress.stats.focusSeconds ?? 0)}</span>
-        </p>
-        {progress.effects.length > 0 && (
-          <p className="mt-2 text-xs text-zinc-600">
-            Активно: {progress.effects.map((e) => (e.kind === "boost" ? "бонус к XP" : "щит от шуток")).join(", ")}
-          </p>
-        )}
-      </div>
-
-      <label className="flex cursor-pointer items-start gap-3 text-sm text-zinc-700">
-        <input
-          type="checkbox"
-          role="switch"
-          data-testid="pranks-toggle"
-          className="mt-1 h-4 w-4 accent-zinc-900"
-          checked={progress.prankEnabled}
-          onChange={async (e) => {
-            // галочка переключается сразу; при ошибке сервера — откат
-            const on = e.target.checked;
-            setProgress((p) => (p ? { ...p, prankEnabled: on } : p));
-            const ok = await t.setPranksEnabled(on);
-            if (!ok) setProgress((p) => (p ? { ...p, prankEnabled: !on } : p));
-          }}
-        />
-        <span>Получать шутки<span className="block text-xs text-zinc-500">Шутки — часть игры на перерыве. Если выключить, вас нельзя выбрать целью и отправлять их тоже нельзя.</span></span>
-      </label>
-
-      <div className="flex rounded-xl bg-white/50 p-1" role="tablist">
-        {([["upgrades", "Улучшения"], ["achievements", "Достижения"], ["history", "История"]] as const).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={tab === id}
-            onClick={() => setTab(id)}
-            className={`flex-1 rounded-lg py-2 text-xs font-medium transition-colors sm:text-sm ${tab === id ? "bg-zinc-900 text-white" : "text-zinc-600 hover:text-zinc-900"}`}
-          >
-            {label}
+    <div className="flex flex-col gap-5 p-5 sm:p-6" data-testid="profile-panel">
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Разделы профиля">
+        {TABS.map(([id, label, icon]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} data-testid={`profile-tab-${id}`}
+            className={`inline-flex h-11 shrink-0 items-center gap-2 rounded-[14px] border-2 px-4 text-[15px] font-extrabold transition-colors ${tab === id ? "border-peach bg-peach text-ink" : "border-[#6A4A45] text-cream hover:bg-[#5A3833]"}`}>
+            {icon}{label}
           </button>
         ))}
       </div>
 
+      {tab === "look" && <LookTab t={t} progress={progress} onLeave={onLeave} />}
+
       {tab === "upgrades" && (
-        <ul className="flex flex-col gap-2">
-          {focusing && <li className="text-xs text-zinc-500">Покупки доступны на перерыве.</li>}
+        <ul className="grid gap-3 md:grid-cols-2">
+          {focusing && <li className={`text-sm ${MUTED} md:col-span-2`}>Покупки доступны на перерыве.</li>}
           {progress.upgrades.map((u) => (
-            <li key={u.id} className={`${card} flex items-center gap-3`}>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-zinc-900">{u.title} <span className="font-normal text-zinc-500 tabular-nums">{u.level}/{u.maxLevel}</span></p>
-                <p className="text-xs text-zinc-500">{u.description}</p>
+            <li key={u.id} className={`${CARD} flex flex-col gap-3 p-4`}>
+              <div className="min-w-0">
+                <p className="flex items-baseline justify-between gap-2 font-extrabold">{u.title}<span className={`text-sm tabular-nums ${MUTED}`}>{u.level}/{u.maxLevel}</span></p>
+                <p className={`text-sm ${MUTED}`}>{u.description}</p>
               </div>
-              <button
-                type="button"
-                disabled={u.maxed || u.locked || !u.canBuy || focusing}
+              <div className="flex gap-1" aria-hidden>{Array.from({ length: u.maxLevel }, (_, i) => <span key={i} className={`h-2 flex-1 rounded-full ${i < u.level ? "bg-peach" : "bg-[#6A4A45]"}`} />)}</div>
+              <button type="button" disabled={u.maxed || u.locked || !u.canBuy || focusing}
                 onClick={async () => { await t.call(() => client.buyUpgrade(u.id, u.level)); load(); }}
-                className="shrink-0 rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium tabular-nums text-white transition-colors hover:bg-black disabled:bg-zinc-300 disabled:text-zinc-500"
-              >
-                {u.maxed ? "Максимум" : u.locked ? `с ур. ${u.minPlayerLevel}` : `${u.nextCost} монет`}
+                className="as-btn as-btn-light as-btn-sm self-start tabular-nums">
+                {u.maxed ? "Максимум" : u.locked ? `с ${u.minPlayerLevel} уровня` : <><SeedIcon className="h-5 w-5" />{u.nextCost}</>}
               </button>
             </li>
           ))}
@@ -110,23 +83,28 @@ export function ProfilePanel({ t }: { t: Tomato }) {
       )}
 
       {tab === "achievements" && (
-        <ul className="flex flex-col gap-2">
+        <ul className="grid gap-3 sm:grid-cols-2">
           {progress.achievements.map((a) => (
-            <li key={a.id} className={`${card} ${a.unlocked ? "" : "opacity-50"}`}>
-              <p className="font-medium text-zinc-900">{a.unlocked ? "● " : "○ "}{a.title} <span className="font-normal text-zinc-500">+{a.reward.coins}</span></p>
-              <p className="text-xs text-zinc-500">{a.description}</p>
+            <li key={a.id} className={`flex items-start gap-3 rounded-[20px] border-2 p-3.5 ${a.unlocked ? "border-peach bg-[#5A3833]" : "border-dashed border-[#6A4A45] opacity-70"}`}>
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 ${a.unlocked ? "border-peach bg-peach text-ink" : "border-[#6A4A45] text-[#B8A39E]"}`} aria-hidden>
+                {a.unlocked ? <Trophy size={16} strokeWidth={2.5} /> : <Lock size={15} strokeWidth={2.5} />}
+              </span>
+              <span className="min-w-0">
+                <span className="flex items-baseline gap-2 font-extrabold">{a.title}<span className="inline-flex items-center gap-0.5 text-sm text-peach">+{a.reward.coins}<SeedIcon className="h-3.5 w-3.5" /></span></span>
+                <span className={`block text-sm ${MUTED}`}>{a.description}</span>
+              </span>
             </li>
           ))}
         </ul>
       )}
 
       {tab === "history" && (
-        <ul className="flex flex-col gap-2">
-          {sessions.length === 0 && <li className="text-sm text-zinc-500">Занятий пока нет.</li>}
+        <ul className="flex flex-col gap-2.5">
+          {sessions.length === 0 && <li className={`text-sm ${MUTED}`}>Занятий пока нет.</li>}
           {sessions.map((s) => (
-            <li key={s.id} className={card}>
-              <p className="font-medium text-zinc-900">{s.task ?? "Без задачи"}{s.result && <span className="ml-2 font-normal text-zinc-500">· {RESULT_LABEL[s.result]}</span>}</p>
-              <p className="text-xs text-zinc-500">
+            <li key={s.id} className={`${CARD} px-4 py-3`}>
+              <p className="font-extrabold">{s.task ?? "Без задачи"}{s.result && <span className={`ml-2 font-semibold ${MUTED}`}>· {RESULT_LABEL[s.result]}</span>}</p>
+              <p className={`text-sm ${MUTED}`}>
                 {new Date(s.startedAt).toLocaleString()} · {SESSION_LABEL[s.status]}
                 {s.rewarded ? ` · +${s.xp} XP, +${s.coins} монет` : " · без награды"}
               </p>
@@ -134,6 +112,201 @@ export function ProfilePanel({ t }: { t: Tomato }) {
           ))}
         </ul>
       )}
+
+      {tab === "settings" && (
+        <div className="flex flex-col gap-4">
+          {t.demoMode && <DemoBadge className="self-start" />}
+          <label className={`${CARD} flex cursor-pointer items-start gap-3 p-4`}>
+            <input
+              type="checkbox" role="switch" data-testid="pranks-toggle" className="mt-1 h-5 w-5 accent-[#EAA695]"
+              checked={progress.prankEnabled}
+              onChange={async (e) => {
+                // галочка переключается сразу; при ошибке сервера — откат
+                const on = e.target.checked;
+                setProgress((p) => (p ? { ...p, prankEnabled: on } : p));
+                const ok = await t.setPranksEnabled(on);
+                if (!ok) setProgress((p) => (p ? { ...p, prankEnabled: !on } : p));
+              }}
+            />
+            <span><span className="font-extrabold">Получать шутки</span><span className={`block text-sm ${MUTED}`}>Шутки — часть игры на перерыве. Если выключить, вас нельзя выбрать целью и отправлять их тоже нельзя.</span></span>
+          </label>
+          {onLeave && <LeaveButton onLeave={onLeave} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LeaveButton({ onLeave }: { onLeave: () => void }) {
+  return (
+    <button type="button" onClick={onLeave} className={`inline-flex h-11 items-center gap-2 self-start rounded-[14px] border-2 border-[#6A4A45] px-4 font-extrabold text-cream hover:bg-[#5A3833]`}>
+      <LogOut size={18} aria-hidden /> Выйти из комнаты
+    </button>
+  );
+}
+
+function Stat({ icon, value, label }: { icon: ReactNode; value: string; label: string }) {
+  return (
+    <div className="flex min-w-0 flex-col items-center gap-1 px-1 text-center">
+      <span className="text-peach" aria-hidden>{icon}</span>
+      <span className="font-display text-2xl leading-none tabular-nums"><span className="relative top-0.5">{value}</span></span>
+      <span className={`whitespace-nowrap text-xs font-bold leading-tight ${MUTED}`}>{label}</span>
+    </div>
+  );
+}
+
+/** Вкладка «Образ»: превью + статистика слева, инвентарь и цвета справа. */
+function LookTab({ t, progress, onLeave }: { t: Tomato; progress: Progress; onLeave?: () => void }) {
+  const me = t.snapshot?.me;
+  const level = me?.level ?? progress.level;
+  const saved = useMemo(() => lookOf(me?.userId ?? progress.userId, me?.avatar ?? t.user?.avatar), [me?.userId, me?.avatar, t.user?.avatar, progress.userId]);
+  const [draft, setDraft] = useState<AvatarLook>(saved);
+  const [saving, setSaving] = useState(false);
+  // сохранённый образ сменился (например, с другой вкладки) — показываем его
+  useEffect(() => { setDraft(saved); }, [saved]);
+  const dirty = !sameLook(draft, saved);
+  const cat = t.avatarCatalog;
+
+  const span = progress.nextLevelXp - progress.levelStartXp;
+  const pct = Math.min(100, ((progress.xp - progress.levelStartXp) / span) * 100);
+  // ближайшая закрытая вещь или цвет — «текущая цель»
+  const next = [...cat.items, ...cat.skins].filter((x) => x.minLevel > level).sort((a, b) => a.minLevel - b.minLevel)[0];
+  const goalXp = next ? xpForLevel(next.minLevel) : 0;
+  const unlocked = progress.achievements.filter((a) => a.unlocked).length;
+
+  const toggleItem = (slot: "head" | "face" | "neck", id: string) => setDraft((d) => ({ ...d, [slot]: d[slot] === id ? null : id }));
+  const save = async () => {
+    setSaving(true);
+    const ok = await t.saveAvatar(draft);
+    setSaving(false);
+    if (ok) t.push("Образ сохранён — его видят все в комнате");
+  };
+
+  const skinTitle = cat.skins.find((x) => x.id === draft.skin)?.title ?? "";
+  const saveBtn = (cls: string, testId = "save-look") => (
+    <button type="button" onClick={save} disabled={!dirty || saving} className={`as-btn as-btn-light as-btn-sm whitespace-nowrap ${cls}`} data-testid={testId}>
+      <Check size={18} strokeWidth={3} aria-hidden /> {saving ? "Сохраняем…" : dirty ? "Сохранить образ" : "Образ сохранён"}
+    </button>
+  );
+
+  /*
+   * Раскладка как на референсе: слева аксолотль и выбор цвета, справа инвентарь.
+   * На широком экране левая колонка прилипает к верху — меняешь вещи справа и сразу видишь результат.
+   * На телефоне и планшете колонки идут друг под другом, поэтому превью прилипает к верху панели
+   * (левая колонка становится `contents`, порядок задаёт `order-*`).
+   */
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] lg:items-start lg:gap-5">
+      <div className="contents lg:sticky lg:top-0 lg:row-span-2 lg:flex lg:min-w-0 lg:flex-col lg:gap-4">
+        {/* ---------- превью ---------- */}
+        <div className="sticky top-0 z-10 order-1 -mx-5 flex items-center gap-3 border-b-2 border-[#5A3833] bg-ink px-5 py-2.5 sm:-mx-6 sm:gap-5 sm:px-6 lg:static lg:order-none lg:mx-0 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0" data-testid="look-preview">
+          <div className="relative h-[104px] w-[104px] shrink-0 sm:h-[150px] sm:w-[150px] lg:h-[200px] lg:w-[200px]">
+            <Axolotl look={draft} size={200} className="h-full w-full" title={`Ваш аксолотль: ${skinTitle}`} />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:gap-3">
+            <p className="truncate font-display text-2xl leading-none sm:text-4xl"><span className="relative top-1">{progress.name}</span></p>
+            <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+              <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-cream py-0.5 pl-0.5 pr-2.5 sm:gap-2 sm:py-1 sm:pl-1 sm:pr-3">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cream font-display text-base text-ink sm:h-8 sm:w-8 sm:text-lg"><span className="relative top-0.5">{level}</span></span>
+                <span className="text-sm font-extrabold sm:text-base">уровень</span>
+              </span>
+              <span className={`whitespace-nowrap text-xs font-bold tabular-nums sm:text-sm ${MUTED}`}>{progress.xp} / {progress.nextLevelXp} XP</span>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full border-2 border-[#6A4A45] bg-[#2A1817]" role="progressbar" aria-label="Прогресс уровня" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full rounded-full bg-peach transition-[width] duration-500" style={{ width: `${pct}%` }} />
+            </div>
+            {/* на телефоне «Сохранить» прямо у превью: не нужно листать вниз */}
+            {dirty && saveBtn("lg:hidden !min-h-[2.5rem] self-start", "save-look-top")}
+          </div>
+        </div>
+
+        {/* ---------- выбор цвета (под превью, как «Выбери аксолотля» на референсе) ---------- */}
+        <div className={`${CARD} order-2 flex flex-col gap-3 p-4 lg:order-none`}>
+          <p className="flex items-center gap-2 whitespace-nowrap text-sm font-extrabold"><Palette size={16} aria-hidden />Выбери аксолотля<span className={`truncate font-bold ${MUTED}`}>· {skinTitle}</span></p>
+          <div className="grid grid-cols-6 gap-2">
+            {cat.skins.map((sk) => {
+              const locked = sk.minLevel > level;
+              const on = draft.skin === sk.id;
+              return (
+                <div key={sk.id} className="flex min-w-0 flex-col items-center gap-1">
+                  <button type="button" disabled={locked} aria-pressed={on} aria-label={locked ? `${sk.title}: с ${sk.minLevel} уровня` : sk.title} title={locked ? `«${sk.title}» откроется на ${sk.minLevel} уровне` : sk.title}
+                    onClick={() => setDraft((d) => ({ ...d, skin: sk.id }))} data-skin-tile={sk.id}
+                    className={`relative flex aspect-square w-full items-end justify-center overflow-hidden rounded-[14px] border-2 ${on ? "border-cream ring-2 ring-peach" : "border-[#6A4A45]"} disabled:cursor-not-allowed`} style={{ background: SKIN_BG[sk.id] }}>
+                    <span className={`w-[88%] ${locked ? "opacity-40 grayscale" : ""}`}><Axolotl look={{ skin: sk.id, head: null, face: null, neck: null }} crop="head" size={48} className="h-auto w-full" /></span>
+                    {locked && <Lock size={12} className="absolute right-1 top-1 text-ink" aria-hidden />}
+                  </button>
+                  {locked && <span className="whitespace-nowrap text-[10px] font-extrabold leading-none text-[#B8A39E]">ур. {sk.minLevel}</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+      </div>
+
+      {/* ---------- справа: инвентарь ---------- */}
+      <div className={`${CARD} order-3 flex min-w-0 flex-col gap-4 p-4 sm:p-5 lg:order-none lg:col-start-2 lg:row-start-1`}>
+        <p className="flex items-center gap-2 font-display text-xl leading-none"><Shirt size={20} aria-hidden /><span className="relative top-0.5">Инвентарь</span></p>
+        <ul className="grid grid-cols-3 gap-2.5 xs:grid-cols-4" aria-label="Вещи">
+          {cat.items.map((it) => {
+            const locked = it.minLevel > level;
+            const on = draft[it.slot] === it.id;
+            return (
+              <li key={it.id}>
+                <button type="button" disabled={locked} aria-pressed={on} onClick={() => toggleItem(it.slot, it.id)} data-item-tile={it.id}
+                  title={locked ? `«${it.title}» откроется на ${it.minLevel} уровне` : on ? `Снять: ${it.title}` : `Надеть: ${it.title}`}
+                  className={`relative flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-[16px] border-2 p-1 transition-colors ${on ? "border-cream bg-[#5A3833]" : "border-[#6A4A45] bg-[#3B2422] hover:border-peach"} disabled:cursor-not-allowed`}>
+                  <span className={locked ? "opacity-50" : ""}><ItemIcon id={it.id} size={54} /></span>
+                  <span className={`max-w-full whitespace-nowrap px-0.5 text-[11px] font-extrabold leading-tight tracking-tight ${locked ? "text-[#B8A39E]" : "text-cream"}`}>{it.title}</span>
+                  {locked && <span className="rounded-full bg-[#2A1817] px-1.5 text-[10px] font-extrabold leading-4 text-[#D8BDB6]">ур. {it.minLevel}</span>}
+                  {on && <span className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-ink bg-cream text-ink" aria-hidden><Check size={14} strokeWidth={3} /></span>}
+                  {locked && <span className="absolute right-1.5 top-1.5 text-[#B8A39E]" aria-hidden><Lock size={13} /></span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          {saveBtn("min-w-[14rem] flex-1")}
+          {dirty && (
+            <button type="button" onClick={() => setDraft(saved)} className="inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-[14px] border-2 border-[#6A4A45] px-3 font-extrabold text-cream hover:bg-[#5A3833]">
+              <RotateCcw size={16} aria-hidden /> Отменить
+            </button>
+          )}
+        </div>
+        <p className={`text-xs ${MUTED}`}>Ваш аксолотль — в жетоне комнаты, в чате и на башнях, которые вы строите в Tower Wars. Новые вещи открываются с уровнем.</p>
+      </div>
+
+      {/* ---------- статистика и цель: под инвентарём (слева остаётся короткая колонка, она прилипает) ---------- */}
+      <div className="order-4 flex min-w-0 flex-col gap-4 lg:order-none lg:col-start-2">
+        <div className={`${CARD} p-4`}>
+          <p className="mb-3 flex items-center gap-2 whitespace-nowrap font-extrabold"><BarChart3 size={18} aria-hidden /> Учебная статистика</p>
+          <div className="grid grid-cols-4 divide-x divide-[#6A4A45]">
+            <Stat icon={<Target size={18} />} value={String(progress.stats.completedSessions)} label="сессий" />
+            <Stat icon={<Clock size={18} />} value={formatDuration(progress.stats.focusSeconds ?? 0)} label="в фокусе" />
+            <Stat icon={<Flame size={18} />} value={String(progress.stats.bestStreakDays)} label="дней" />
+            <Stat icon={<Trophy size={18} />} value={`${unlocked}`} label="наград" />
+          </div>
+        </div>
+
+        {next && (
+          <div className={`${CARD} flex items-center gap-3 p-4`} data-testid="next-unlock">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] border-2 border-[#6A4A45] bg-[#2A1817]">
+              {"slot" in next ? <ItemIcon id={next.id} size={38} /> : <Axolotl look={{ skin: next.id, head: null, face: null, neck: null }} crop="head" size={40} />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className={`text-xs font-bold ${MUTED}`}>Следующая награда</p>
+              <p className="text-sm font-extrabold">«{next.title}» — с {next.minLevel} уровня</p>
+              <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-[#2A1817]">
+                <div className="h-full rounded-full bg-peach" style={{ width: `${Math.min(100, (progress.xp / Math.max(1, goalXp)) * 100)}%` }} />
+              </div>
+              <p className={`mt-1 text-right text-xs font-bold tabular-nums ${MUTED}`}>{progress.xp} / {goalXp} XP</p>
+            </div>
+          </div>
+        )}
+        {onLeave && <LeaveButton onLeave={onLeave} />}
+      </div>
     </div>
   );
 }

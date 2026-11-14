@@ -4,8 +4,7 @@
  * из CSS-переменных — здесь они заданы в палитре макета.
  */
 import { useEffect, useRef, useState } from "react";
-import { BarChart3, Check, Copy, Eye, EyeOff, LogOut, Map as MapIcon, StickyNote, Users, X } from "lucide-react";
-import { DemoBadge } from "../Chrome";
+import { BarChart3, Check, Copy, Eye, EyeOff, Map as MapIcon, StickyNote, Users, X } from "lucide-react";
 import { roomLink } from "../format";
 import { ProfilePanel } from "../ProfilePanel";
 import { RoadMap } from "../RoadMap";
@@ -64,7 +63,7 @@ export function ProfileChip({ t, dark, onOpen, className = "" }: { t: Tomato; da
   return (
     <button type="button" onClick={onOpen} data-testid="open-profile" aria-label="Профиль и выход из комнаты"
       className={`h-10 shrink-0 items-center gap-2 rounded-full border-2 p-0.5 sm:h-12 sm:py-1 sm:pl-1 sm:pr-4 ${dark ? "border-[#8A625C] text-cream" : "border-ink bg-white text-ink"} ${className || "inline-flex"}`}>
-      <Avatar name={name || "?"} id={me?.userId} size={32} ring={dark ? "#FFF4EF" : "#3B2422"} />
+      <Avatar name={name || "?"} id={me?.userId} look={me?.avatar ?? t.user?.avatar} size={32} ring={dark ? "#FFF4EF" : "#3B2422"} />
       <span className="hidden max-w-[9rem] truncate text-lg font-extrabold sm:inline">{name}</span>
       <span className={`hidden text-base md:inline ${dark ? "text-[#D8BDB6]" : "text-mute"}`}>ур. {me?.level ?? t.user?.level ?? 1}</span>
     </button>
@@ -82,28 +81,22 @@ export function SheetPanel({ t, sheet, onClose, top = 0 }: { t: Tomato; sheet: S
     return () => window.removeEventListener("keydown", onKey);
   }, [sheet, onClose]);
   if (!sheet || !t.snapshot) return null;
+  const dark = sheet === "profile";
   const title = sheet === "map" ? "Карта команды" : sheet === "stats" ? "Прогресс" : sheet === "social" ? "Друзья" : "Профиль";
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 flex justify-end" style={{ top }} role="dialog" aria-label={title}>
       <button type="button" aria-label="Закрыть" tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" />
-      <section className="relative flex h-full w-full flex-col border-l-2 border-ink bg-white text-ink sm:w-[min(640px,92vw)] lg:w-[min(880px,70vw)]" style={LIGHT_VARS}>
-        <header className="flex items-center justify-between gap-3 border-b-2 border-soft px-5 py-4 sm:px-6">
-          <h2 className="font-display text-2xl sm:text-3xl">{title}</h2>
-          <button ref={closeRef} type="button" onClick={onClose} aria-label="Закрыть панель" className="flex h-11 w-11 items-center justify-center rounded-[14px] border-2 border-ink bg-white as-shadow-sm"><X size={20} /></button>
+      {/* профиль — страница образа: тёмная, шире остальных панелей (две колонки как на референсе) */}
+      <section className={`relative flex h-full w-full flex-col border-l-2 border-ink sm:w-[min(640px,92vw)] ${dark ? "bg-ink text-cream lg:w-[min(1040px,84vw)]" : "bg-white text-ink lg:w-[min(880px,70vw)]"}`} style={dark ? DARK_VARS : LIGHT_VARS}>
+        <header className={`flex items-center justify-between gap-3 border-b-2 px-5 py-4 sm:px-6 ${dark ? "border-[#5A3833]" : "border-soft"}`}>
+          <h2 className="font-display text-2xl sm:text-3xl"><span className="relative top-0.5">{title}</span></h2>
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="Закрыть панель" className={`flex h-11 w-11 items-center justify-center rounded-[14px] border-2 ${dark ? "border-[#6A4A45] text-cream hover:bg-[#5A3833]" : "border-ink bg-white as-shadow-sm"}`}><X size={20} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {sheet === "map" && <div><RoadMap road={t.snapshot.challenge} meId={t.snapshot.me?.userId} /></div>}
           {sheet === "stats" && <StatsPanel t={t} />}
           {sheet === "social" && <SocialPanel t={t} />}
-          {sheet === "profile" && (
-            <div className="flex flex-col gap-4 p-5 sm:p-6">
-              {t.demoMode && <DemoBadge className="self-start" />}
-              <ProfilePanel t={t} />
-              <button type="button" onClick={async () => { if (await t.leaveRoom()) onClose(); }} className="as-btn as-btn-secondary as-btn-sm self-start">
-                <LogOut size={18} aria-hidden /> Выйти из комнаты
-              </button>
-            </div>
-          )}
+          {sheet === "profile" && <ProfilePanel t={t} onLeave={async () => { if (await t.leaveRoom()) onClose(); }} />}
         </div>
       </section>
     </div>

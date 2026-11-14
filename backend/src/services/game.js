@@ -128,7 +128,8 @@ export function createGame(ctx) {
   }
 
   // ------------------------------------------------------------------ команды и казна
-  const teamName = (key) => (key === 'shared' ? 'Команда' : `Команда ${key}`);
+  // A — «Красные», B — «Синие»: так команды различают по цвету во всём интерфейсе
+  const teamName = (key) => (key === 'shared' ? 'Команда' : key === 'B' ? 'Синие' : 'Красные');
   const teamKeysOf = (room) => (room.mode === 'teams' ? ['A', 'B'] : ['shared']);
   const roomRow = (roomId) => db.get('SELECT id, mode, cycle_no FROM rooms WHERE id = ?', roomId) ?? { id: roomId, mode: 'shared', cycle_no: 0 };
   /** Карта комнаты: статичная ROADMAP (карта master). */

@@ -64,7 +64,9 @@ CREATE TABLE IF NOT EXISTS users (
   coins INTEGER NOT NULL DEFAULT 0 CHECK (coins >= 0),
   prank_enabled INTEGER NOT NULL DEFAULT 1,
   -- песочный (демо) аккаунт: только демо-комнаты, без демо-режима сервера не авторизуется
-  sandbox INTEGER NOT NULL DEFAULT 0
+  sandbox INTEGER NOT NULL DEFAULT 0,
+  -- образ аксолотля: JSON {skin, head, face, neck}; NULL — цвет по умолчанию (из id), без аксессуаров
+  avatar TEXT
 );
 
 CREATE TABLE IF NOT EXISTS user_upgrades (
@@ -292,6 +294,8 @@ export class Db {
     if (!columns('room_members').includes('is_ready')) this.sql.exec('ALTER TABLE room_members ADD COLUMN is_ready INTEGER NOT NULL DEFAULT 0');
     // v4: песочные аккаунты демо-режима (users.sandbox); все существующие пользователи — обычные
     if (!columns('users').includes('sandbox')) this.sql.exec('ALTER TABLE users ADD COLUMN sandbox INTEGER NOT NULL DEFAULT 0');
+    // v6: образ аксолотля (users.avatar, JSON); у существующих — NULL, то есть цвет по умолчанию
+    if (!columns('users').includes('avatar')) this.sql.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
 
     // v5: казна команды; уже существующие команды получают стартовый капитал
     if (!columns('team_progress').includes('treasury_coins')) {

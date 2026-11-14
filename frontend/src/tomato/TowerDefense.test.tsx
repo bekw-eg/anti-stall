@@ -219,17 +219,17 @@ describe("TowerDefense: показывает серверное состояни
       duel: { stageId: "camp", winner: "A", scores: {}, roundNo: 1 },
     }));
     expect(host.querySelector('[data-testid="td-role"]')!.textContent).toContain("Вы в атаке");
-    expect(host.querySelector('[data-testid="td-role"]')!.textContent).toContain("команды A");
+    expect(host.querySelector('[data-testid="td-role"]')!.textContent).toContain("базу: красные");
     expect(slot("s3").querySelector('[data-testid="tower"]')!.getAttribute("data-level")).toBe("2");
     expect(slot("s1").getAttribute("role")).toBeNull(); // на чужом поле не строят
     click(slot("s1"));
     expect(btn("Стрелок")).toBeUndefined();
-    expect(host.querySelector('[aria-label="Здоровье базы команды A"]')!.getAttribute("aria-valuenow")).toBe("50");
+    expect(host.querySelector('[aria-label="Здоровье базы: красные"]')!.getAttribute("aria-valuenow")).toBe("50");
     expect(btn("Ускорить")).toBeUndefined();
     click(btn("Черри")!);
     await flush();
     expect(actions.sendUnit).toHaveBeenCalledWith("cherry");
-    expect(host.textContent).toContain("Дуэль выиграла команда A");
+    expect(host.textContent).toContain("Дуэль выиграли красные");
   });
 
   it("баннер посреди поля: событие сервера и новая волна", () => {

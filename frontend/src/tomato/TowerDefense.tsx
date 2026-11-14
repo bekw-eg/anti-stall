@@ -1,11 +1,12 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, animate, motion, useReducedMotion } from "framer-motion";
 import { Clock, Flame, Heart, Lock, Play, Shield, ShieldPlus, Skull, Snail, Snowflake, Swords, Trophy, Zap, type LucideIcon } from "lucide-react";
-import type { EnemyType, MercType, SpellId, TdEffect, TdRound, TdTower, TdTowerDef, TdView, TowerType } from "@/api/tomato";
+import type { AvatarLook, EnemyType, MercType, SpellId, TdEffect, TdRound, TdTower, TdTowerDef, TdView, TowerType } from "@/api/tomato";
 import { createTdRenderer, type TdRenderer } from "./tdCanvas";
 import { AcademyBase, AxolotlTower, TomatoPortal, TowerPreview } from "./tdSprites";
 import { SeedIcon } from "./screens/ui";
 import type { TdFx, TdFxIcon } from "./useTomato";
+import { teamTitle } from "./socialRules";
 
 export interface TdActions {
   join: () => Promise<unknown>;
@@ -69,7 +70,7 @@ export function TomatoGlyph({ type, size = 30 }: { type: MercType; size?: number
  * В командном режиме у команды одна роль на перерыв: защита строит башни и усиливает оборону,
  * атака шлёт томатов и дебаффы на поле защиты. Обе стороны видят одно поле — поле защиты.
  */
-export function TowerDefense({ td, actions, fx = null }: { td: TdView; actions: TdActions; fx?: TdFx | null }) {
+export function TowerDefense({ td, actions, fx = null, looks }: { td: TdView; actions: TdActions; fx?: TdFx | null; looks?: Record<string, AvatarLook | undefined> }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [stageId, setStageId] = useState<string>(td.defaultStageId);
   const [pending, setPending] = useState(false);
@@ -153,7 +154,7 @@ export function TowerDefense({ td, actions, fx = null }: { td: TdView; actions: 
 
   return (
     <div className="flex h-full w-full flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:flex-row lg:overflow-hidden" aria-label="Tower Defense">
-      <TdField td={td} current={current} towers={towers} effects={effects} selected={attack ? null : selected} onSelect={attack ? undefined : setSelected} hpPct={hpPct} fx={fx} />
+      <TdField td={td} current={current} towers={towers} effects={effects} selected={attack ? null : selected} onSelect={attack ? undefined : setSelected} hpPct={hpPct} fx={fx} looks={looks} />
 
       {/* HUD: справа на широком экране, снизу на телефоне */}
       <aside className="flex min-w-0 shrink-0 flex-col gap-3 pb-16 text-ink lg:w-[22rem] lg:overflow-y-auto lg:pr-1 [scrollbar-width:thin] [&>*]:shrink-0">
@@ -167,7 +168,7 @@ export function TowerDefense({ td, actions, fx = null }: { td: TdView; actions: 
             <Panel title={current ? `Волна ${Math.max(1, current.wave)} из ${current.waves}` : attack ? "Атака" : "Раунд"}>
               {current ? (
                 <div className="flex flex-col gap-2">
-                  <HpBar value={current.hp} max={current.hpMax} label={attack ? `Здоровье базы команды ${rival?.team}` : "Здоровье базы"} />
+                  <HpBar value={current.hp} max={current.hpMax} label={attack ? `Здоровье базы: ${teamTitle(rival?.team).toLowerCase()}` : "Здоровье базы"} />
                   <p className="flex justify-between text-sm font-bold text-mute">
                     <span className="inline-flex items-center gap-1"><Heart size={15} className="fill-rose text-rose" aria-hidden />база {current.hp}/{current.hpMax}</span>
                     <span>сбито {current.kills}/{current.total}</span>
@@ -205,7 +206,7 @@ export function TowerDefense({ td, actions, fx = null }: { td: TdView; actions: 
               <>
                 <Panel title="Башни" hint={sel ? null : "Нажмите на «+» на поле"}>
                   {sel && (selTower ? (
-                    <TowerCard tower={selTower} def={td.towerTypes.find((d) => d.id === selTower.type)!} maxLevel={td.maxLevel} treasury={treasury} disabled={!canAct} onUpgrade={() => run(() => actions.upgrade(sel.id, selTower.level))} />
+                    <TowerCard look={looks?.[selTower.ownerId]} tower={selTower} def={td.towerTypes.find((d) => d.id === selTower.type)!} maxLevel={td.maxLevel} treasury={treasury} disabled={!canAct} onUpgrade={() => run(() => actions.upgrade(sel.id, selTower.level))} />
                   ) : (
                     <div className="grid grid-cols-3 gap-2" aria-label="Построить башню">
                       {td.towerTypes.map((d) => (
@@ -225,7 +226,7 @@ export function TowerDefense({ td, actions, fx = null }: { td: TdView; actions: 
 
             {td.duel && versus && (
               <p role="status" className="rounded-[16px] border-2 border-ink bg-ink px-3 py-2 text-sm font-extrabold text-cream">
-                {td.duel.winner === td.team ? "Дуэль выиграла ваша команда" : td.duel.winner === "draw" ? "Дуэль: ничья" : `Дуэль выиграла команда ${td.duel.winner}`}
+                {td.duel.winner === td.team ? "Дуэль выиграла ваша команда" : td.duel.winner === "draw" ? "Дуэль: ничья" : `Дуэль выиграли ${teamTitle(td.duel.winner).toLowerCase()}`}
               </p>
             )}
           </>
@@ -246,7 +247,7 @@ const resultTone = (status: TdRound["status"], attack: boolean) =>
 function RoleCard({ role, rivalTeam, coins, team }: { role: "defense" | "attack" | null; rivalTeam: string | null; coins: number; team: string | null }) {
   const Icon = role === "attack" ? Swords : Shield;
   const title = role === "attack" ? "Вы в атаке" : role === "defense" ? "Вы в обороне" : "Оборона вместе";
-  const sub = role === "attack" ? `Шлите томатов на базу команды ${rivalTeam}` : role === "defense" ? "Стройте башни, не пустите томатов к базе" : "Стройте башни и держите базу";
+  const sub = role === "attack" ? `Шлите томатов на базу: ${teamTitle(rivalTeam).toLowerCase()}` : role === "defense" ? "Стройте башни, не пустите томатов к базе" : "Стройте башни и держите базу";
   return (
     <section aria-label="Ваша роль" data-testid="td-role" data-role={role ?? "shared"}
       className={`flex items-center gap-3 rounded-[24px] border-2 border-ink px-4 py-3 shadow-[0_6px_0_#3B2422] ${role === "attack" ? "bg-rose text-white" : "bg-ink text-cream"}`}>
@@ -334,7 +335,7 @@ function Treasury({ coins, team }: { coins: number; team: string | null }) {
   }, [coins]);
 
   return (
-    <span className="relative flex shrink-0 flex-col items-end" title={team ? `Казна команды ${team}` : "Казна команды"}>
+    <span className="relative flex shrink-0 flex-col items-end" title={team ? `Казна: ${teamTitle(team).toLowerCase()}` : "Казна команды"}>
       <span className="font-display flex items-center gap-1 rounded-full bg-cream px-2.5 py-1 text-xl tabular-nums text-ink" aria-label={`Казна команды: ${coins} монет`} data-testid="treasury" data-value={coins}>
         <span className="sr-only">Казна команды:</span>
         <span aria-hidden className="relative top-0.5">{shown}</span>
@@ -353,11 +354,11 @@ function Treasury({ coins, team }: { coins: number; team: string | null }) {
   );
 }
 
-function TowerCard({ tower, def, maxLevel, treasury, disabled, onUpgrade }: { tower: TdTower; def: TdTowerDef; maxLevel: number; treasury: number; disabled: boolean; onUpgrade: () => void }) {
+function TowerCard({ tower, def, maxLevel, treasury, disabled, onUpgrade, look }: { look?: AvatarLook; tower: TdTower; def: TdTowerDef; maxLevel: number; treasury: number; disabled: boolean; onUpgrade: () => void }) {
   const cost = tower.level < maxLevel ? def.upgradeCosts[tower.level - 1] : null;
   return (
     <div className="flex items-center gap-3">
-      <TowerPreview type={def.id} level={tower.level} size={52} className="shrink-0" />
+      <TowerPreview type={def.id} level={tower.level} look={look} size={52} className="shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="font-extrabold">{TOWER_SHORT[def.id] ?? def.title} · ур. {tower.level}/{maxLevel}</p>
         <p className="truncate text-xs text-mute" title={def.description}>построил {tower.ownerName}</p>
@@ -473,8 +474,9 @@ function Decor({ kind }: { kind: number }) {
  * Поле: SVG-слой (луг, тропа, портал, Академия, места и башни) + canvas поверх (враги, снаряды, всплывающий урон).
  * Оба слоя лежат в одном контейнере с пропорциями карты — координаты совпадают.
  */
-function TdField({ td, current, towers, effects, selected, onSelect, hpPct, fx }: {
+function TdField({ td, current, towers, effects, selected, onSelect, hpPct, fx, looks }: {
   td: TdView; current: TdRound | null; towers: TdTower[]; effects: TdEffect[]; selected: string | null; onSelect?: (id: string | null) => void; hpPct: number; fx: TdFx | null;
+  looks?: Record<string, AvatarLook | undefined>;
 }) {
   const { map } = td;
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -613,7 +615,7 @@ function TdField({ td, current, towers, effects, selected, onSelect, hpPct, fx }
                 {tw ? (
                   <>
                     <ellipse cy={0.32} rx={0.36} ry={0.11} fill="rgba(59,36,34,.25)" />
-                    <AxolotlTower type={tw.type} level={tw.level} haste={hasted} slowed={slowedTowers} disabled={disabledSlots.has(s.id)} />
+                    <AxolotlTower type={tw.type} level={tw.level} look={looks?.[tw.ownerId]} haste={hasted} slowed={slowedTowers} disabled={disabledSlots.has(s.id)} />
                   </>
                 ) : readOnly ? null : (
                   <>

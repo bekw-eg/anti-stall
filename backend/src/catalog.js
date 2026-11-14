@@ -56,6 +56,30 @@ export const ROADMAP = {
   edges: [['camp', 'forest'], ['forest', 'bridge'], ['bridge', 'fortress']],
 };
 
+// ---- Образ аксолотля: цвет (спрайт) и аксессуары по слотам. minLevel — с какого уровня игрока открыто.
+// Образ виден всей комнате (жетоны участников, башни в Tower Wars), поэтому проверяется на сервере.
+export const AVATAR = {
+  skins: [
+    { id: 'pink', title: 'Розовый', minLevel: 1 },
+    { id: 'blue', title: 'Голубой', minLevel: 1 },
+    { id: 'mint', title: 'Мятный', minLevel: 1 },
+    { id: 'yellow', title: 'Лимонный', minLevel: 2 },
+    { id: 'purple', title: 'Лавандовый', minLevel: 3 },
+    { id: 'orange', title: 'Персиковый', minLevel: 4 },
+  ],
+  slots: ['head', 'face', 'neck'],
+  items: [
+    { id: 'beanie', slot: 'head', title: 'Шапка', minLevel: 1 },
+    { id: 'bow', slot: 'head', title: 'Бантик', minLevel: 1 },
+    { id: 'glasses', slot: 'face', title: 'Очки', minLevel: 1 },
+    { id: 'scarf', slot: 'neck', title: 'Шарф', minLevel: 2 },
+    { id: 'headphones', slot: 'head', title: 'Наушники', minLevel: 2 },
+    { id: 'party', slot: 'head', title: 'Колпак', minLevel: 3 },
+    { id: 'shades', slot: 'face', title: 'Тёмные очки', minLevel: 4 },
+    { id: 'crown', slot: 'head', title: 'Корона', minLevel: 5 },
+  ],
+};
+
 export const HELP_TYPES = ['boost', 'shield'];
 export const PRANK_TYPES = ['fog', 'sticker'];
 

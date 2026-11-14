@@ -3,18 +3,8 @@
  * логотип, аватар-жетон, иконка семечка, «доска» Road Map для лендинга и закрытой карты.
  */
 import type { ReactNode } from "react";
-import type { Connection } from "@/api/tomato";
-
-/** Цвета жетонов из макета (экран 05 Auth / Guest). Цвет участника постоянный: считается из его id. */
-export const TOKEN_COLORS = ["#EAA695", "#FFCEC2", "#A0726D", "#D3DB8E", "#8C7D4A", "#F1E3DE"] as const;
-const DARK_TOKENS = new Set(["#A0726D", "#8C7D4A"]);
-
-export function colorFor(id: string | undefined) {
-  if (!id) return TOKEN_COLORS[0];
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return TOKEN_COLORS[h % TOKEN_COLORS.length];
-}
+import type { AvatarLook, Connection } from "@/api/tomato";
+import { Axolotl, SKIN_BG, lookOf } from "../Axolotl";
 
 /** Знак логотипа: путь из трёх узлов (экспорт из Figma, Components → Logo → mark). */
 export function LogoMark({ className = "h-9 w-[52px]" }: { className?: string }) {
@@ -49,16 +39,18 @@ export function SeedIcon({ className = "h-[22px] w-[22px]" }: { className?: stri
   );
 }
 
-/** Круглый жетон участника: инициал на цвете жетона, обводка. */
-export function Avatar({ name, id, size = 36, ring = "#3B2422", className = "" }: { name: string; id?: string; size?: number; ring?: string; className?: string }) {
-  const bg = colorFor(id ?? name);
+/** Круглый жетон участника: его пиксельный аксолотль (цвет и вещи из образа) на светлом фоне той же гаммы. */
+export function Avatar({ name, id, look, size = 36, ring = "#3B2422", className = "" }: { name: string; id?: string; look?: AvatarLook | null; size?: number; ring?: string; className?: string }) {
+  const l = lookOf(id ?? name, look);
+  const border = size >= 64 ? 3 : 2.5;
   return (
     <span
-      className={`inline-flex shrink-0 select-none items-center justify-center rounded-full font-display leading-none ${className}`}
-      style={{ width: size, height: size, background: bg, border: `2.5px solid ${ring}`, color: DARK_TOKENS.has(bg) ? "#FFF4EF" : "#3B2422", fontSize: Math.round(size * 0.46) }}
+      className={`inline-flex shrink-0 select-none items-end justify-center overflow-hidden rounded-full ${className}`}
+      style={{ width: size, height: size, background: SKIN_BG[l.skin], border: `${border}px solid ${ring}` }}
+      data-skin={l.skin}
       aria-hidden
     >
-      <span style={{ marginTop: Math.round(size * 0.08) }}>{(name.trim()[0] ?? "?").toUpperCase()}</span>
+      <Axolotl look={l} crop="head" size={size - border * 2} />
     </span>
   );
 }
@@ -131,12 +123,12 @@ export function Crown({ className = "" }: { className?: string }) {
 }
 
 /** Жетон участника с точкой присутствия (в сети / переподключается / нет связи); у создателя комнаты — корона. */
-export function MemberAvatar({ name, id, connection, size = 36, ring = "#3B2422", host = false }: { name: string; id: string; connection: Connection; size?: number; ring?: string; host?: boolean }) {
+export function MemberAvatar({ name, id, look, connection, size = 36, ring = "#3B2422", host = false }: { name: string; id: string; look?: AvatarLook | null; connection: Connection; size?: number; ring?: string; host?: boolean }) {
   const p = PRESENCE[connection] ?? PRESENCE.online;
   return (
     <span className="relative inline-flex shrink-0" data-member-avatar={id} data-connection={connection} data-host={host ? "true" : undefined} title={`${name}${host ? " · создатель комнаты" : ""}: ${p.label}`}>
       {host && <span className="absolute left-1/2 z-10 -translate-x-1/2 -rotate-6" style={{ width: Math.round(size * 0.78), top: -Math.round(size * 0.5) }}><Crown className="block w-full" /></span>}
-      <Avatar name={name} id={id} size={size} ring={ring} />
+      <Avatar name={name} id={id} look={look} size={size} ring={ring} />
       <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white" style={{ background: p.color }} aria-label={p.label} role="img" />
     </span>
   );

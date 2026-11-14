@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { CloudFog, Shield, Sparkles, Sticker } from "lucide-react";
 import type { Member } from "@/api/tomato";
-import { initials, memberStatusLabel } from "./format";
-import { ACTION_TEXT, KIND, TEAM_COLOR, disabledReason, type ActionType } from "./socialRules";
+import { memberStatusLabel } from "./format";
+import { Avatar } from "./screens/ui";
+import { ACTION_TEXT, KIND, TEAM_COLOR, TEAM_TINT, TEAM_TITLE, disabledReason, type ActionType } from "./socialRules";
 import type { Tomato } from "./useTomato";
 
 function ActionButton({ type, target, t, icon, label }: { type: ActionType; target: Member; t: Tomato; icon: React.ReactNode; label: string }) {
@@ -22,7 +23,7 @@ function ActionButton({ type, target, t, icon, label }: { type: ActionType; targ
       title={reason ?? undefined}
       aria-label={`${label} — ${target.name}${reason ? ` (${reason})` : ""}`}
       data-action={type}
-      className="flex items-center gap-1.5 rounded-full border border-[var(--line)] px-3 py-1.5 text-xs font-medium text-[var(--fg)] transition-colors hover:bg-[var(--card)] disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current"
+      className={`flex items-center gap-1.5 rounded-full border-2 border-ink px-3 py-1.5 text-[13px] font-extrabold text-ink shadow-[0_3px_0_#3B2422] transition-[transform,box-shadow] active:translate-y-[2px] active:shadow-[0_1px_0_#3B2422] disabled:cursor-not-allowed disabled:border-line disabled:bg-white disabled:text-[#B8A39E] disabled:shadow-none ${KIND[type] === "help" ? "bg-[#EEF0D2] hover:bg-lime" : "bg-petal hover:bg-blush"}`}
     >
       {icon} {label}
     </button>
@@ -40,64 +41,72 @@ export function SocialPanel({ t }: { t: Tomato }) {
   const onBreak = snap.room.phase === "break";
   const teams = snap.room.mode === "teams";
   const groups = teams
-    ? (["A", "B"] as const).map((k) => ({ key: k, title: `Команда ${k}`, members: snap.members.filter((m) => m.team === k) }))
+    ? (["A", "B"] as const).map((k) => ({ key: k, title: TEAM_TITLE[k], members: snap.members.filter((m) => m.team === k) }))
     : [{ key: "shared", title: "Комната", members: snap.members }];
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto p-5 sm:p-6" data-testid="social-panel">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-display text-xl">Друзья · {snap.members.length}</h2>
-        <p className="text-xs text-[var(--muted)]" data-testid="social-phase-note">
+    <div className="flex min-h-full flex-col gap-4 bg-paper p-5 sm:p-6" data-testid="social-panel">
+      <div className="flex flex-col gap-3">
+        <h2 className="font-display text-2xl leading-none">Друзья · {snap.members.length}</h2>
+        <p className={`flex items-start gap-2 rounded-[16px] border-2 px-3 py-2 text-sm font-bold ${onBreak ? "border-ink bg-lime text-ink" : "border-dashed border-rose bg-white text-mute"}`} data-testid="social-phase-note">
+          <Sparkles size={16} className="mt-0.5 shrink-0" aria-hidden />
           {onBreak
             ? teams ? "Перерыв: бафф своим, дебафф соперникам — шутки ослабляют башни их команды" : "Перерыв: помогите другу или подшутите"
             : snap.room.phase === "focus" ? "Сейчас фокус — баффы и шутки откроются на перерыве" : "Баффы и шутки откроются на перерыве"}
         </p>
       </div>
 
-      <div className="grid gap-3">
-        {groups.map((g) => (
-          <section key={g.key} aria-label={g.title} className="rounded-2xl bg-[var(--card)] px-4 py-3" style={{ borderLeft: `5px solid ${TEAM_COLOR[g.key] ?? TEAM_COLOR.shared}` }} data-team={g.key}>
-            <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-              <span className="h-3 w-3 rounded-full" style={{ background: TEAM_COLOR[g.key] ?? TEAM_COLOR.shared }} />
-              {g.title}{teams && me?.team === g.key && <span className="text-xs font-normal text-[var(--muted)]">· ваша</span>}
-            </h3>
-            {g.members.length === 0 && <p className="text-xs text-[var(--muted)]">Пока никого</p>}
-            <ul className="flex flex-col gap-2">
-              {g.members.map((m) => {
-                const mine = m.userId === me?.userId;
-                const ally = !teams || m.team === me?.team;
-                return (
-                  <li key={m.userId} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between" data-member={m.userId}>
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-medium text-zinc-900" style={{ background: TEAM_COLOR[m.team] ?? TEAM_COLOR.shared }}>{initials(m.name)}</span>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{m.name}{mine && " (вы)"}</p>
-                        <p className="text-xs text-[var(--muted)]">
-                          ур. {m.level} · {memberStatusLabel(m, false)}
-                          {mine && me && me.effects.length > 0 && <span data-testid="my-effects"> · {me.effects.map((e) => (e.kind === "boost" ? "бонус к XP" : "щит")).join(", ")}</span>}
-                        </p>
+      <div className="grid gap-4">
+        {groups.map((g) => {
+          const color = TEAM_COLOR[g.key] ?? TEAM_COLOR.shared;
+          return (
+            <section key={g.key} aria-label={g.title} className="overflow-hidden rounded-[24px] border-2 border-ink bg-white as-shadow-sm" data-team={g.key}>
+              <h3 className={`flex items-center justify-between gap-2 border-b-2 border-ink px-4 py-2.5 font-display text-xl leading-none ${teams ? "text-white" : "text-ink"}`} style={{ background: color }}>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="relative top-0.5 truncate">{g.title}</span>
+                  {teams && me?.team === g.key && <span className="rounded-full border-2 border-ink bg-white px-2 py-0.5 font-sans text-xs font-extrabold text-ink">ваша</span>}
+                </span>
+                <span className={`font-sans text-sm font-extrabold ${teams ? "text-white/90" : "text-mute"}`}>{g.members.length}</span>
+              </h3>
+              {g.members.length === 0 && <p className="px-4 py-3 text-sm font-semibold text-mute">Пока никого</p>}
+              <ul className="flex flex-col">
+                {g.members.map((m, i) => {
+                  const mine = m.userId === me?.userId;
+                  const ally = !teams || m.team === me?.team;
+                  return (
+                    <li key={m.userId} className={`flex flex-col gap-2.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${i ? "border-t-2 border-soft" : ""}`} style={mine ? { background: TEAM_TINT[g.key] ?? TEAM_TINT.shared } : undefined} data-member={m.userId}>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Avatar name={m.name} id={m.userId} look={m.avatar} size={44} ring={teams ? color : "#3B2422"} />
+                        <div className="min-w-0">
+                          <p className="truncate font-extrabold leading-tight">{m.name}{mine && " (вы)"}</p>
+                          <p className="text-sm font-semibold text-mute">
+                            ур. {m.level} · {memberStatusLabel(m, false)}
+                            {mine && me && me.effects.length > 0 && <span className="font-extrabold text-olive" data-testid="my-effects"> · {me.effects.map((e) => (e.kind === "boost" ? "бонус к XP" : "щит")).join(", ")}</span>}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    {onBreak && !mine && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {ally && <ActionButton type="boost" target={m} t={t} icon={<Sparkles size={13} />} label="Бонус к XP" />}
-                        {ally && <ActionButton type="shield" target={m} t={t} icon={<Shield size={13} />} label={`Щит · ${t.shieldCost}`} />}
-                        {(!teams || !ally) && <ActionButton type="fog" target={m} t={t} icon={<CloudFog size={13} />} label="Туман" />}
-                        {(!teams || !ally) && <ActionButton type="sticker" target={m} t={t} icon={<Sticker size={13} />} label="Липучка" />}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        ))}
+                      {onBreak && !mine && (
+                        <div className="flex flex-wrap gap-2">
+                          {ally && <ActionButton type="boost" target={m} t={t} icon={<Sparkles size={14} />} label="Бонус к XP" />}
+                          {ally && <ActionButton type="shield" target={m} t={t} icon={<Shield size={14} />} label={`Щит · ${t.shieldCost}`} />}
+                          {(!teams || !ally) && <ActionButton type="fog" target={m} t={t} icon={<CloudFog size={14} />} label="Туман" />}
+                          {(!teams || !ally) && <ActionButton type="sticker" target={m} t={t} icon={<Sticker size={14} />} label="Липучка" />}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })}
       </div>
 
-      <p className="text-xs leading-relaxed text-[var(--muted)]">
-        Бонус: +{t.boostPct}% опыта за следующую сессию. Щит отражает одну шутку.
-        {teams ? " Туман и липучка ослабляют башни соперника до конца перерыва." : " Шутки действуют до конца перерыва."} Не больше {t.prankRules.maxPerBreak} за перерыв.
-      </p>
+      <ul className="grid gap-2 text-sm font-semibold text-mute xs:grid-cols-2">
+        <li className="flex items-start gap-2 rounded-[16px] border-2 border-soft bg-white px-3 py-2"><Sparkles size={15} className="mt-0.5 shrink-0 text-olive" aria-hidden />Бонус: +{t.boostPct}% опыта за следующую сессию</li>
+        <li className="flex items-start gap-2 rounded-[16px] border-2 border-soft bg-white px-3 py-2"><Shield size={15} className="mt-0.5 shrink-0 text-olive" aria-hidden />Щит отражает одну шутку</li>
+        <li className="flex items-start gap-2 rounded-[16px] border-2 border-soft bg-white px-3 py-2 xs:col-span-2"><CloudFog size={15} className="mt-0.5 shrink-0 text-rose" aria-hidden />{teams ? "Туман и липучка ослабляют башни соперника до конца перерыва." : "Шутки действуют до конца перерыва."} Не больше {t.prankRules.maxPerBreak} за перерыв.</li>
+      </ul>
     </div>
   );
 }

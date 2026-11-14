@@ -70,7 +70,8 @@ export function PrankOverlay({ t }: { t: Tomato }) {
         )}
       </AnimatePresence>
       {/* над Voice-полосой: не перекрывает ни таймер, ни шапку */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-24 z-30 flex flex-col items-center gap-2 px-4">
+      {/* плашки шуток выше выезжающей панели (z-30): даже при открытых «Друзьях» видно, от кого шутка, и её можно убрать */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[35] flex flex-col items-center gap-2 px-4">
         <AnimatePresence>
           {active.slice(0, 2).map((a) => (
             <motion.div

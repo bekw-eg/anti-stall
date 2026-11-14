@@ -4,6 +4,7 @@ import { Castle, Check, Flag, Lock } from "lucide-react";
 import type { Roadmap, RoadmapNode } from "@/api/tomato";
 import { NODE_STATUS_LABEL, defaultNode, edgeFill, isTdRoad, nodeById } from "./roadmapGeometry";
 import { SeedIcon } from "./screens/ui";
+import { TEAM_COLOR, teamTitle } from "./socialRules";
 
 const MARKER_SPRING = { type: "spring", stiffness: 90, damping: 18, mass: 1 } as const;
 /** Название этапа TD: этапы привязаны к узлам карты (id этапа = id узла) */
@@ -136,7 +137,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
               const same = road.teams.filter((x) => x.positionNodeId === team.positionNodeId);
               const offset = (same.indexOf(team) - (same.length - 1) / 2) * 60;
               const mine = team.key === road.teamKey || road.mode !== "teams";
-              const label = road.mode === "teams" ? `${team.key}${mine ? " · мы" : ""}` : "Мы";
+              const label = road.mode === "teams" ? `${teamTitle(team.key)}${mine ? " · мы" : ""}` : "Мы";
               return (
                 <motion.div
                   key={team.key}
@@ -148,7 +149,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
                   aria-hidden
                 >
                   <span className={`relative flex flex-col items-center ${team.positionNodeId === hereId ? "-top-[5.75rem] sm:-top-[6.75rem]" : "-top-[3.75rem] sm:-top-[4.25rem]"}`} style={{ marginLeft: offset }}>
-                    <span className={`whitespace-nowrap rounded-full border-2 border-ink px-2 py-0.5 text-[11px] font-extrabold sm:text-xs ${mine ? "bg-ink text-cream" : "bg-white text-ink"}`}>{label}</span>
+                    <span className={`whitespace-nowrap rounded-full border-2 border-ink px-2 py-0.5 text-[11px] font-extrabold sm:text-xs ${road.mode === "teams" ? "text-white" : mine ? "bg-ink text-cream" : "bg-white text-ink"}`} style={road.mode === "teams" ? { background: TEAM_COLOR[team.key] } : undefined}>{label}</span>
                   </span>
                 </motion.div>
               );
@@ -169,7 +170,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
           {selected.reachedAt && <p className="text-xs text-mute">пройден {new Date(selected.reachedAt).toLocaleTimeString()}</p>}
           {road.winner && (
             <p role="status" className="mt-1 rounded-xl bg-ink px-3 py-2 text-xs font-bold text-cream">
-              {road.winner === "draw" ? "Ничья: обе команды достигли цели" : road.mode === "teams" ? `Победила команда ${road.winner}${road.winner === road.teamKey ? " — это вы" : ""}` : "Цель достигнута"}
+              {road.winner === "draw" ? "Ничья: обе команды достигли цели" : road.mode === "teams" ? `Победили ${teamTitle(road.winner).toLowerCase()}${road.winner === road.teamKey ? " — это вы" : ""}` : "Цель достигнута"}
             </p>
           )}
         </section>
@@ -222,7 +223,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
               <ul className="flex flex-col gap-1">
                 {road.contributions.map((c) => (
                   <li key={c.userId} className="flex justify-between text-xs">
-                    <span className="truncate">{c.name}{c.team && ` · ${c.team}`}{c.userId === meId && " (вы)"}</span>
+                    <span className="truncate">{c.name}{c.team && c.team !== "shared" && ` · ${teamTitle(c.team)}`}{c.userId === meId && " (вы)"}</span>
                     <span className="tabular-nums">{c.points}</span>
                   </li>
                 ))}

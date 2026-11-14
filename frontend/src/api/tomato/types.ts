@@ -4,6 +4,11 @@ export type Phase = "waiting" | "focus" | "break" | "completed";
 export type MemberStatus = "waiting" | "focusing" | "finished" | "aborted" | "abandoned" | "spectating" | "resting";
 export type Connection = "online" | "reconnecting" | "offline";
 
+/** Цвет пиксельного аксолотля игрока (спрайт). */
+export type AvatarSkin = "pink" | "blue" | "mint" | "yellow" | "purple" | "orange";
+/** Образ аксолотля: цвет и по одной вещи на слот (голова, лицо, шея). */
+export interface AvatarLook { skin: AvatarSkin; head: string | null; face: string | null; neck: string | null }
+
 export interface Member {
   userId: string;
   name: string;
@@ -16,6 +21,8 @@ export interface Member {
   connection: Connection;
   prankEnabled: boolean;
   contribution: number;
+  /** Образ аксолотля (старый backend не присылает — тогда цвет из id) */
+  avatar?: AvatarLook;
   session: { id: string; status: "active" | "completed" | "aborted" | "abandoned"; rewarded: boolean } | null;
 }
 
@@ -137,6 +144,7 @@ export interface RoomSnapshot {
     session: Member["session"];
     coins: number;
     prankEnabled: boolean;
+    avatar?: AvatarLook;
     effects: Effect[];
     /** Что разрешено сейчас (сервер всё равно перепроверяет каждое действие). */
     allowedActions: string[];
@@ -150,6 +158,7 @@ export interface Me extends LevelInfo {
   prankEnabled: boolean;
   /** Песочный аккаунт демо-сервера: играет только в демо-комнатах (старый backend поле не присылает) */
   sandbox?: boolean;
+  avatar?: AvatarLook;
   createdAt: number;
   activeSession: { id: string; roomId: string; scheduledEndAt: number } | null;
   rooms: { id: string; code: string; name: string; phase: Phase }[];

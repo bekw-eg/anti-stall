@@ -10,6 +10,7 @@ import { formatTime, readiness } from "../format";
 import type { Tomato } from "../useTomato";
 import { DEFAULT_LIMITS } from "../useTomato";
 import { Invite } from "./RoomChrome";
+import { TEAM_COLOR, TEAM_TITLE } from "../socialRules";
 import { MemberAvatar } from "./ui";
 
 function Stepper({ label, value, onChange, step, min, max, format, disabled }: {
@@ -60,8 +61,8 @@ function Members({ t }: { t: Tomato }) {
   const meId = snap.me?.userId;
   const canSwitch = snap.me?.allowedActions.includes("set_team") ?? false;
   const row = (m: (typeof snap.members)[number]) => (
-    <li key={m.userId} className={`flex min-w-0 items-center gap-2.5 rounded-[14px] bg-white px-3 pb-2 pt-4 ${m.userId === meId ? "ring-2 ring-ink" : ""}`} data-ready={m.isReady ? "true" : "false"}>
-      <MemberAvatar name={m.name} id={m.userId} connection={m.connection} size={34} host={m.role === "host"} />
+    <li key={m.userId} className={`flex min-w-0 items-center gap-2.5 rounded-[14px] bg-white px-3 pb-2 pt-4 ${m.userId === meId ? "ring-2 ring-ink" : ""}`} style={teams ? { borderLeft: `5px solid ${TEAM_COLOR[m.team] ?? TEAM_COLOR.shared}` } : undefined} data-ready={m.isReady ? "true" : "false"}>
+      <MemberAvatar name={m.name} id={m.userId} look={m.avatar} connection={m.connection} size={34} host={m.role === "host"} />
       {/* имя целиком сверху, под ним — готовность; создателя отмечает корона, себя — обводка строки */}
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="truncate font-bold leading-tight">{m.name}</span>
@@ -81,7 +82,7 @@ function Members({ t }: { t: Tomato }) {
     return (
       <div className="flex flex-col gap-2.5" role="group" aria-label="Участники">
         <p className="as-label">В комнате · {snap.members.length}</p>
-        <p className="-mt-1 text-sm text-mute">Комната без команд: все идут к цели вместе. Команды A и B включаются при создании комнаты.</p>
+        <p className="-mt-1 text-sm text-mute">Комната без команд: все идут к цели вместе. Красные и Синие включаются при создании комнаты.</p>
         <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">{snap.members.map(row)}</ul>
       </div>
     );
@@ -94,7 +95,7 @@ function Members({ t }: { t: Tomato }) {
         return (
           <div key={k} className="flex min-w-0 flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
-              <p className="flex items-center gap-2 whitespace-nowrap font-display text-lg"><span className={`h-3 w-3 rounded-full border-2 border-ink ${k === "A" ? "bg-peach" : "bg-lime"}`} aria-hidden /><span className="relative top-0.5">Команда {k}</span></p>
+              <p className="flex items-center gap-2 whitespace-nowrap font-display text-lg" data-team-title={k}><span className="h-3.5 w-3.5 rounded-full border-2 border-ink" style={{ background: TEAM_COLOR[k] }} aria-hidden /><span className="relative top-0.5">{TEAM_TITLE[k]}</span></p>
               {canSwitch && !mine && <button type="button" onClick={() => t.setTeam(k)} className="rounded-full border-2 border-ink bg-white px-3 py-0.5 text-sm font-extrabold hover:bg-petal">Сюда</button>}
             </div>
             <ul className="flex flex-col gap-2">{list.length ? list.map(row) : <p className="rounded-[14px] border-2 border-dashed border-line px-3 py-2.5 text-sm text-mute">Пока никого</p>}</ul>

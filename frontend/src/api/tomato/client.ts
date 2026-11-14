@@ -1,4 +1,5 @@
 import type {
+  AvatarLook,
   ChatMessage,
   Achievement, TdBuildResult, TdSendUnitResult, TdSpellResult, TdView, CreateRoomInput, MercType, SpellId, HealthInfo, IceConfig, Me, Progress, RegisterOptions, Roadmap, RoomSnapshot, RoomStats, ServerEvent, SocialAction, StudySession, StudyStats, Upgrade, VoicePeer,
 } from "./types";
@@ -59,7 +60,7 @@ export class TomatoClient {
     return user;
   }
   me = () => this.request<Me>("GET", "/api/users/me");
-  updateMe = (patch: { name?: string; prankEnabled?: boolean }) => this.request<Me>("PATCH", "/api/users/me", patch);
+  updateMe = (patch: { name?: string; prankEnabled?: boolean; avatar?: AvatarLook }) => this.request<Me>("PATCH", "/api/users/me", patch);
   progress = () => this.request<Progress>("GET", "/api/users/me/progress");
   sessions = (limit = 50) => this.request<{ sessions: StudySession[] }>("GET", `/api/users/me/sessions?limit=${limit}`);
   achievements = () => this.request<{ achievements: Achievement[] }>("GET", "/api/users/me/achievements");

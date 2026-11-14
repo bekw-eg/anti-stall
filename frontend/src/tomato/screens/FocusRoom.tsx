@@ -110,7 +110,7 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
         <ul className="flex gap-4 overflow-x-auto pb-1 pt-3 lg:flex-col lg:gap-5 lg:overflow-visible">
           {snap.members.map((m) => (
             <li key={m.userId} className="flex shrink-0 items-center gap-3">
-              <MemberAvatar name={m.name} id={m.userId} connection={m.connection} size={36} ring="#FFF4EF" host={m.role === "host"} />
+              <MemberAvatar name={m.name} id={m.userId} look={m.avatar} connection={m.connection} size={36} ring="#FFF4EF" host={m.role === "host"} />
               <span className="flex min-w-0 flex-col">
                 <span className="line-clamp-2 max-w-[11rem] break-words text-base font-bold leading-tight text-cream">{m.name}{m.userId === me?.userId ? " (вы)" : ""}</span>
                 <span className={`text-sm ${m.connection === "offline" ? "text-peach" : STATUS_TONE[m.status] ?? "text-[#D8BDB6]"}`}>{m.connection === "offline" ? "нет связи" : STATUS_LABEL[m.status]}</span>

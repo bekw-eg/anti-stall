@@ -55,7 +55,8 @@ try {
     await until(async () => (await roomPhase()) === 'break', { timeout: 20_000, msg: 'перерыв не наступил' });
     // перерыв не пустой: у всех сразу открыта игра (Tower Defense)
     for (const u of [lotti, anya, borya]) await until(async () => (await u.page.getByRole('region', { name: 'Tower Defense' }).count()) > 0, { msg: `${u.name}: игра не открылась на перерыве` });
-    for (const u of [lotti, anya, borya]) { await u.page.getByTestId('open-social').click(); await social(u).waitFor(); }
+    // кнопка шапки переключает панель: у Ани «Друзья» остались открыты с фокуса — не закрываем их
+    for (const u of [lotti, anya, borya]) { if (!(await social(u).isVisible())) await u.page.getByTestId('open-social').click(); await social(u).waitFor(); }
     // «Друзья» — список людей комнаты, сгруппированный по командам
     assert((await social(lotti).locator('[data-member]').count()) === 3, 'в списке не все участники комнаты');
     await until(async () => actionBtn(lotti, 'Аня', 'Бонус к XP').isEnabled(), { msg: 'кнопка бонуса не активировалась на перерыве' });

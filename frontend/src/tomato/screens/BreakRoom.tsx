@@ -72,7 +72,7 @@ export function BreakRoom({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }
       <section aria-label="Tower Defense" className="as-card as-shadow overflow-hidden border-[2.5px] bg-lime" style={{ ["--card" as string]: "#FFFFFF" }}>
         <div className="h-auto lg:h-[min(78vh,760px)]">
           {td ? (
-            <TowerDefense td={td} actions={{ join: t.tdJoin, start: t.tdStart, build: t.tdBuild, upgrade: t.tdUpgrade, sendUnit: t.tdSendUnit, castSpell: t.tdCastSpell }} fx={t.tdFx} />
+            <TowerDefense td={td} actions={{ join: t.tdJoin, start: t.tdStart, build: t.tdBuild, upgrade: t.tdUpgrade, sendUnit: t.tdSendUnit, castSpell: t.tdCastSpell }} fx={t.tdFx} looks={Object.fromEntries(snap.members.map((m) => [m.userId, m.avatar]))} />
           ) : (
             <p className="p-6 text-lg font-bold text-olive">Загружаем игру…</p>
           )}

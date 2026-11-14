@@ -1,4 +1,5 @@
 import { randomInt, randomUUID } from 'node:crypto';
+import { avatarOf } from '../avatar.js';
 import { E } from '../errors.js';
 import { optString, reqInt, reqObject, reqString } from '../validate.js';
 
@@ -562,7 +563,7 @@ export function createRoomsService(ctx, game, users, td) {
         : [],
     );
     const rows = db.all(
-      `SELECT m.user_id, m.role, m.team_key, m.is_ready, m.task_title, m.joined_at, u.name, u.xp, u.last_seen_at, u.prank_enabled
+      `SELECT m.user_id, m.role, m.team_key, m.is_ready, m.task_title, m.joined_at, u.name, u.xp, u.last_seen_at, u.prank_enabled, u.avatar
        FROM room_members m JOIN users u ON u.id = m.user_id WHERE m.room_id = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.rowid`, room.id,
     );
     const contributions = new Map(db.all('SELECT user_id, points FROM team_contributions WHERE room_id = ?', room.id).map((c) => [c.user_id, c.points]));
@@ -572,7 +573,7 @@ export function createRoomsService(ctx, game, users, td) {
         userId: m.user_id, name: m.name, role: m.role, level: game.levelInfo(m.xp).level, team: m.team_key,
         isReady: Boolean(m.is_ready),
         task: m.task_title, status: memberStatus(room, sess), connection: connectionState(m.last_seen_at, t),
-        prankEnabled: Boolean(m.prank_enabled), contribution: contributions.get(m.user_id) ?? 0,
+        prankEnabled: Boolean(m.prank_enabled), contribution: contributions.get(m.user_id) ?? 0, avatar: avatarOf(m),
         session: sess ? { id: sess.id, status: sess.status, rewarded: Boolean(sess.rewarded), quality: sess.quality ?? null } : null,
       };
     });
@@ -594,7 +595,7 @@ export function createRoomsService(ctx, game, users, td) {
       const isHost = room.host_id === viewerId;
       out.me = {
         userId: viewerId, isMember: Boolean(mine), isHost, team: mine?.team ?? null, isReady: mine?.isReady ?? false, status: mine?.status ?? null, task: mine?.task ?? null,
-        session: mine?.session ?? null, ...game.levelInfo(u.xp), coins: u.coins, prankEnabled: Boolean(u.prank_enabled),
+        session: mine?.session ?? null, ...game.levelInfo(u.xp), coins: u.coins, prankEnabled: Boolean(u.prank_enabled), avatar: avatarOf(u),
         effects: game.effects(viewerId),
         allowedActions: mine ? allowedActions(room, isHost, mine) : [],
       };

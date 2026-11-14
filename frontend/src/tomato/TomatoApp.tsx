@@ -63,6 +63,7 @@ export default function TomatoApp() {
   }, [phase, loadTd]);
 
   const dark = phase === "focus";
+  const looks = Object.fromEntries((t.snapshot?.members ?? []).map((m) => [m.userId, m.avatar]));
   return (
     <MotionConfig reducedMotion="user">
       <div data-testid="tomato-app" className={`tomato-root min-h-[100dvh] font-sans ${dark ? "bg-ink text-cream" : "bg-white text-ink"}`} style={dark ? DARK_VARS : LIGHT_VARS}>
@@ -87,7 +88,7 @@ export default function TomatoApp() {
             <RoomHeader t={t} headerRef={headerRef} active={sheet} stickers={stickers} onOpen={(s) => setSheet((cur) => (cur === s ? null : s))} />
             {phase === "focus" ? <FocusRoom t={t} stickers={stickers} /> : phase === "break" ? <BreakRoom t={t} onOpenMap={() => setSheet("map")} /> : <Lobby t={t} />}
             <div className="sticky bottom-0 z-20 px-3 pb-3 pt-1 sm:px-8 sm:pb-5 lg:px-12">
-              <VoiceBar conn={t.conn} voice={voice} meId={t.snapshot?.me?.userId} tone={dark ? "light" : "dark"} note={voiceNote(t)} />
+              <VoiceBar conn={t.conn} voice={voice} meId={t.snapshot?.me?.userId} tone={dark ? "light" : "dark"} note={voiceNote(t)} looks={looks} />
             </div>
           </div>
         )}
@@ -160,7 +161,7 @@ function RoomHeader({ t, onOpen, headerRef, active, stickers }: { t: Tomato; onO
       <div className="order-2 flex shrink-0 items-center gap-2 sm:order-3 sm:ml-auto sm:gap-3 xl:order-none">
         {room.phase === "break" && (
           <ul className="hidden items-center -space-x-1.5 2xl:flex" aria-label="Участники">
-            {snap.members.slice(0, 6).map((m) => <li key={m.userId}><MemberAvatar name={m.name} id={m.userId} connection={m.connection} size={34} host={m.role === "host"} /></li>)}
+            {snap.members.slice(0, 6).map((m) => <li key={m.userId}><MemberAvatar name={m.name} id={m.userId} look={m.avatar} connection={m.connection} size={34} host={m.role === "host"} /></li>)}
             {snap.members.length > 6 && <li className="pl-3 text-sm font-bold text-mute">+{snap.members.length - 6}</li>}
           </ul>
         )}

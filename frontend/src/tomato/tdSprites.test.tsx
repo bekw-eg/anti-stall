@@ -32,17 +32,29 @@ describe("AxolotlTower", () => {
     }
   });
 
-  it("уровень 2 — шлем, уровень 3 — корона, броня и аура", () => {
+  it("уровень 2 — пиксельный шлем, уровень 3 — корона и аура", () => {
     render(<AxolotlTower type="arrow" level={1} />);
-    expect(q('[data-part="helmet"]')).toBeNull();
-    expect(q('[data-part="crown"]')).toBeNull();
+    expect(q('[data-item="helmet"]')).toBeNull();
+    expect(q('[data-item="crown"]')).toBeNull();
     render(<AxolotlTower type="arrow" level={2} />);
-    expect(q('[data-part="helmet"]')).not.toBeNull();
-    expect(q('[data-part="crown"]')).toBeNull();
+    expect(q('[data-item="helmet"]')).not.toBeNull();
+    expect(q('[data-item="crown"]')).toBeNull();
     render(<AxolotlTower type="frost" level={3} />);
-    expect(q('[data-part="crown"]')).not.toBeNull();
+    expect(q('[data-item="crown"]')).not.toBeNull();
     expect(q('[data-part="aura"]')).not.toBeNull();
-    expect(q('[data-part="armor"]')).not.toBeNull();
+  });
+
+  it("башня в образе владельца: его цвет и вещи; без владельца — цвет по типу", () => {
+    render(<AxolotlTower type="cannon" level={1} look={{ skin: "mint", head: "bow", face: "glasses", neck: null }} />);
+    expect(q("[data-skin]")?.getAttribute("data-skin")).toBe("mint");
+    expect(q('[data-item="bow"]')).not.toBeNull();
+    expect(q('[data-item="glasses"]')).not.toBeNull();
+    // уровень важнее шапки владельца: на 3-м уровне — корона
+    render(<AxolotlTower type="cannon" level={3} look={{ skin: "mint", head: "bow", face: null, neck: null }} />);
+    expect(q('[data-item="bow"]')).toBeNull();
+    expect(q('[data-item="crown"]')).not.toBeNull();
+    render(<AxolotlTower type="frost" level={1} />);
+    expect(q("[data-skin]")?.getAttribute("data-skin")).toBe("blue");
   });
 
   it("id градиентов уникальны для нескольких экземпляров", () => {
@@ -70,6 +82,6 @@ describe("AcademyBase и TomatoPortal", () => {
     act(() => { root.render(<TowerPreview type="cannon" level={2} size={32} />); });
     const svg = host.querySelector("svg");
     expect(svg?.getAttribute("width")).toBe("32");
-    expect(q('[data-part="helmet"]')).not.toBeNull();
+    expect(q('[data-item="helmet"]')).not.toBeNull();
   });
 });

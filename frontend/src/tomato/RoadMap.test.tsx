@@ -78,7 +78,7 @@ describe("RoadMap: командный режим A/B", () => {
     expect(q('[data-testid="marker-A"]')!.style.left).toBe("30%"); // «Лес знаний»
     expect(q('[data-testid="marker-B"]')!.style.left).toBe("8%"); // «Лагерь»
     expect(host.textContent).toContain("Команда A (вы)");
-    expect(host.textContent).toContain("Лотти · A (вы)");
+    expect(host.textContent).toContain("Лотти · Красные (вы)");
     expect(host.querySelectorAll('[role="progressbar"]')).toHaveLength(2);
   });
 
@@ -90,9 +90,9 @@ describe("RoadMap: командный режим A/B", () => {
 
   it("победитель объявляется с точки зрения зрителя; ничья — отдельно", () => {
     render(teamsRoad("A", { winner: "A", completed: true }));
-    expect(host.textContent).toContain("Победила команда A — это вы");
+    expect(host.textContent).toContain("Победили красные — это вы");
     render(teamsRoad("B", { winner: "A" }));
-    expect(host.textContent).toContain("Победила команда A");
+    expect(host.textContent).toContain("Победили красные");
     expect(host.textContent).not.toContain("это вы");
     render(teamsRoad("B", { winner: "draw" }));
     expect(host.textContent).toContain("Ничья");

@@ -1,11 +1,10 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Headphones, HeadphoneOff, Mic, MicOff, PhoneOff, Volume2 } from "lucide-react";
-import type { VoicePeer } from "@/api/tomato";
+import type { AvatarLook, VoicePeer } from "@/api/tomato";
+import { Axolotl, SKIN_BG, lookOf } from "./Axolotl";
 import type { Conn } from "./useTomato";
 import type { Voice } from "./voice/useVoice";
-import { initials } from "./format";
 import { SPRING } from "./motion";
-import { colorFor } from "./screens/ui";
 
 const MAX_AVATARS = 5;
 
@@ -26,7 +25,8 @@ function statusText(v: Voice, conn: Conn): string {
   }
 }
 
-function PeerAvatar({ p, me, ring }: { p: VoicePeer; me: boolean; ring: string }) {
+function PeerAvatar({ p, me, ring, look }: { p: VoicePeer; me: boolean; ring: string; look?: AvatarLook }) {
+  const l = lookOf(p.userId, look);
   return (
     <motion.li
       initial={{ opacity: 0, scale: 0.7 }}
@@ -41,12 +41,12 @@ function PeerAvatar({ p, me, ring }: { p: VoicePeer; me: boolean; ring: string }
       data-deafened={p.deafened ? "true" : "false"}
     >
       <motion.span
-        className="flex h-9 w-9 items-center justify-center rounded-full font-display text-base"
-        style={{ background: colorFor(p.userId), border: `2.5px solid ${ring}`, color: "#3B2422" }}
+        className="flex h-9 w-9 items-end justify-center overflow-hidden rounded-full"
+        style={{ background: SKIN_BG[l.skin], border: `2.5px solid ${ring}` }}
         animate={{ boxShadow: p.speaking ? "0 0 0 3px #D9DE9F" : "0 0 0 0 rgba(0,0,0,0)" }}
         transition={{ duration: 0.15 }}
       >
-        <span className="relative top-0.5">{initials(p.name)}</span>
+        <Axolotl look={l} crop="head" size={31} />
       </motion.span>
       {(p.muted || p.deafened) && (
         <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-ink text-cream ring-2 ring-white" aria-hidden>
@@ -62,7 +62,7 @@ function PeerAvatar({ p, me, ring }: { p: VoicePeer; me: boolean; ring: string }
  * Настоящий голосовой канал комнаты (WebRTC). В голос входят по кнопке — таймер и комната работают и без звука.
  * `note` — подсказка посередине (что сейчас с чатом и циклом).
  */
-export function VoiceBar({ conn, voice: v, meId, note, tone = "dark" }: { conn: Conn; voice: Voice; meId?: string; note?: React.ReactNode; tone?: "light" | "dark" }) {
+export function VoiceBar({ conn, voice: v, meId, note, tone = "dark", looks }: { conn: Conn; voice: Voice; meId?: string; note?: React.ReactNode; tone?: "light" | "dark"; looks?: Record<string, AvatarLook | undefined> }) {
   const light = tone === "light";
   const dot = v.status === "connected" ? (v.mic === "granted" ? "bg-olive" : "bg-amber-400") : v.inVoice ? "bg-amber-400" : conn === "online" ? (light ? "bg-line" : "bg-[#8A625C]") : "bg-zinc-400";
   const shown = v.peers.slice(0, MAX_AVATARS);
@@ -104,7 +104,7 @@ export function VoiceBar({ conn, voice: v, meId, note, tone = "dark" }: { conn: 
 
       <ul className="flex min-w-0 items-center -space-x-1.5" aria-label="В голосовом канале">
         <AnimatePresence initial={false}>
-          {shown.map((p) => <PeerAvatar key={p.userId} p={p} me={p.userId === meId} ring={ring} />)}
+          {shown.map((p) => <PeerAvatar key={p.userId} p={p} me={p.userId === meId} ring={ring} look={looks?.[p.userId]} />)}
         </AnimatePresence>
         {extra > 0 && <li className="pl-3 text-sm font-bold">+{extra}</li>}
       </ul>

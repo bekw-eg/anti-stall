@@ -69,7 +69,7 @@ export function JoinScreen({ t, initialMode, initialCode = "", onBack }: { t: To
               <input type="checkbox" checked={teamMode} onChange={(e) => setTeamMode(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-[#A0726D]" />
               <span>
                 <span className="block text-lg font-extrabold">Две команды</span>
-                <span className="block text-mute">Команды A и B идут к цели наперегонки и мешают друг другу на перерыве. После создания режим не меняется.</span>
+                <span className="block text-mute">Красные и Синие идут к цели наперегонки и мешают друг другу на перерыве. После создания режим не меняется.</span>
               </span>
             </label>
           ) : (
@@ -87,7 +87,7 @@ export function JoinScreen({ t, initialMode, initialCode = "", onBack }: { t: To
 
         <aside className="hidden flex-col items-center gap-5 text-center lg:flex" aria-label="Ваш жетон">
           <div className="flex aspect-square w-full max-w-[400px] items-center justify-center rounded-full border-2 border-ink bg-rose as-shadow">
-            <Avatar name={name || "?"} id={t.user?.id ?? name} size={180} ring="#3B2422" />
+            <Avatar name={name || "?"} id={t.user?.id ?? name} look={t.user?.avatar} size={180} ring="#3B2422" />
           </div>
           <p className="font-display text-[44px] leading-none">{name.trim() || "Ваше имя"}</p>
           <p className="text-xl text-mute">Уровень {level} · {coins} монет</p>

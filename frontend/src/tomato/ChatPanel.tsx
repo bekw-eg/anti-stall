@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Send } from "lucide-react";
-import { formatAgo, initials } from "./format";
+import { formatAgo } from "./format";
+import { Avatar } from "./screens/ui";
 import { TEAM_COLOR } from "./socialRules";
 import { useNow } from "./useMedia";
 import type { Tomato } from "./useTomato";
@@ -17,6 +18,7 @@ export function ChatPanel({ t }: { t: Tomato }) {
   const meId = snap.me?.userId;
   const readOnly = snap.room.phase === "focus";
   const teamOf = new Map(snap.members.map((m) => [m.userId, m.team]));
+  const lookById = new Map(snap.members.map((m) => [m.userId, m.avatar]));
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
@@ -48,9 +50,7 @@ export function ChatPanel({ t }: { t: Tomato }) {
           const mine = m.userId === meId;
           return (
             <li key={m.id} className={`flex items-start gap-2 ${mine ? "flex-row-reverse text-right" : ""}`} data-chat-message={m.id}>
-              <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-medium text-zinc-900" style={{ background: TEAM_COLOR[teamOf.get(m.userId) ?? "shared"] ?? TEAM_COLOR.shared }}>
-                {initials(m.name)}
-              </span>
+              <Avatar name={m.name} id={m.userId} look={lookById.get(m.userId)} size={28} ring={TEAM_COLOR[teamOf.get(m.userId) ?? "shared"] ?? "#3B2422"} className="mt-0.5" />
               <div className={`min-w-0 max-w-[80%] rounded-2xl px-3 py-2 text-sm ${mine ? "bg-[var(--fg)] text-[var(--field)]" : "bg-[var(--card)]"}`}>
                 <p className={`text-[11px] ${mine ? "opacity-70" : "text-[var(--muted)]"}`}>{mine ? "вы" : m.name} · {formatAgo(m.at, now)}</p>
                 <p className="whitespace-pre-wrap break-words">{m.text}</p>

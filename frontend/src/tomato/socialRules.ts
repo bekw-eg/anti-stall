@@ -4,8 +4,13 @@ import type { Tomato } from "./useTomato";
 export type ActionType = "boost" | "shield" | "fog" | "sticker";
 export const KIND: Record<ActionType, "help" | "prank"> = { boost: "help", shield: "help", fog: "prank", sticker: "prank" };
 export const ACTION_TEXT: Record<ActionType, string> = { boost: "бонус к XP", shield: "щит от шуток", fog: "туман", sticker: "липучка" };
-/** Цвета команд (как в макете): A — лосось, B — мокко; общий режим — светлый лосось */
-export const TEAM_COLOR: Record<string, string> = { A: "#EAA695", B: "#A0726D", shared: "#FFCEC2" };
+/** Команды различаются цветом: A — «Красные», B — «Синие»; общий режим — светлый лосось макета. */
+export const TEAM_COLOR: Record<string, string> = { A: "#E5675A", B: "#5B8FD6", shared: "#FFCEC2" };
+/** Светлая подложка карточек команды. */
+export const TEAM_TINT: Record<string, string> = { A: "#FDE6E2", B: "#E3EDFB", shared: "#F6EFEC" };
+export const TEAM_TITLE: Record<string, string> = { A: "Красные", B: "Синие", shared: "Команда" };
+/** «Красные» / «Синие» по ключу команды; неизвестный ключ — как есть. */
+export const teamTitle = (key: string | null | undefined) => (key ? TEAM_TITLE[key] ?? key : "Команда");
 /** Цена щита по умолчанию; актуальную присылает сервер (GET /api/config → t.shieldCost) */
 export const SHIELD_COST = 10;
 
