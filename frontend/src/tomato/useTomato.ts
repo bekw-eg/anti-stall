@@ -61,6 +61,7 @@ export function useTomato(initialCode?: string) {
   // Параметры сервера (GET /api/config, hello): значения по умолчанию — на случай, если их там нет
   const [graceSec, setGraceSec] = useState(30);
   const [shieldCost, setShieldCost] = useState(SHIELD_COST);
+  const [boostPct, setBoostPct] = useState(25); // бонус к XP от помощи — актуальный приходит из /api/config
   // правила шуток для подсказки в «Друзьях»; в демо-комнатах свой, короткий кулдаун
   const [prankRules, setPrankRules] = useState({ cooldownMs: 20_000, demoCooldownMs: 20_000, maxPerBreak: 3 });
   const [user, setUser] = useState<Me | null>(null);
@@ -81,6 +82,9 @@ export function useTomato(initialCode?: string) {
   const refreshRef = useRef<() => void>(() => undefined);
   const myIdRef = useRef<string | undefined>(undefined);
   myIdRef.current = snapshot?.me?.userId ?? user?.id;
+  const snapRef = useRef<RoomSnapshot | null>(null);
+  snapRef.current = snapshot;
+  const tickRefreshAt = useRef(0);
 
   const serverNow = () => Date.now() + offsetRef.current;
   const phaseEndsAt = snapshot?.room.phaseEndsAt ?? null;
@@ -162,8 +166,9 @@ export function useTomato(initialCode?: string) {
         }
         client.config().then((c) => {
           if (cancelled) return;
-          const cfg = c as { social?: { shield?: { cost?: number }; prankRules?: { cooldownMs?: number; demoCooldownMs?: number; maxPerBreak?: number } }; presence?: { graceMs?: number } };
+          const cfg = c as { social?: { shield?: { cost?: number }; boost?: { xpBonusPct?: number }; prankRules?: { cooldownMs?: number; demoCooldownMs?: number; maxPerBreak?: number } }; presence?: { graceMs?: number } };
           if (typeof cfg.social?.shield?.cost === "number") setShieldCost(cfg.social.shield.cost);
+          if (typeof cfg.social?.boost?.xpBonusPct === "number") setBoostPct(cfg.social.boost.xpBonusPct);
           const pr = cfg.social?.prankRules;
           if (pr) setPrankRules((p) => {
             const cooldownMs = typeof pr.cooldownMs === "number" ? pr.cooldownMs : p.cooldownMs;
@@ -186,6 +191,9 @@ export function useTomato(initialCode?: string) {
               const saved = store.get(ROOM_KEY);
               if (code) enterRoom(await client.joinByCode(code));
               else if (saved) enterRoom(await client.room(saved));
+              // localStorage потерян (очистили данные сайта, другая вкладка в приватном режиме),
+              // а сервер помнит активную комнату — возвращаемся в последнюю
+              else if (me.rooms?.length) enterRoom(await client.room(me.rooms[me.rooms.length - 1].id));
             }
           }
         } catch (e) {
@@ -270,6 +278,18 @@ export function useTomato(initialCode?: string) {
       if (ev.roomId !== roomId) return;
       if (ev.ts) offsetRef.current = ev.ts - Date.now();
       applyRoom(ev.data as RoomSnapshot);
+    });
+    // timer_tick (раз в секунду) — единый источник часов: сверяем смещение с сервером, а если фаза или
+    // время окончания разошлись со снимком (пропущенное событие), запрашиваем свежий снимок, а не решаем сами
+    socket.on("timer_tick", (ev) => {
+      if (ev.roomId !== roomId) return;
+      const d = ev.data as { serverTime?: number; phase?: string; phaseEndsAt?: number | null };
+      if (typeof d.serverTime === "number") offsetRef.current = d.serverTime - Date.now();
+      const s = snapRef.current;
+      if (s && (s.room.phase !== d.phase || s.room.phaseEndsAt !== d.phaseEndsAt) && Date.now() - tickRefreshAt.current > 2000) {
+        tickRefreshAt.current = Date.now();
+        refresh();
+      }
     });
     socket.on("error", (ev) => {
       const code = (ev.data as { code?: string }).code;
@@ -464,7 +484,7 @@ export function useTomato(initialCode?: string) {
   }, [call]);
 
   return {
-    boot, serverOk, demoMode, graceSec, shieldCost, prankRules, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
+    boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
     call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled,
   };
 }

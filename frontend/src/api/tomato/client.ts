@@ -182,9 +182,11 @@ export class TomatoSocket {
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
 
+  /** Ошибка в одном обработчике не должна лишать события остальных (UI, голос, игра). */
   private emit(ev: ServerEvent) {
-    this.handlers.get(ev.type)?.forEach((h) => h(ev));
-    this.handlers.get("*")?.forEach((h) => h(ev));
+    const run = (h: Handler) => { try { h(ev); } catch (e) { console.error(`[tomato] обработчик «${ev.type}» упал`, e); } };
+    this.handlers.get(ev.type)?.forEach(run);
+    this.handlers.get("*")?.forEach(run);
   }
 
   private open() {

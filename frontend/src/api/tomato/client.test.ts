@@ -132,4 +132,18 @@ describe("TomatoSocket (переподключение)", () => {
     WS.all[0].onmessage?.({ data: JSON.stringify({ type: "hello", ts: Date.now(), data: {} }) });
     expect(seen).toEqual(["hello"]);
   });
+
+  it("исключение в одном обработчике не лишает событие остальных", () => {
+    const s = connect();
+    const err = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const seen: string[] = [];
+    s.on("room_state", () => { throw new Error("сломанный обработчик"); });
+    s.on("room_state", () => seen.push("второй обработчик"));
+    s.on("*", (e) => seen.push(`* ${e.type}`));
+    WS.all[0].hello();
+    expect(() => WS.all[0].onmessage?.({ data: JSON.stringify({ type: "room_state", ts: Date.now(), data: {} }) })).not.toThrow();
+    expect(seen).toEqual(["* hello", "второй обработчик", "* room_state"]);
+    expect(err).toHaveBeenCalledTimes(1);
+    err.mockRestore();
+  });
 });

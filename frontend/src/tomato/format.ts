@@ -71,3 +71,9 @@ export function formatAgo(atMs: number, nowMs: number) {
   if (s < 3600) return `${Math.max(1, Math.round(s / 60))} мин назад`;
   return `${Math.round(s / 3600)} ч назад`;
 }
+
+/**
+ * Код комнаты из текущего адреса. Адрес меняется через history.replaceState (вошли → /room/КОД, вышли → /),
+ * а параметр роутера при этом остаётся прежним — поэтому читаем window.location, а не useParams.
+ */
+export const currentRouteCode = (path = typeof window === "undefined" ? "" : window.location.pathname) => extractRoomCode(path) ?? "";

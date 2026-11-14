@@ -49,6 +49,33 @@ describe("восстановление комнаты при загрузке", 
     b.unmount();
   });
 
+  it("localStorage потерян — комната восстанавливается из me.rooms (последняя активная)", async () => {
+    client.setToken("t".repeat(40));
+    const srv = mockServer({
+      "GET /api/health": health(), "GET /api/config": { status: 200, body: {} },
+      "GET /api/users/me": me({ rooms: [{ id: "r0", code: "OLD000", name: "старая", phase: "waiting" }, { id: "r1", code: "K7QM2X", name: "Комната Лотти", phase: "focus" }] }),
+      ...roomRoutes(),
+    });
+    const h = renderHook();
+    await booted(h.ref);
+    await settle(h.ref, (t) => Boolean(t.snapshot));
+    expect(h.ref.current!.snapshot?.room.id).toBe("r1");
+    expect(localStorage.getItem(ROOM_KEY)).toBe("r1");
+    expect(srv.count("GET /api/rooms/r0")).toBe(0);
+    h.unmount();
+  });
+
+  it("правила из /api/config: цена щита и бонус к XP берутся с сервера", async () => {
+    client.setToken("t".repeat(40));
+    mockServer({ "GET /api/health": health(), "GET /api/users/me": me(), "GET /api/config": { status: 200, body: { social: { shield: { cost: 15 }, boost: { xpBonusPct: 40 } } } } });
+    const h = renderHook();
+    await booted(h.ref);
+    await settle(h.ref, (t) => t.boostPct === 40);
+    expect(h.ref.current!.boostPct).toBe(40);
+    expect(h.ref.current!.shieldCost).toBe(15);
+    h.unmount();
+  });
+
   it("неудачный вход по ссылке /room/CODE — понятное сообщение", async () => {
     client.setToken("t".repeat(40));
     mockServer({ "GET /api/health": health(), "GET /api/users/me": me(), "POST /api/rooms/join": apiError(404, "ROOM_NOT_FOUND") });
@@ -56,6 +83,29 @@ describe("восстановление комнаты при загрузке", 
     await booted(h.ref);
     expect(toastTexts(h.ref.current)).toEqual(["Не удалось войти в комнату K7QM2X: server ROOM_NOT_FOUND"]);
     h.unmount();
+  });
+});
+
+describe("часы и timer_tick", () => {
+  it("timer_tick сверяет смещение часов; расхождение фазы со снимком — запрос свежего снимка (не чаще раза в 2 с)", async () => {
+    const { srv, ref, ws, unmount } = await inRoom();
+    ws.hello();
+    const before = srv.count("GET /api/rooms/r1");
+    // сервер «впереди» на минуту, фаза та же — только сверка часов
+    ws.message("timer_tick", { phase: "waiting", phaseEndsAt: null, serverTime: Date.now() + 60_000 }, { roomId: "r1" });
+    await wait(20);
+    expect(ref.current!.serverNow() - Date.now()).toBeGreaterThan(59_000);
+    expect(srv.count("GET /api/rooms/r1")).toBe(before);
+    // пропустили смену фазы: сервер уже в фокусе — клиент не решает сам, а перечитывает снимок
+    ws.message("timer_tick", { phase: "focus", phaseEndsAt: Date.now() + 25_000, serverTime: Date.now() }, { roomId: "r1" });
+    ws.message("timer_tick", { phase: "focus", phaseEndsAt: Date.now() + 24_000, serverTime: Date.now() }, { roomId: "r1" });
+    await wait(20);
+    expect(srv.count("GET /api/rooms/r1")).toBe(before + 1);
+    // тики чужой комнаты игнорируются
+    ws.message("timer_tick", { phase: "focus", phaseEndsAt: 1, serverTime: 1 }, { roomId: "r2" });
+    await wait(20);
+    expect(ref.current!.serverNow() - Date.now()).toBeGreaterThan(-5_000);
+    unmount();
   });
 });
 

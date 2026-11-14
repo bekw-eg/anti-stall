@@ -3,6 +3,7 @@ import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-
 import { BarChart3, Map as MapIcon, Settings, Swords, Timer, Users } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { ConnectionBanner, DemoBadge, Toasts } from "./Chrome";
+import { currentRouteCode } from "./format";
 import { SPRING, FIELD_DARK, FIELD_LIGHT } from "./motion";
 import { PrankOverlay } from "./PrankOverlay";
 import { ParticipantsRow, RoadmapSlot } from "./RoomExtras";
@@ -270,7 +271,7 @@ export default function TomatoApp() {
                   >
                     <SettingsContent
                       t={t}
-                      initialCode={routeCode ?? ""}
+                      initialCode={currentRouteCode()}
                       form={{ work, rest, demo, teamMode, setWork, setRest, setDemo, setTeamMode }}
                       onCollapse={() => (inRoom ? setOpen(false) : setScreen("welcome"))}
                     />

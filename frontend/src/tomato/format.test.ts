@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { API_ERROR_TEXT, apiErrorText, extractRoomCode, formatTime, initials, memberStatusLabel, readiness, roomLink } from "./format";
+import { API_ERROR_TEXT, apiErrorText, currentRouteCode, extractRoomCode, formatTime, initials, memberStatusLabel, readiness, roomLink } from "./format";
 
 describe("formatTime", () => {
   it("форматирует секунды как MM:SS", () => {
@@ -65,5 +65,16 @@ describe("apiErrorText", () => {
     for (const code of ["SANDBOX_DEMO_ONLY", "DEMO_SANDBOX_ONLY", "DEMO_DISABLED"]) expect(apiErrorText({ code, message: "x" })).toBe(API_ERROR_TEXT[code]);
     expect(apiErrorText({ code: "WRONG_PHASE", message: "Нельзя сейчас" })).toBe("Нельзя сейчас");
     expect(apiErrorText({ code: "HTTP_ERROR", message: "" })).toBe("Что-то пошло не так");
+  });
+});
+
+describe("currentRouteCode", () => {
+  it("берёт код из текущего адреса, а после выхода (адрес «/») — пусто, без старого кода роутера", () => {
+    expect(currentRouteCode("/room/k7qm2x")).toBe("K7QM2X");
+    expect(currentRouteCode("/")).toBe("");
+    window.history.replaceState(null, "", "/room/ABCDEF");
+    expect(currentRouteCode()).toBe("ABCDEF");
+    window.history.replaceState(null, "", "/");
+    expect(currentRouteCode()).toBe("");
   });
 });
