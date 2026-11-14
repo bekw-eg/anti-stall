@@ -70,8 +70,8 @@ describe('синхронизированный Pomodoro', () => {
     await w.advance(20 * 60_000 + 1000, L.users);
     assert.equal((await anya.progress()).xp, 0);
     assert.equal((await anya.progress()).coins, 0);
-    assert.equal((await boris.progress()).xp, 125); // 100 + 25 за этап карты (2 очка команды)
-    assert.equal((await lotti.progress()).xp, 125);
+    assert.equal((await boris.progress()).xp, 100); // 100 за сессию (узлы карты — только за победы в TD)
+    assert.equal((await lotti.progress()).xp, 100);
     const sess = (await anya.get('/api/users/me/sessions')).body.sessions[0];
     assert.equal(sess.status, 'aborted');
     assert.equal(sess.rewarded, false);
@@ -87,7 +87,7 @@ describe('синхронизированный Pomodoro', () => {
     await w.advance(20_000, [lotti, boris]);
     await w.advance(5_000, [lotti, anya]);
     await w.advance(25 * 60_000, [lotti, anya]);
-    assert.equal((await anya.progress()).xp, 125, 'короткий обрыв не лишает награды (100 + 25 за этап карты)');
+    assert.equal((await anya.progress()).xp, 100, 'короткий обрыв не лишает награды');
     assert.equal((await boris.progress()).xp, 0, 'долгое отсутствие — награды нет');
     const s = (await boris.get('/api/users/me/sessions')).body.sessions[0];
     assert.equal(s.status, 'abandoned');

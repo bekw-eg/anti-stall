@@ -64,7 +64,7 @@ export function Toasts({ toasts }: { toasts: Toast[] }) {
             initial={{ opacity: 0, y: -10, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10 }}
-            className={`rounded-full px-4 py-2 text-sm shadow-lg ${t.tone === "error" ? "bg-red-600 text-white" : "bg-white text-zinc-900 ring-1 ring-black/10"}`}
+            className={`rounded-full px-4 py-2 text-sm shadow-lg ${t.tone === "error" ? "bg-red-600 text-white" : t.tone === "warning" ? "bg-amber-400 text-zinc-950 ring-1 ring-amber-600/30" : "bg-white text-zinc-900 ring-1 ring-black/10"}`}
           >
             {t.text}
           </motion.div>

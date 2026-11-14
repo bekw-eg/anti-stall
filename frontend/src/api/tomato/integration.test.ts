@@ -2,13 +2,18 @@
 /**
  * Интеграционные тесты клиентского слоя против НАСТОЯЩЕГО backend (в памяти, управляемые часы):
  * проверяют, что контракт REST/WebSocket, на который опирается новый интерфейс, действительно работает.
+ *
+ * Изоляция: каждый тест получает СВОЙ backend и свои FakeClock (beforeEach). Раньше все тесты делили один сервер
+ * и одни часы: долгий тест (6 циклов Team A/B) упирался в 5-секундный таймаут vitest, но его цикл `advance`
+ * продолжал крутить общие часы в фоне — и соседние тесты видели «чужое» время (remainingMs 304000 вместо 900000,
+ * фокус, закончившийся раньше времени, `until: timeout` в WebSocket-тесте). Долгим тестам заданы явные таймауты.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../../../backend/src/app.js";
 import { FakeClock } from "../../../../backend/src/clock.js";
 import { loadConfig } from "../../../../backend/src/config.js";
 import { TomatoApiError, TomatoClient } from "./client";
-import type { RoomSnapshot, ServerEvent } from "./types";
+import type { Roadmap, RoadmapNode, RoadmapTeam, RoomSnapshot, ServerEvent, TdEffect, TdEnemy, TdRound, TdShot, TdSpellCastEvent, TdStage, TdStateEvent, TdUnitSentEvent, TdView } from "./types";
 
 interface BackendApp {
   listen(port: number, host: string): Promise<{ port: number }>;
@@ -20,6 +25,8 @@ interface Clock { advance(ms: number): number; now(): number }
 let app: BackendApp;
 let clock: Clock;
 let base: string;
+/** Поколение сервера: «осиротевший» после таймаута цикл advance останавливается, а не двигает чужие часы */
+let generation = 0;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function until<T>(fn: () => T | undefined | false, ms = 3000): Promise<T> {
@@ -40,23 +47,54 @@ async function player(name: string) {
 }
 /** Двигает управляемые часы и тикает сервер; перечисленные клиенты «живы». */
 async function advance(ms: number, alive: TomatoClient[]) {
+  const gen = generation;
   for (let left = ms; left > 0; left -= 5000) {
+    if (gen !== generation) throw new Error("advance: тест уже завершён (таймаут)");
     clock.advance(Math.min(5000, left));
     for (const c of alive) await c.request("POST", "/api/heartbeat", {});
     app.tick();
   }
 }
+let rid = 0;
+const req = (tag: string) => `${tag}-${String(++rid).padStart(6, "0")}`;
+const LONG = 30_000;
 
-beforeAll(async () => {
+beforeEach(async () => {
+  generation++;
   clock = new FakeClock();
   app = createApp({ config: loadConfig({}, { dbPath: ":memory:" }), clock });
   const addr = await app.listen(0, "127.0.0.1");
   base = `http://127.0.0.1:${addr.port}`;
 });
-afterAll(() => app.close());
+afterEach(async () => {
+  generation++;
+  await app.close();
+});
+
+/** Ключи объекта, отсортированные — для сверки формы JSON сервера с типами клиента */
+const keys = (o: object) => Object.keys(o).sort();
+const ENEMY_KEYS: (keyof TdEnemy)[] = ["id", "type", "x", "y", "s", "hp", "maxHp", "speed", "slowed", "hasted", "armor", "isMerc"];
+const SHOT_KEYS: (keyof TdShot)[] = ["id", "t", "slot", "towerType", "fromX", "fromY", "toX", "toY", "targetId", "damage", "splash", "slow"];
+const EFFECT_KEYS: (keyof TdEffect)[] = ["id", "kind", "targetSlot", "expiresAtGameTime", "factor"];
+const ROUND_KEYS: (keyof TdRound)[] = [
+  "id", "team", "roundNo", "stageId", "status", "current", "startedAt", "endsAt", "finishedAt", "speed", "t", "wave", "waves",
+  "spawned", "total", "hp", "hpMax", "kills", "leaked", "enemies", "shots", "effects", "result",
+];
+const VIEW_KEYS: (keyof TdView)[] = [
+  "enabled", "phase", "mode", "team", "breakEndsAt", "serverTime", "map", "towerTypes", "enemyTypes", "maxLevel", "stages", "defaultStageId",
+  "base", "towers", "round", "rival", "duel", "me", "treasuryCoins", "mercenaries", "spells", "mercCooldownSec", "rematch",
+];
+const ROADMAP_KEYS: (keyof Roadmap)[] = [
+  "roadmapId", "title", "mode", "teamKey", "points", "goal", "focusPoints", "treasuryCoins", "completed", "finished", "completedAt", "winner",
+  "reward", "positionNodeId", "next", "segment", "teams", "nodes", "edges", "contributions",
+];
+const TEAM_KEYS: (keyof RoadmapTeam)[] = ["key", "name", "points", "positionNodeId", "finished", "completed", "focusPoints", "treasuryCoins"];
+const NODE_KEYS: (keyof RoadmapNode)[] = ["id", "title", "x", "y", "requiredPoints", "type", "status", "challenge", "reachedAt", "reward", "progress"];
+const STAGE_KEYS: (keyof TdStage)[] = ["id", "title", "node", "nodeTitle", "unlocked", "reward", "waves", "enemies", "hpScale", "wins", "bestHpLeft"];
+const sorted = (k: string[]) => [...k].sort();
 
 describe("клиент ↔ backend: Road Map", () => {
-  it("карта приходит с сервера, этап засчитывается сервером, все видят одно и то же, событие node_reached доходит по WS", async () => {
+  it("карта приходит с сервера; фокус пополняет казну и очки вклада, а узел открывает только победа в TD; node_reached доходит по WS", async () => {
     const lotti = await player("Карта-1");
     const anya = await player("Карта-2");
     const snap = await lotti.createRoom({ name: "Карта", focusMinutes: 25, breakMinutes: 5 });
@@ -64,8 +102,18 @@ describe("клиент ↔ backend: Road Map", () => {
     const id = snap.room.id;
 
     const road0 = await lotti.roadmap(id);
+    expect(sorted(keys(road0))).toEqual(sorted(ROADMAP_KEYS));
+    expect(sorted(keys(road0.teams[0]))).toEqual(sorted(TEAM_KEYS));
+    for (const n of road0.nodes) expect(sorted(keys(n))).toEqual(sorted(NODE_KEYS));
     expect(road0.positionNodeId).toBe("camp");
-    expect(road0.next).toEqual({ nodeId: "forest", title: "Лес знаний", pointsNeeded: 2 });
+    expect([road0.points, road0.goal, road0.treasuryCoins, road0.focusPoints]).toEqual([0, 4, 30, 0]);
+    expect(road0.next).toEqual({ nodeId: "forest", title: "Лес знаний", pointsNeeded: 1, stageId: "camp" });
+    expect(road0.nodes.map((n) => n.challenge)).toEqual([
+      null,
+      { kind: "td_stage_win", stageId: "camp", required: 1 },
+      { kind: "td_stage_win", stageId: "forest", required: 2 },
+      { kind: "td_stage_win", stageId: "bridge", required: 3 },
+    ]);
     expect(road0.edges).toHaveLength(3);
     expect(road0.teams).toHaveLength(1);
 
@@ -76,23 +124,35 @@ describe("клиент ↔ backend: Road Map", () => {
     await until(() => events.some((e) => e.type === "room_state"));
 
     await lotti.startFocus(id);
-    await advance(25 * 60_000 + 1000, [lotti, anya]); // обе сессии завершены → 2 очка → этап «Лес знаний»
+    await advance(25 * 60_000 + 1000, [lotti, anya]); // обе сессии завершены
+    const afterFocus = await lotti.roadmap(id);
+    expect(afterFocus.positionNodeId).toBe("camp"); // фокус больше не двигает карту
+    expect([afterFocus.points, afterFocus.focusPoints, afterFocus.treasuryCoins]).toEqual([0, 2, 70]); // 30 + 2 × 20 монет в казну
+
+    await lotti.tdBuild(id, "s1", "arrow", req("road-build"));
+    await anya.tdBuild(id, "s3", "arrow", req("road-build"));
+    await lotti.tdStart(id, "camp");
+    await advance(70_000, [lotti, anya]);
+    expect((await lotti.td(id)).round?.status).toBe("won");
+
     const [a, b] = await Promise.all([lotti.roadmap(id), anya.roadmap(id)]);
     expect(a).toEqual(b); // синхронизация между участниками
     expect(a.positionNodeId).toBe("forest");
+    expect(a.points).toBe(1);
     expect(a.nodes.find((n) => n.id === "forest")?.reachedAt).toBeGreaterThan(0);
+    expect(a.next).toEqual({ nodeId: "bridge", title: "Мост дедлайнов", pointsNeeded: 1, stageId: "forest" });
     expect(a.segment).toEqual({ from: "forest", to: "bridge", progress: 0 });
 
     const reached = await until(() => events.find((e) => e.type === "node_reached"));
     expect((reached.data as { nodeId: string }).nodeId).toBe("forest");
-    expect((await lotti.progress()).xp).toBe(125); // 100 за сессию + 25 за этап (начислил сервер)
+    expect((await lotti.progress()).xp).toBeGreaterThan(125); // 100 за сессию + награда раунда + 25 за этап (начислил сервер)
     expect((await lotti.room(id)).challenge.positionNodeId).toBe("forest"); // тот же снимок в room_state
     sock.close();
-  });
+  }, LONG);
 });
 
 describe("клиент ↔ backend: Tower Defense", () => {
-  it("игра закрыта вне перерыва; на перерыве: постройка за монеты, идемпотентный повтор, раунд по серверному времени, награда один раз", async () => {
+  it("игра закрыта вне перерыва; на перерыве: казна команды, идемпотентный повтор, заклинание и подкрепление, нехватка казны, раунд по серверному времени, реванш", async () => {
     const lotti = await player("ТД-1");
     const anya = await player("ТД-2");
     const snap = await lotti.createRoom({ name: "TD", focusMinutes: 25, breakMinutes: 5 });
@@ -108,35 +168,81 @@ describe("клиент ↔ backend: Tower Defense", () => {
     await advance(25 * 60_000 + 1000, [lotti, anya]);
 
     const view = await lotti.td(id);
+    expect(sorted(keys(view))).toEqual(sorted(VIEW_KEYS));
+    for (const st of view.stages) expect(sorted(keys(st))).toEqual(sorted(STAGE_KEYS));
     expect(view.enabled).toBe(true);
-    expect(view.stages.find((s) => s.id === "forest")?.unlocked).toBe(true); // 2 очка команды открыли узел «Лес знаний»
-    const before = (await lotti.progress()).coins;
+    expect(view.treasuryCoins).toBe(70); // стартовые 30 + монеты обеих фокус-сессий
+    expect(view.stages.find((s) => s.id === "camp")?.unlocked).toBe(true);
+    expect(view.stages.find((s) => s.id === "forest")?.unlocked).toBe(false); // узлы открывают только победы в TD
+    expect(view.mercenaries.map((m) => [m.id, m.cost])).toEqual([["cherry", 2], ["ripe", 5], ["armored", 12], ["king", 25]]);
+    expect(view.spells.map((s) => [s.id, s.target])).toEqual([["haste", "self"], ["repair", "self"], ["slow_towers", "rival"], ["disable_tower", "rival"], ["enrage_horde", "rival"]]);
+    expect(view.rival).toBeNull();
+    expect(view.rematch).toEqual({ available: false, reason: "Сначала сыграйте раунд 1", roundNo: 0, counterattackCoins: 40, bonusTeam: null });
+    const personal = (await lotti.progress()).coins;
 
     const built = await lotti.tdBuild(id, "s1", "arrow", "req-build-s1-0001");
-    expect(built.cost).toBe(15);
+    expect([built.cost, built.treasuryCoins, built.level, built.type]).toEqual([15, 55, 1, "arrow"]);
     const replay = await lotti.tdBuild(id, "s1", "arrow", "req-build-s1-0001"); // повтор того же запроса
     expect(replay.replayed).toBe(true);
-    expect((await lotti.progress()).coins).toBe(before - 15);
+    expect((await lotti.td(id)).treasuryCoins).toBe(55); // повтор ничего не списал
+    expect((await lotti.progress()).coins).toBe(personal); // башни оплачивает казна, а не личные монеты
     expect((await fail(anya.tdBuild(id, "s1", "cannon", "req-other-0002"))).code).toBe("SLOT_TAKEN");
-    await anya.tdBuild(id, "s3", "arrow", "req-build-s3-0003");
-    await lotti.tdBuild(id, "s5", "cannon", "req-build-s5-0004").catch(() => undefined); // может не хватить монет — это решает сервер
+    expect((await anya.tdBuild(id, "s3", "arrow", "req-build-s3-0003")).treasuryCoins).toBe(40);
 
-    const started = await lotti.tdStart(id, "forest");
+    const started = await lotti.tdStart(id, "camp");
     expect(started.round?.status).toBe("running");
+    expect(started.round?.roundNo).toBe(1);
     expect(started.round?.endsAt).toBe(started.breakEndsAt);
-    await advance(10_000, [lotti, anya]);
-    const mid = await anya.td(id);
-    expect(mid.round?.t).toBeGreaterThan(5); // игровое время идёт по серверным часам
+    await advance(5_000, [lotti, anya]);
+
+    // заклинание на свою оборону и «Подкрепление волны» в общем режиме — из казны
+    const haste = await anya.tdCastSpell(id, "haste", req("spell"));
+    expect([haste.action, haste.spell, haste.cost, haste.target, haste.treasuryCoins]).toEqual(["spell", "haste", 10, "shared", 30]);
+    const unit = await lotti.tdSendUnit(id, "cherry", req("unit"));
+    expect([unit.action, unit.type, unit.cost, unit.target, unit.queued, unit.treasuryCoins]).toEqual(["send_unit", "cherry", 2, "shared", false, 28]);
+    const noRival = await fail(lotti.tdCastSpell(id, "slow_towers", req("spell")));
+    expect(noRival).toBeInstanceOf(TomatoApiError);
+    expect([noRival.status, noRival.code]).toEqual([400, "NO_RIVAL"]);
+    // казны не хватает: ошибка сервера приходит как TomatoApiError с деталями
+    const broke = await fail(lotti.tdBuild(id, "s5", "cannon", req("broke")));
+    expect(broke).toBeInstanceOf(TomatoApiError);
+    expect([broke.status, broke.code]).toEqual([409, "INSUFFICIENT_TEAM_FUNDS"]);
+    expect(broke.details).toEqual({ required: 30, treasuryCoins: 28 });
+
+    // ловим момент, когда на поле есть враги и летят снаряды (игровое время идёт по серверным часам)
+    let round = (await anya.td(id)).round!;
+    for (let i = 0; i < 40 && !(round.enemies.length > 0 && round.shots.length > 0); i++) {
+      await advance(1_000, [lotti, anya]);
+      round = (await anya.td(id)).round!;
+    }
+    expect(round.status).toBe("running");
+    expect(sorted(keys(round))).toEqual(sorted(ROUND_KEYS));
+    expect(round.t).toBeGreaterThanOrEqual(5); // игровое время идёт по серверным часам (5 с после старта)
+    expect(round.effects.map((e) => e.kind)).toContain("haste");
+    for (const e of round.effects) expect(sorted(keys(e))).toEqual(sorted(EFFECT_KEYS));
+    expect(round.enemies.length).toBeGreaterThan(0);
+    for (const e of round.enemies) expect(sorted(keys(e))).toEqual(sorted(ENEMY_KEYS));
+    expect(round.shots.length).toBeGreaterThan(0);
+    for (const sh of round.shots) expect(sorted(keys(sh))).toEqual(sorted(SHOT_KEYS));
+
     await advance(70_000, [lotti, anya]);
     const done = await lotti.td(id);
-    expect(["won", "lost"]).toContain(done.round?.status);
-    expect(done.round?.enemies).toEqual([]);
+    expect(done.round?.status).toBe("won");
+    expect([done.round?.enemies, done.round?.shots, done.round?.effects]).toEqual([[], [], []]);
+    expect(done.stages.find((s) => s.id === "forest")?.unlocked).toBe(true); // победа открыла следующий этап
     // клиент не может сам закрыть раунд или назначить результат
     expect((await fail(lotti.request("POST", `/api/rooms/${id}/td/finish`, { status: "won" }))).status).toBe(404);
     expect((await fail(lotti.tdStart(id, "forest"))).code).toBe("ROUND_EXISTS");
-  });
 
-  it("WebSocket присылает состояние игры команды; после перерыва раунд закрыт сервером", async () => {
+    // реванш: раунд 2 того же перерыва, второй раз — нельзя
+    expect(done.rematch.available).toBe(true);
+    const re = await anya.tdRematch(id, "forest");
+    expect([re.round?.roundNo, re.round?.status, re.round?.stageId]).toEqual([2, "running", "forest"]);
+    expect(re.rematch).toMatchObject({ available: false, roundNo: 2, bonusTeam: null });
+    expect((await fail(lotti.tdRematch(id))).code).toBe("REMATCH_USED");
+  }, LONG);
+
+  it("WebSocket присылает состояние игры команды (с казной); после перерыва раунд закрыт сервером", async () => {
     const lotti = await player("ТД-3");
     const anya = await player("ТД-4");
     const snap = await lotti.createRoom({ name: "TD2", focusMinutes: 25, breakMinutes: 5 });
@@ -152,18 +258,21 @@ describe("клиент ↔ backend: Tower Defense", () => {
     await lotti.tdBuild(id, "s1", "arrow", "req-ws-build-0001");
     await lotti.tdStart(id, "camp");
     await advance(5_000, [lotti, anya]);
-    const st = await until(() => events.find((e) => e.type === "td_state" && (e.data as { round?: { status: string } }).round?.status === "running"));
-    expect((st.data as { team: string }).team).toBe("shared");
+    const st = await until(() => events.find((e) => e.type === "td_state" && (e.data as TdStateEvent).round?.status === "running"));
+    const data = st.data as TdStateEvent;
+    expect(sorted(keys(data))).toEqual(["round", "team", "towers", "treasuryCoins"]);
+    expect(data.team).toBe("shared");
+    expect(data.treasuryCoins).toBe(55);
     await advance(6 * 60_000, [lotti, anya]); // перерыв закончился
     const end = await until(() => events.find((e) => e.type === "td_round_finished"));
     expect(["won", "lost", "expired"]).toContain((end.data as { status: string }).status);
     expect((await lotti.td(id)).enabled).toBe(false);
     sock.close();
-  }, 20000);
+  }, LONG);
 });
 
 describe("клиент ↔ backend: Team A/B", () => {
-  it("режим команд: автобаланс, смена команды, раздельная карта, победитель — всем одинаково", async () => {
+  it("режим команд: автобаланс, смена команды, раздельная карта и казна", async () => {
     const lotti = await player("Тим-1");
     const anya = await player("Тим-2");
     const snap = await lotti.createRoom({ name: "A vs B", focusMinutes: 25, breakMinutes: 5, teamMode: true });
@@ -182,23 +291,102 @@ describe("клиент ↔ backend: Team A/B", () => {
     expect(mine.mode).toBe("teams");
     expect([mine.teamKey, theirs.teamKey]).toEqual(["A", "B"]);
     expect(mine.teams.map((t) => t.key)).toEqual(["A", "B"]);
+    expect([mine.treasuryCoins, theirs.treasuryCoins]).toEqual([30, 30]); // у каждой команды своя казна
 
-    // по одному игроку в команде идут вровень: через 6 циклов — ничья, обе команды награждены
-    for (let i = 0; i < 6; i++) {
-      await lotti.startFocus(id);
-      await advance(25 * 60_000 + 1000, [lotti, anya]);
-      await advance(5 * 60_000, [lotti, anya]);
-    }
+    await lotti.startFocus(id);
+    await advance(25 * 60_000 + 1000, [lotti, anya]);
     const [a, b] = await Promise.all([lotti.roadmap(id), anya.roadmap(id)]);
-    expect(a.winner).toBe("draw");
-    expect(b.winner).toBe("draw");
-    expect(a.completed && b.completed).toBe(true);
-    expect(a.teams.map((t) => t.points)).toEqual([6, 6]);
+    expect(a.teams).toEqual(b.teams); // одна и та же картина у всех
+    expect(a.teams.map((t) => [t.key, t.points, t.positionNodeId])).toEqual([["A", 0, "camp"], ["B", 0, "camp"]]);
+    expect([a.treasuryCoins, b.treasuryCoins]).toEqual([50, 50]); // монеты сессии ушли в казну своей команды
+    expect(a.winner).toBeNull();
+
+    await advance(5 * 60_000, [lotti, anya]); // перерыв закончился
     await lotti.setTeam(id, "B"); // между циклами (waiting) смена разрешена
     await lotti.setTeam(id, "A");
     await lotti.startFocus(id);
     expect((await fail(lotti.setTeam(id, "B"))).code).toBe("WRONG_PHASE"); // во время сессии — нет
-  });
+  }, LONG);
+
+  it("Tower Wars: наёмник ждёт старта соперника, наёмники и заклинания по WS, чужая казна неприкосновенна, дуэль и реванш с «Контратакой»", async () => {
+    const lotti = await player("Война-A");
+    const anya = await player("Война-B");
+    const snap = await lotti.createRoom({ name: "Tower Wars", focusMinutes: 25, breakMinutes: 5, teamMode: true });
+    await anya.joinByCode(snap.room.code);
+    const id = snap.room.id;
+    const events: ServerEvent[] = [];
+    const sock = anya.connect(); // Аня — команда B: смотрит, что прилетает от соперника
+    sock.on("*", (e) => events.push(e));
+    sock.subscribe(id);
+    await until(() => events.some((e) => e.type === "room_state"));
+
+    await lotti.startFocus(id);
+    await advance(25 * 60_000 + 1000, [lotti, anya]);
+    const va = await lotti.td(id);
+    const vb = await anya.td(id);
+    expect([va.team, va.treasuryCoins, vb.team, vb.treasuryCoins]).toEqual(["A", 50, "B", 50]);
+    expect(va.rival).toEqual({ team: "B", towers: 0, treasuryCoins: 50, round: null });
+
+    // B ещё не начал раунд: наёмник A ждёт его старта
+    const queued = await lotti.tdSendUnit(id, "cherry", req("war-unit"));
+    expect([queued.target, queued.queued, queued.treasuryCoins]).toEqual(["B", true, 48]);
+    const sent = await until(() => events.find((e) => e.type === "td_unit_sent"));
+    expect(sent.data as TdUnitSentEvent).toEqual({ team: "A", target: "B", type: "cherry", queued: true, by: va.me.userId });
+
+    expect((await lotti.tdBuild(id, "s1", "arrow", req("war-build"))).treasuryCoins).toBe(33);
+    expect((await lotti.tdBuild(id, "s3", "arrow", req("war-build"))).treasuryCoins).toBe(18);
+    expect((await anya.td(id)).treasuryCoins).toBe(50); // покупки A не трогают казну B
+    // заклинание на соперника, пока он не в бою, — отказ без списания
+    expect((await fail(lotti.tdCastSpell(id, "slow_towers", req("war-spell")))).code).toBe("RIVAL_NOT_IN_BATTLE");
+
+    await anya.tdStart(id, "camp");
+    await lotti.tdStart(id, "camp");
+    await advance(1_000, [lotti, anya]);
+    const bRound = (await anya.td(id)).round!;
+    expect(bRound.enemies.some((e) => e.isMerc && e.type === "cherry")).toBe(true); // недоставленный наёмник вышел на поле B
+
+    const ripe = await lotti.tdSendUnit(id, "ripe", req("war-unit"));
+    expect([ripe.target, ripe.queued, ripe.treasuryCoins]).toEqual(["B", false, 13]);
+    const slow = await lotti.tdCastSpell(id, "slow_towers", req("war-spell"));
+    expect([slow.target, slow.treasuryCoins]).toEqual(["B", 3]);
+    const spell = await until(() => events.find((e) => e.type === "td_spell_cast"));
+    expect(spell.data as TdSpellCastEvent).toEqual({ team: "A", target: "B", spell: "slow_towers", targetSlot: null, by: va.me.userId });
+    // B отвечает своими деньгами; A не может заплатить больше, чем есть в казне
+    const enrage = await anya.tdCastSpell(id, "enrage_horde", req("war-spell"));
+    expect([enrage.target, enrage.treasuryCoins]).toEqual(["A", 38]);
+    await advance(1_000, [lotti, anya]);
+    const broke = await fail(lotti.tdSendUnit(id, "king", req("war-unit")));
+    expect([broke.status, broke.code, broke.details]).toEqual([409, "INSUFFICIENT_TEAM_FUNDS", { required: 25, treasuryCoins: 3 }]);
+    expect((await anya.td(id)).treasuryCoins).toBe(38);
+    // td_state обеих команд пришли по WS вместе с казной
+    expect(events.some((e) => e.type === "td_state" && (e.data as TdStateEvent).team === "A" && (e.data as TdStateEvent).treasuryCoins === 3)).toBe(true);
+    expect(events.some((e) => e.type === "td_state" && (e.data as TdStateEvent).team === "B" && (e.data as TdStateEvent).treasuryCoins === 38)).toBe(true);
+    const aView = await lotti.td(id);
+    expect(aView.round?.effects.map((e) => e.kind)).toEqual(["enrage_horde"]);
+    expect(aView.rival?.round?.effects.map((e) => e.kind)).toEqual(["slow_towers"]);
+
+    await advance(70_000, [lotti, anya]);
+    const [ra, rb] = await Promise.all([lotti.td(id), anya.td(id)]);
+    expect([ra.round?.status, rb.round?.status]).toEqual(["won", "lost"]);
+    expect(ra.duel).toEqual(rb.duel);
+    expect([ra.duel?.winner, ra.duel?.roundNo]).toEqual(["A", 1]);
+    const road = await anya.roadmap(id);
+    expect(road.teams.map((t) => [t.key, t.points, t.positionNodeId])).toEqual([["A", 1, "forest"], ["B", 0, "camp"]]);
+
+    // реванш: проигравшая дуэль B получает «Контратаку» и начинает раунд 2 для обеих команд
+    expect(rb.rematch).toMatchObject({ available: true, bonusTeam: "B", counterattackCoins: 40 });
+    const re = await anya.tdRematch(id);
+    expect([re.round?.roundNo, re.round?.status, re.treasuryCoins]).toEqual([2, "running", 78]);
+    expect(re.rival?.round?.roundNo).toBe(2);
+    const started = await until(() => events.find((e) => e.type === "td_rematch_started"));
+    expect(started.data).toMatchObject({ roundNo: 2, bonusTeam: "B", counterattackCoins: 40, teams: ["A", "B"] });
+    expect((await fail(lotti.tdRematch(id))).code).toBe("REMATCH_USED");
+    await advance(3 * 60_000, [lotti, anya]); // перерыв кончился: раунды 2 закрыты сервером
+    const after = await lotti.td(id);
+    expect(after.round?.status).not.toBe("running");
+    expect(after.duel?.roundNo).toBe(2);
+    sock.close();
+  }, LONG);
 });
 
 describe("клиент ↔ backend", () => {
@@ -240,7 +428,9 @@ describe("клиент ↔ backend", () => {
     const [pl, pa] = await Promise.all([lotti.progress(), anya.progress()]);
     expect(pl.xp).toBe(100);
     expect(pa.xp).toBe(0);
-    expect(end.challenge.points).toBe(1);
+    expect(end.challenge.focusPoints).toBe(1); // очко вклада — только за завершённую сессию
+    expect(end.challenge.points).toBe(0); // карту двигают только победы в TD
+    expect(end.challenge.treasuryCoins).toBe(50); // 30 стартовых + 20 за сессию Лотти
     expect(end.members.find((m) => m.name === "Аня2")?.status).toBe("aborted");
   });
 
@@ -292,9 +482,9 @@ describe("клиент ↔ backend", () => {
     for (const c of [...app.hub.conns]) c.ws.terminate();
     await sleep(1800);
     expect(events.filter((e) => e.type === "reward_granted" && (e.data as { kind: string }).kind === "focus_session")).toHaveLength(1);
-    expect((await lotti.progress()).xp).toBe(125); // 100 + 25 за этап карты
+    expect((await lotti.progress()).xp).toBe(100); // только за сессию: карта от фокуса больше не двигается
     sock.close();
-  }, 20000);
+  }, LONG);
 
   it("WebSocket отклоняет клиентские «команды-награды»", async () => {
     const u = await player("Читер");

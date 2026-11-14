@@ -186,16 +186,16 @@ await attack('Пакость игроку с отключёнными пакос
 });
 
 // ---------------------------------------------------------------- повторы и цены
-await attack('Повтор requestId постройки башни (1 + повтор + 5 параллельно), cost:0 в теле', 'списано один раз 15 монет (цена каталога)', async () => {
-  const c0 = (await H.progress()).coins;
+await attack('Повтор requestId постройки башни (1 + повтор + 5 параллельно), cost:0 в теле', 'из казны команды списано один раз 15 монет (цена каталога)', async () => {
+  const treasury = async () => (await H.get(pa('/td'))).body.treasuryCoins; // башни оплачивает казна команды
+  const c0 = await treasury();
   const id = reqId();
   const first = await H.post(pa('/td/build'), { slotId: 's1', type: 'arrow', requestId: id, cost: 0, price: 0 });
   const again = await H.post(pa('/td/build'), { slotId: 's1', type: 'arrow', requestId: id });
   const par = await Promise.all(Array.from({ length: 5 }, () => H.post(pa('/td/build'), { slotId: 's1', type: 'arrow', requestId: id })));
-  const c1 = (await H.progress()).coins;
-  const n = (await txOf(H, 'td_build')).length;
-  const ok = first.status === 201 && first.body.cost === 15 && again.body.replayed === true && par.every((x) => x.body.replayed === true) && c1 === c0 - 15 && n === 1;
-  return { ok, fact: `монет ${c0}→${c1}, списаний ${n}, повторы replayed=${again.body.replayed}` };
+  const c1 = await treasury();
+  const ok = first.status === 201 && first.body.cost === 15 && first.body.treasuryCoins === c0 - 15 && again.body.replayed === true && par.every((x) => x.body.replayed === true) && c1 === c0 - 15;
+  return { ok, fact: `казна ${c0}→${c1}, повторы replayed=${again.body.replayed}` };
 });
 await attack('Повтор покупки улучшения (тот же expectedLevel), price:-1000 в теле', 'вторая — 409 STALE_LEVEL, цена 30 из каталога', async () => {
   const c0 = (await H.progress()).coins;
@@ -217,7 +217,7 @@ await attack('10 параллельных покупок при деньгах �
 });
 
 // ---------------------------------------------------------------- изоляция комнат
-await attack('Изоляция комнат: прогресс, башни, задачи, соц-действия A не влияют на B', 'B: 1 очко, 0 башен, без задач и действий A', async () => {
+await attack('Изоляция комнат: прогресс, башни, задачи, соц-действия A не влияют на B', 'B: 1 очко вклада, 0 башен, без задач и действий A', async () => {
   const ra = (await H.get(pa('/roadmap'))).body;
   const rb = (await P.get(pb('/roadmap'))).body;
   const tdB = (await P.get(pb('/td'))).body;
@@ -227,8 +227,8 @@ await attack('Изоляция комнат: прогресс, башни, за�
   // и обратно: постройка в B не появляется в A
   await P.post(pb('/td/build'), { slotId: 's2', type: 'arrow', requestId: reqId() });
   const towersA = (await H.get(pa('/td'))).body.towers.map((t) => t.slot);
-  const ok = ra.points === 2 && rb.points === 1 && tdB.towers.length === 0 && !leak && socB.length === 0 && towersA.join() === 's1';
-  return { ok, fact: `очки A=${ra.points}, B=${rb.points}; башен в B ${tdB.towers.length}; задача A в B: ${leak ? 'да' : 'нет'}; действий в B ${socB.length}; башни A: ${towersA.join(',')}` };
+  const ok = ra.focusPoints === 2 && rb.focusPoints === 1 && tdB.towers.length === 0 && !leak && socB.length === 0 && towersA.join() === 's1';
+  return { ok, fact: `очки вклада A=${ra.focusPoints}, B=${rb.focusPoints}; башен в B ${tdB.towers.length}; задача A в B: ${leak ? 'да' : 'нет'}; действий в B ${socB.length}; башни A: ${towersA.join(',')}` };
 });
 
 clearInterval(beat);

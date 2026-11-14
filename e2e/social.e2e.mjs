@@ -113,7 +113,10 @@ try {
     assert((await lotti.page.getByTestId('stats-achievements').textContent()) === `${me.achievements.unlocked} из ${me.achievements.total}`, 'достижения расходятся с backend');
     assert(me.achievements.unlocked >= 2, 'за сессию и помощь должны быть достижения');
     assert((await lotti.page.locator('[data-achievement="helper"]').getAttribute('data-unlocked')) === 'true', 'достижение «Друг познаётся» не показано');
-    assert((await lotti.page.getByTestId('team-points-shared').textContent()) === '3 / 6 очков', 'командные очки');
+    // Tower Wars: карту двигают только победы в TD (0 / 4 после одного цикла), очки вклада и казна — отдельно
+    const rs = (await api(env, lotti, 'GET', `/api/rooms/${roomId}/stats`)).body;
+    assert((await lotti.page.getByTestId('team-points-shared').textContent()) === `карта: ${rs.teams[0].points} / ${rs.goal}`, 'прогресс команды по карте');
+    assert(rs.teams[0].focusPoints === 3, `очки вклада команды: ${rs.teams[0].focusPoints}`);
     assert((await lotti.page.locator('[data-team="shared"] tbody tr').count()) === 3, 'в таблице вклада не 3 участника');
     const bar = await lotti.page.locator('[data-day-bar="6"]').boundingBox();
     assert(bar && bar.height > 40, `столбик сегодняшнего дня не нарисован (высота ${bar?.height})`);

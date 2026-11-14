@@ -69,7 +69,9 @@ describe('статистика занятий', () => {
     assert.equal(st.body.totals.focusSeconds, 3 * 25 * 60);
     for (const t of st.body.teams) {
       assert.ok(t.members.every((m) => teamOf.get(m.userId) === t.key), 'участник посчитан в своей команде');
-      assert.equal(t.points, t.members.reduce((a, m) => a + m.points, 0));
+      assert.equal(t.focusPoints, t.members.reduce((a, m) => a + m.points, 0));
+      assert.equal(t.points, 0, 'карту двигают только победы в TD');
+      assert.equal(t.treasuryCoins, 30 + 20 * t.members.length);
       assert.equal(t.completedSessions, t.members.length);
     }
     assert.equal((await outsider.get(L.path('/stats'))).status, 403);

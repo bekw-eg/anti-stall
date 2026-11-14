@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Check, Copy, Headphones } from "lucide-react";
 import type { Member, Roadmap } from "@/api/tomato";
 import { initials, memberStatusLabel, readiness, roomLink } from "./format";
+import { isTdRoad } from "./roadmapGeometry";
 import { disabledReason } from "./socialRules";
 import type { Tomato } from "./useTomato";
 import type { Voice } from "./voice/useVoice";
@@ -164,10 +165,10 @@ export function RoadmapSlot({ road, inline = false }: { road: Roadmap; inline?: 
   return (
     <div className={inline ? "flex w-full items-center gap-3" : "w-full"} style={vars} aria-label={`Командная цель: ${road.points} из ${road.goal}`}>
       {inline ? (
-        <span className="hidden shrink-0 text-xs text-[var(--muted)] md:inline">{road.winner ? "Цель достигнута" : road.mode === "teams" ? "Гонка команд" : "Командная цель"}</span>
+        <span className="hidden shrink-0 text-xs text-[var(--muted)] md:inline">{road.winner ? "Цель достигнута" : road.mode === "teams" ? "Гонка команд" : isTdRoad(road) ? "Путь победами" : "Командная цель"}</span>
       ) : (
         <div className="mb-2 flex justify-between text-xs text-[var(--muted)]">
-          <span>{road.completed ? "Командная цель достигнута" : "Командная цель"}</span>
+          <span>{road.completed ? "Командная цель достигнута" : isTdRoad(road) ? "Путь победами в обороне" : "Командная цель"}</span>
           <span className="tabular-nums">{road.points}/{road.goal}</span>
         </div>
       )}

@@ -11,7 +11,7 @@ describe('игровая экономика и защита от накрутк�
     const L = await lobby(w, ['Хост', 'Гость']);
     await runFocus(w, L);
     const p = await L.host.progress();
-    assert.equal(p.xp, 125, '100 за сессию + 25 за этап карты (двое участников = 2 очка)');
+    assert.equal(p.xp, 100, '100 за сессию (узлы карты дают только победы в Tower Defense)');
     assert.equal(p.level, 2, '100 XP = 2 уровень');
     const ledger = (await L.host.get('/api/users/me/transactions')).body.transactions;
     const focusTx = ledger.find((t) => t.kind === 'focus_session');
@@ -188,7 +188,7 @@ describe('игровая экономика и защита от накрутк�
       const sessions = (await L.host.get('/api/users/me/sessions')).body.sessions;
       assert.deepEqual(sessions.map((s) => s.rewarded), [false, true, true]);
       assert.equal(sessions[0].endReason, 'daily_cap');
-      assert.equal((await L.host.progress()).xp, 225); // 2 награждённые сессии + 25 за этап карты
+      assert.equal((await L.host.progress()).xp, 200); // 2 награждённые сессии
     } finally { await w2.close(); }
   });
 
@@ -198,8 +198,13 @@ describe('игровая экономика и защита от накрутк�
       await runFocus(w, L);
       await w.advance(5 * 60_000, L.users);
     }
+    // победы в Tower Defense проводят команду по карте до крепости (так их фиксирует сервис TD)
+    const room = w.app.db.get('SELECT * FROM rooms WHERE id = ?', L.room.id);
+    for (const stage of ['camp', 'forest', 'bridge', 'fortress', 'fortress']) {
+      w.app.db.tx(() => w.app.services.game.recordStageVictory(room, 'shared', stage, [L.host.id]));
+    }
     const p = await L.host.progress();
-    assert.equal(p.xp, 600 + 50 + 150); // 6 сессий + 2 промежуточных этапа (по 25) + командная награда
+    assert.equal(p.xp, 600 + 3 * 25 + 150); // 6 сессий + 3 узла карты (по 25) + командная награда
     assert.ok(p.level >= 4);
     const ach = Object.fromEntries(p.achievements.map((a) => [a.id, a.unlocked]));
     assert.ok(ach.first_focus && ach.five_sessions && ach.team_player && ach.team_victory);

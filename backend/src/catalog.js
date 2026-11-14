@@ -41,15 +41,17 @@ export const ACHIEVEMENTS = {
 };
 
 // ---- Road Map: общая карта командного испытания (узлы + связи).
-// requiredPoints — сколько командных очков нужно для достижения узла.
+// Узлы двигают только победы в Tower Defense: победа в этапе узла i (TD.stages[i].node === nodes[i].id)
+// открывает узел i+1, победа в этапе последнего узла (крепость) — цель испытания.
+// requiredPoints — сколько побед в TD (переходов по карте) нужно, чтобы дойти до узла.
 export const ROADMAP = {
   id: 'forest-march',
   title: 'Марш к крепости экзамена',
   nodes: [
     { id: 'camp', title: 'Лагерь', x: 0.08, y: 0.72, requiredPoints: 0, type: 'start' },
-    { id: 'forest', title: 'Лес знаний', x: 0.3, y: 0.38, requiredPoints: 2, type: 'focus_goal' },
-    { id: 'bridge', title: 'Мост дедлайнов', x: 0.54, y: 0.66, requiredPoints: 4, type: 'focus_goal' },
-    { id: 'fortress', title: 'Крепость экзамена', x: 0.82, y: 0.3, requiredPoints: 6, type: 'boss' },
+    { id: 'forest', title: 'Лес знаний', x: 0.3, y: 0.38, requiredPoints: 1, type: 'focus_goal' },
+    { id: 'bridge', title: 'Мост дедлайнов', x: 0.54, y: 0.66, requiredPoints: 2, type: 'focus_goal' },
+    { id: 'fortress', title: 'Крепость экзамена', x: 0.82, y: 0.3, requiredPoints: 3, type: 'boss' },
   ],
   edges: [['camp', 'forest'], ['forest', 'bridge'], ['bridge', 'fortress']],
 };
@@ -91,6 +93,30 @@ export const TD = {
     tank: { id: 'tank', title: 'Тяжёлый', hp: 260, speed: 0.6, damage: 15 },
     boss: { id: 'boss', title: 'Босс', hp: 1400, speed: 0.5, damage: 40 },
   },
+  /**
+   * Tower Wars: наёмники, которых команда покупает из казны и выпускает на поле соперника
+   * (в shared — «Подкрепление волны» в свой раунд за награду). hp не масштабируется этапом,
+   * armor — доля поглощаемого урона башен: урон × (1 − armor).
+   */
+  mercenaries: {
+    cherry: { id: 'cherry', title: 'Черри-бегун', description: 'Крошечный и шустрый: проскакивает мимо медленных башен', cost: 2, hp: 30, speed: 1.6, damage: 3, armor: 0 },
+    ripe: { id: 'ripe', title: 'Спелый томат', description: 'Сбалансированный боец: давит числом', cost: 5, hp: 95, speed: 1.05, damage: 7, armor: 0 },
+    armored: { id: 'armored', title: 'Броне-томат в каске', description: 'Каска гасит четверть урона башен', cost: 12, hp: 280, speed: 0.65, damage: 15, armor: 0.25 },
+    king: { id: 'king', title: 'Томат-Дредноут', description: 'Ходячая крепость в латах: медленный, но почти неуязвимый', cost: 25, hp: 900, speed: 0.5, damage: 30, armor: 0.35 },
+  },
+  /**
+   * Заклинания из казны. target: 'self' — на свой раунд, 'rival' — на раунд соперника.
+   * duration — в игровых секундах; повтор того же заклинания продлевает срок, а не складывается.
+   */
+  spells: {
+    haste: { id: 'haste', title: 'Гипер-жабры Аксолотлей', description: 'Башни стреляют в 1.35 раза чаще', target: 'self', cost: 10, duration: 6, factor: 1.35 },
+    repair: { id: 'repair', title: 'Регенерация базы', description: '+20 к здоровью базы и щит: −30% урона по базе', target: 'self', cost: 12, duration: 5, heal: 20, factor: 0.3 },
+    slow_towers: { id: 'slow_towers', title: 'Сонная пыльца', description: 'Башни соперника перезаряжаются в 1.65 раза дольше', target: 'rival', cost: 10, duration: 6, factor: 1.65 },
+    disable_tower: { id: 'disable_tower', title: 'Кетчуп-заморозка', description: 'Самая прокачанная башня соперника не стреляет', target: 'rival', cost: 14, duration: 5 },
+    enrage_horde: { id: 'enrage_horde', title: 'Ярость Томатов', description: 'Враги на поле соперника бегут в 1.4 раза быстрее', target: 'rival', cost: 12, duration: 5, factor: 1.4 },
+  },
+  mercCooldownSec: 0.8, // пауза между отправками наёмников одной командой (реальные секунды)
+  mercBountyShared: 1.5, // в shared убийство «подкрепления» приносит в казну cost × 1.5
   /** Этапы привязаны к узлам Road Map: узел пройден командой → этап открыт. at — игровая секунда начала волны. */
   stages: [
     {

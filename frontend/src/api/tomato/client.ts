@@ -1,5 +1,5 @@
 import type {
-  Achievement, TdView, CreateRoomInput, HealthInfo, IceConfig, Me, Progress, RegisterOptions, Roadmap, RoomSnapshot, RoomStats, ServerEvent, SocialAction, StudySession, StudyStats, Upgrade, VoicePeer,
+  Achievement, TdBuildResult, TdSendUnitResult, TdSpellResult, TdView, CreateRoomInput, MercType, SpellId, HealthInfo, IceConfig, Me, Progress, RegisterOptions, Roadmap, RoomSnapshot, RoomStats, ServerEvent, SocialAction, StudySession, StudyStats, Upgrade, VoicePeer,
 } from "./types";
 
 export class TomatoApiError extends Error {
@@ -99,10 +99,19 @@ export class TomatoClient {
   td = (id: string) => this.request<TdView>("GET", `/api/rooms/${id}/td`);
   tdJoin = (id: string) => this.request<TdView>("POST", `/api/rooms/${id}/td/join`);
   tdStart = (id: string, stageId?: string) => this.request<TdView>("POST", `/api/rooms/${id}/td/start`, { stageId });
+  /** Цена списывается из казны команды; ответ несёт новый баланс казны */
   tdBuild = (id: string, slotId: string, type: string, requestId: string) =>
-    this.request<{ action: string; slotId: string; cost: number; replayed?: boolean }>("POST", `/api/rooms/${id}/td/build`, { slotId, type, requestId });
+    this.request<TdBuildResult>("POST", `/api/rooms/${id}/td/build`, { slotId, type, requestId });
   tdUpgrade = (id: string, slotId: string, requestId: string, expectedLevel?: number) =>
-    this.request<{ action: string; slotId: string; level: number; cost: number; replayed?: boolean }>("POST", `/api/rooms/${id}/td/upgrade`, { slotId, requestId, expectedLevel });
+    this.request<TdBuildResult>("POST", `/api/rooms/${id}/td/upgrade`, { slotId, requestId, expectedLevel });
+  /** Наёмник из казны: в teams — на поле соперника, в shared — «Подкрепление волны» в свой раунд */
+  tdSendUnit = (id: string, type: MercType, requestId: string) =>
+    this.request<TdSendUnitResult>("POST", `/api/rooms/${id}/td/send-unit`, { type, requestId });
+  /** Заклинание из казны: self — на свой раунд, rival — на раунд соперника */
+  tdCastSpell = (id: string, spell: SpellId, requestId: string) =>
+    this.request<TdSpellResult>("POST", `/api/rooms/${id}/td/spell`, { spell, requestId });
+  /** «Смена ролей / Реванш»: раунд 2 этого перерыва */
+  tdRematch = (id: string, stageId?: string) => this.request<TdView>("POST", `/api/rooms/${id}/td/rematch`, { stageId });
 
   /** Открывает WebSocket с авто-переподключением. */
   connect(): TomatoSocket {

@@ -2,7 +2,54 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
+
+/** Стартовый капитал казны (= config.economy.treasuryStart); нужен миграции v5 для уже существующих команд. */
+const DEFAULT_TREASURY_START = 30;
+
+// ---- Таблицы, которые миграция v5 пересобирает: одно описание и для новых БД, и для пересборки старых.
+// tableName — имя (с префиксом IF NOT EXISTS для SCHEMA или временное имя при пересборке).
+const TD_ROUNDS_DDL = (tableName) => `CREATE TABLE ${tableName} (
+  id TEXT PRIMARY KEY,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  team_key TEXT NOT NULL,
+  cycle_id TEXT NOT NULL,
+  stage_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running','won','lost','expired')),
+  started_at INTEGER NOT NULL,
+  ends_at INTEGER NOT NULL,
+  speed REAL NOT NULL,
+  state TEXT NOT NULL,
+  result TEXT,
+  finished_at INTEGER,
+  round_no INTEGER NOT NULL DEFAULT 1,
+  UNIQUE (room_id, team_key, cycle_id, round_no)
+)`;
+const TD_ACTIONS_DDL = (tableName) => `CREATE TABLE ${tableName} (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  team_key TEXT NOT NULL,
+  cycle_id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL CHECK (kind IN ('join','start','build','upgrade','send_unit','buff','debuff','rematch')),
+  request_id TEXT,
+  slot_id TEXT,
+  cost INTEGER NOT NULL DEFAULT 0,
+  result TEXT,
+  created_at INTEGER NOT NULL,
+  UNIQUE (user_id, request_id)
+)`;
+const TD_ACTIONS_INDEXES = 'CREATE INDEX IF NOT EXISTS td_actions_by_cycle ON td_actions(room_id, team_key, cycle_id);';
+const TD_DUELS_DDL = (tableName) => `CREATE TABLE ${tableName} (
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  cycle_id TEXT NOT NULL,
+  stage_id TEXT NOT NULL,
+  winner TEXT NOT NULL,
+  scores TEXT NOT NULL,
+  decided_at INTEGER NOT NULL,
+  round_no INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (room_id, cycle_id, round_no)
+)`;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -102,14 +149,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS one_active_session_per_user ON focus_sessions(
 CREATE INDEX IF NOT EXISTS sessions_by_user ON focus_sessions(user_id, started_at);
 
 -- team_key: 'shared' в MVP; 'A'/'B' зарезервированы под командные соревнования.
+-- points — очки вклада (фокус-сессии); treasury_coins — общая казна команды для Tower Defense (не уходит в минус);
+-- finished_at — команда победила финальный этап карты; completed_at — команда выиграла испытание (в 'teams' — первая).
 CREATE TABLE IF NOT EXISTS team_progress (
   room_id TEXT NOT NULL REFERENCES rooms(id),
   team_key TEXT NOT NULL,
   points INTEGER NOT NULL DEFAULT 0,
   completed_at INTEGER,
+  treasury_coins INTEGER NOT NULL DEFAULT 0 CHECK (treasury_coins >= 0),
+  finished_at INTEGER,
   PRIMARY KEY (room_id, team_key)
 );
--- Пройденные этапы карты: фиксируются сервером при пересечении порога очков (PRIMARY KEY = один раз).
+-- Достигнутые узлы карты: фиксируются сервером при победе в этапе Tower Defense (PRIMARY KEY = один раз).
 CREATE TABLE IF NOT EXISTS team_nodes (
   room_id TEXT NOT NULL REFERENCES rooms(id),
   team_key TEXT NOT NULL,
@@ -125,7 +176,7 @@ CREATE TABLE IF NOT EXISTS team_contributions (
   PRIMARY KEY (room_id, team_key, user_id)
 );
 
--- Tower Defense. Башни команды живут между перерывами; раунд — на один перерыв.
+-- Tower Defense. Башни команды живут между перерывами; раунд — на один перерыв (round_no 1, реванш — round_no 2).
 CREATE TABLE IF NOT EXISTS td_towers (
   room_id TEXT NOT NULL REFERENCES rooms(id),
   team_key TEXT NOT NULL,
@@ -136,48 +187,12 @@ CREATE TABLE IF NOT EXISTS td_towers (
   built_at INTEGER NOT NULL,
   PRIMARY KEY (room_id, team_key, slot_id)
 );
-CREATE TABLE IF NOT EXISTS td_rounds (
-  id TEXT PRIMARY KEY,
-  room_id TEXT NOT NULL REFERENCES rooms(id),
-  team_key TEXT NOT NULL,
-  cycle_id TEXT NOT NULL,
-  stage_id TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('running','won','lost','expired')),
-  started_at INTEGER NOT NULL,
-  ends_at INTEGER NOT NULL,
-  speed REAL NOT NULL,
-  state TEXT NOT NULL,
-  result TEXT,
-  finished_at INTEGER,
-  -- один раунд команды за перерыв: повторный старт невозможен
-  UNIQUE (room_id, team_key, cycle_id)
-);
+${TD_ROUNDS_DDL('IF NOT EXISTS td_rounds')};
 -- Журнал действий в игре. UNIQUE(user_id, request_id) — идемпотентность: повтор запроса не списывает монеты дважды.
-CREATE TABLE IF NOT EXISTS td_actions (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  room_id TEXT NOT NULL REFERENCES rooms(id),
-  team_key TEXT NOT NULL,
-  cycle_id TEXT NOT NULL,
-  user_id TEXT NOT NULL REFERENCES users(id),
-  kind TEXT NOT NULL CHECK (kind IN ('join','start','build','upgrade')),
-  request_id TEXT,
-  slot_id TEXT,
-  cost INTEGER NOT NULL DEFAULT 0,
-  result TEXT,
-  created_at INTEGER NOT NULL,
-  UNIQUE (user_id, request_id)
-);
-CREATE INDEX IF NOT EXISTS td_actions_by_cycle ON td_actions(room_id, team_key, cycle_id);
--- Исход дуэли команд A/B за перерыв (если обе сыграли один этап)
-CREATE TABLE IF NOT EXISTS td_duels (
-  room_id TEXT NOT NULL REFERENCES rooms(id),
-  cycle_id TEXT NOT NULL,
-  stage_id TEXT NOT NULL,
-  winner TEXT NOT NULL,
-  scores TEXT NOT NULL,
-  decided_at INTEGER NOT NULL,
-  PRIMARY KEY (room_id, cycle_id)
-);
+${TD_ACTIONS_DDL('IF NOT EXISTS td_actions')};
+${TD_ACTIONS_INDEXES}
+-- Исход дуэли команд A/B за перерыв (отдельно для каждого round_no)
+${TD_DUELS_DDL('IF NOT EXISTS td_duels')};
 
 CREATE TABLE IF NOT EXISTS user_effects (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,7 +227,8 @@ CREATE INDEX IF NOT EXISTS social_by_sender ON social_actions(sender_id, created
  * События (push в WebSocket) откладываются до COMMIT и отбрасываются при ROLLBACK.
  */
 export class Db {
-  constructor(path) {
+  /** options.treasuryStart — стартовый капитал, который миграция v5 выдаёт уже существующим командам. */
+  constructor(path, { treasuryStart = DEFAULT_TREASURY_START } = {}) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     this.sql = new DatabaseSync(path);
     this.sql.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA synchronous = NORMAL;');
@@ -220,22 +236,78 @@ export class Db {
     this.pending = [];
     this.sink = null;
     this.stmts = new Map();
+    this.treasuryStart = treasuryStart;
     this.migrate();
   }
 
+  /**
+   * Миграции: только аддитивные, данные сохраняются. Всё выполняется в одной транзакции;
+   * внешние ключи на время пересборки таблиц выключены (PRAGMA вне транзакции, иначе она игнорируется).
+   * Повторный запуск ничего не меняет: каждый шаг сначала проверяет текущую форму таблицы.
+   */
   migrate() {
-    // Только аддитивные миграции: существующие таблицы и данные не удаляются.
+    this.sql.exec('PRAGMA foreign_keys = OFF');
+    try {
+      this.sql.exec('BEGIN IMMEDIATE');
+      try {
+        this.migrateInTx();
+        this.sql.exec('COMMIT');
+      } catch (err) {
+        try { this.sql.exec('ROLLBACK'); } catch { /* транзакция уже закрыта */ }
+        throw err;
+      }
+    } finally {
+      this.sql.exec('PRAGMA foreign_keys = ON');
+    }
+  }
+
+  migrateInTx() {
+    const columns = (table) => this.sql.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    const tableSql = (table) => this.sql.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)?.sql ?? '';
+    // Новые БД сразу получают финальные формы таблиц; у старых CREATE IF NOT EXISTS ничего не трогает.
     this.sql.exec(SCHEMA);
     // v2: командный режим комнаты ('shared' — одна общая команда, 'teams' — Team A против Team B)
-    const cols = this.sql.prepare('PRAGMA table_info(rooms)').all().map((c) => c.name);
-    if (!cols.includes('mode')) this.sql.exec("ALTER TABLE rooms ADD COLUMN mode TEXT NOT NULL DEFAULT 'shared'");
+    if (!columns('rooms').includes('mode')) this.sql.exec("ALTER TABLE rooms ADD COLUMN mode TEXT NOT NULL DEFAULT 'shared'");
     // v3: статус готовности участника комнаты (is_ready)
-    const memberCols = this.sql.prepare('PRAGMA table_info(room_members)').all().map((c) => c.name);
-    if (!memberCols.includes('is_ready')) this.sql.exec('ALTER TABLE room_members ADD COLUMN is_ready INTEGER NOT NULL DEFAULT 0');
+    if (!columns('room_members').includes('is_ready')) this.sql.exec('ALTER TABLE room_members ADD COLUMN is_ready INTEGER NOT NULL DEFAULT 0');
     // v4: песочные аккаунты демо-режима (users.sandbox); все существующие пользователи — обычные
-    const userCols = this.sql.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
-    if (!userCols.includes('sandbox')) this.sql.exec('ALTER TABLE users ADD COLUMN sandbox INTEGER NOT NULL DEFAULT 0');
+    if (!columns('users').includes('sandbox')) this.sql.exec('ALTER TABLE users ADD COLUMN sandbox INTEGER NOT NULL DEFAULT 0');
+
+    // v5: казна команды; уже существующие команды получают стартовый капитал
+    if (!columns('team_progress').includes('treasury_coins')) {
+      this.sql.exec('ALTER TABLE team_progress ADD COLUMN treasury_coins INTEGER NOT NULL DEFAULT 0 CHECK (treasury_coins >= 0)');
+      this.sql.prepare('UPDATE team_progress SET treasury_coins = ?').run(this.treasuryStart);
+    }
+    // v5: победа над финальным этапом карты (у команд, уже выигравших испытание, — время победы)
+    if (!columns('team_progress').includes('finished_at')) {
+      this.sql.exec('ALTER TABLE team_progress ADD COLUMN finished_at INTEGER');
+      this.sql.exec('UPDATE team_progress SET finished_at = completed_at WHERE completed_at IS NOT NULL');
+    }
+    // v5: номер раунда (реванш) и уникальность (room, team, cycle, round_no)
+    if (!columns('td_rounds').includes('round_no')) this.rebuildTable('td_rounds', TD_ROUNDS_DDL);
+    // v5: новые виды действий Tower Wars
+    if (!tableSql('td_actions').includes("'send_unit'")) this.rebuildTable('td_actions', TD_ACTIONS_DDL, TD_ACTIONS_INDEXES);
+    // v5: дуэль считается отдельно для каждого раунда
+    if (!columns('td_duels').includes('round_no')) this.rebuildTable('td_duels', TD_DUELS_DDL);
+
     this.sql.prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version', ?)").run(String(SCHEMA_VERSION));
+  }
+
+  /**
+   * Безопасная пересборка таблицы (CREATE new → INSERT SELECT → DROP → RENAME), только внутри транзакции миграции.
+   * Переносятся общие колонки старой и новой формы; новые колонки получают значения по умолчанию.
+   */
+  rebuildTable(table, ddl, indexesSql = '') {
+    const tmp = `${table}__v${SCHEMA_VERSION}`;
+    this.sql.exec(`DROP TABLE IF EXISTS ${tmp}`);
+    this.sql.exec(ddl(tmp));
+    const newCols = this.sql.prepare(`PRAGMA table_info(${tmp})`).all().map((c) => c.name);
+    const oldCols = new Set(this.sql.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name));
+    const common = newCols.filter((c) => oldCols.has(c)).join(', ');
+    this.sql.exec(`INSERT INTO ${tmp} (${common}) SELECT ${common} FROM ${table}`);
+    this.sql.exec(`DROP TABLE ${table}`);
+    this.sql.exec(`ALTER TABLE ${tmp} RENAME TO ${table}`);
+    if (indexesSql) this.sql.exec(indexesSql);
   }
 
   stmt(sql) {
