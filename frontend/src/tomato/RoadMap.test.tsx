@@ -109,6 +109,6 @@ describe("RoadMap: новые правила — узлы открывают п�
     expect(host.textContent).toContain("Узлы карты открывают победы в Tower Defense");
     expect(host.textContent).not.toContain("Очко команде даёт каждая завершённая фокус-сессия");
     expect(q('[data-testid="road-team-stats"]')!.textContent).toContain("Очки вклада: 7");
-    expect(q('[data-testid="road-team-stats"]')!.textContent).toContain("Казна: 42🪙");
+    expect(q('[data-testid="road-team-stats"]')!.textContent).toContain("Казна: 42");
   });
 });

@@ -1,13 +1,14 @@
 /**
  * 07 Room / Focus (Figma, страница back): тёмный экран, чтобы было видно, что идёт фокус.
- * Слева участники, в центре таймер (время — с сервера), справа закрытая карта. Игра и пакости откроются на перерыве.
+ * Слева участники, в центре таймер (время — с сервера), справа чат комнаты. Игра и пакости откроются на перерыве.
  */
 import { useEffect, useRef, useState } from "react";
 import { Lock, PenLine, SkipForward } from "lucide-react";
 import { STATUS_LABEL, formatTime } from "../format";
 import type { Tomato } from "../useTomato";
 import { StickerBoard, StickerHint, type Stickers } from "./Stickers";
-import { MemberAvatar, RoadmapArt } from "./ui";
+import { ChatPanel } from "../ChatPanel";
+import { MemberAvatar } from "./ui";
 
 /**
  * Тёмная обводка и жёсткая тень у цифр: на тёмном фоне почти не видны, а когда сзади стикер —
@@ -135,16 +136,13 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
         <HostSkip t={t} remaining={remaining} />
       </section>
 
-      {/* ---------- Закрытая карта ---------- */}
-      <aside aria-label="Карта закрыта" className="order-3 lg:order-none">
-        <div className="relative flex h-full min-h-[180px] items-center justify-center overflow-hidden rounded-[28px] bg-rose sm:min-h-[220px] lg:min-h-[480px]">
-          <RoadmapArt className="absolute h-auto w-[150%] max-w-none opacity-80 blur-[2px] lg:w-[155%] lg:rotate-90" />
-          <div className="relative flex flex-col items-center gap-3 bg-ink/45 px-6 py-6 text-center lg:absolute lg:inset-0 lg:justify-center">
-            <span className="flex h-14 w-14 items-center justify-center rounded-[18px] bg-cream text-ink sm:h-[68px] sm:w-[68px]"><Lock size={28} aria-hidden /></span>
-            <p className="font-display text-2xl text-cream sm:text-[28px]"><span className="relative top-0.5">Карта закрыта</span></p>
-            <p data-testid="game-later" className="max-w-[18rem] text-base text-[#F3E1DC]">Игра откроется на перерыве</p>
-            <p className="max-w-[18rem] text-sm text-[#F3E1DC]/80">Пакости вас не достанут, пока идёт фокус.</p>
-          </div>
+      {/* ---------- Чат комнаты (в фокусе — только чтение) ---------- */}
+      <aside aria-label="Чат комнаты" className="order-3 flex min-h-0 flex-col gap-2 lg:order-none lg:max-h-[calc(100dvh-13rem)]">
+        <p data-testid="game-later" className="flex items-center gap-2 self-start rounded-full bg-cocoa px-3 py-1 text-[13px] font-bold text-[#F3E1DC]">
+          <Lock size={14} aria-hidden />Игра откроется на перерыве
+        </p>
+        <div className="flex min-h-[260px] flex-1 flex-col overflow-hidden rounded-[28px] border-2 border-[#8A625C] bg-[#4A2E2B] lg:min-h-[420px]">
+          <ChatPanel t={t} />
         </div>
       </aside>
     </div>

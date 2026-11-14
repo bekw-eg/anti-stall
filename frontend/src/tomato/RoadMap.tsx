@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
+import { Castle, Check, Flag, Lock } from "lucide-react";
 import type { Roadmap, RoadmapNode } from "@/api/tomato";
 import { NODE_STATUS_LABEL, defaultNode, edgeFill, isTdRoad, nodeById } from "./roadmapGeometry";
+import { SeedIcon } from "./screens/ui";
 
 const MARKER_SPRING = { type: "spring", stiffness: 90, damping: 18, mass: 1 } as const;
 /** Название этапа TD: этапы привязаны к узлам карты (id этапа = id узла) */
@@ -18,167 +20,216 @@ function requirementLong(road: Roadmap, n: RoadmapNode) {
   return `Нужно командных очков: ${n.requiredPoints}`;
 }
 
+/** Узел-«шайба» на доске: пройденный — объёмная, текущий — крупнее с флажком, следующий — мигает, закрытый — контур. */
+function NodeToken({ n, here, next }: { n: RoadmapNode; here: boolean; next: boolean }) {
+  const done = n.status === "completed" || n.status === "current";
+  const goal = n.type === "boss";
+  if (here) {
+    return (
+      <span className="relative flex items-center justify-center">
+        <span className="absolute h-[4.5rem] w-[4.5rem] rounded-full border-2 border-dashed border-cream/80 sm:h-24 sm:w-24" aria-hidden />
+        <span className="relative h-10 w-14 rounded-[50%] bg-peach shadow-[0_6px_0_#6E4641] sm:h-12 sm:w-[4.25rem]">
+          <span className="absolute left-1/2 top-1.5 h-2.5 w-7 -translate-x-1/2 rounded-[50%] bg-blush/80" aria-hidden />
+        </span>
+        <Flag className="absolute -top-7 left-1/2 h-7 w-7 -translate-x-[15%] fill-cream text-ink sm:-top-8 sm:h-8 sm:w-8" strokeWidth={2} aria-hidden />
+      </span>
+    );
+  }
+  if (done) {
+    return (
+      <span className="relative flex h-8 w-11 items-center justify-center rounded-[50%] bg-peach shadow-[0_5px_0_#6E4641] sm:h-9 sm:w-12">
+        <span className="absolute left-1/2 top-1 h-2 w-6 -translate-x-1/2 rounded-[50%] bg-blush/80" aria-hidden />
+        {goal ? <Castle size={18} className="relative text-ink" aria-hidden /> : <Check size={16} strokeWidth={3} className="relative mt-1 text-ink/70" aria-hidden />}
+      </span>
+    );
+  }
+  if (next) {
+    return (
+      <span className="as-blink flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-cream sm:h-12 sm:w-12" data-testid="next-node">
+        {goal && <Castle size={20} className="text-ink" aria-hidden />}
+      </span>
+    );
+  }
+  return (
+    <span className={`flex items-center justify-center rounded-full border-2 border-blush/60 ${goal ? "h-11 w-11 bg-blush/90 sm:h-12 sm:w-12" : "h-8 w-8 sm:h-9 sm:w-9"}`}>
+      {goal ? <Castle size={20} className="text-ink" aria-hidden /> : <Lock size={13} className="text-blush/70" aria-hidden />}
+    </span>
+  );
+}
+
 /**
- * Интерактивная Road Map. Всё состояние (позиция, пройденные/закрытые этапы, доли пути, вклад)
- * приходит с сервера в `road`; здесь нет ни логики продвижения, ни собственных очков.
- * Маркер плавно переезжает, когда сервер меняет `positionNodeId`.
- * Во время Focus ничего не пульсирует: анимируются только изменения состояния.
+ * Карта команды — «доска»: узлы-шайбы на дороге, флажок там, где команда сейчас, следующий этап мигает.
+ * Всё состояние (позиция, пройденные/закрытые этапы, доли пути, вклад) приходит с сервера в `road`.
+ * Маркеры команд плавно переезжают, когда сервер меняет `positionNodeId`.
  */
 export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
   const [picked, setPicked] = useState<string | null>(null);
-  // left/top и pathLength не относятся к «transform»-анимациям, поэтому MotionConfig их не отключает — делаем это сами
   const reduce = useReducedMotion();
   const instant = { duration: 0 };
   const selected = nodeById(road, picked ?? "") ?? defaultNode(road);
   const pct = Math.min(100, (road.points / road.goal) * 100);
   const tdRules = isTdRoad(road);
   const nextText = road.next ? (road.next.stageId ? `До «${road.next.title}»: победа на этапе «${stageName(road, road.next.stageId)}»` : `До «${road.next.title}»: ещё ${road.next.pointsNeeded}`) : null;
+  const myTeam = road.teams.find((t) => t.key === road.teamKey) ?? road.teams[0];
+  const hereId = myTeam?.positionNodeId;
+  const nextId = road.next?.nodeId;
+  const cleared = road.nodes.filter((n) => n.status === "completed" || n.status === "current").length;
+  const levelNo = Math.max(1, road.nodes.findIndex((n) => n.id === hereId) + 1);
 
   return (
-    <div className="flex h-full w-full flex-col gap-3 overflow-hidden p-3 sm:p-5 lg:flex-row" aria-label={`Road Map: ${road.title}`}>
-      {/* Карта */}
-      <div className="relative min-h-[11rem] flex-1">
-        <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
-          {road.edges.map(([a, b]) => {
-            const na = nodeById(road, a)!, nb = nodeById(road, b)!;
-            const fill = edgeFill(road, a, b);
-            const common = { x1: na.x * 100, y1: na.y * 100, x2: nb.x * 100, y2: nb.y * 100, vectorEffect: "non-scaling-stroke" as const };
-            return (
-              <g key={`${a}-${b}`}>
-                <line {...common} stroke="currentColor" strokeOpacity={0.22} strokeWidth={2} strokeDasharray={fill >= 1 ? undefined : "2 6"} strokeLinecap="round" />
-                <motion.line {...common} stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" initial={false} animate={{ pathLength: fill }} transition={reduce ? instant : { duration: 0.9, ease: "easeInOut" }} />
-              </g>
-            );
-          })}
-        </svg>
+    <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-4 sm:p-6" aria-label={`Road Map: ${road.title}`}>
+      {/* ---------- Доска ---------- */}
+      <div className="relative sm:pt-4">
+        <ul className="relative z-20 mb-3 flex flex-wrap gap-2 sm:absolute sm:inset-x-10 sm:top-0 sm:mb-0 sm:justify-between" aria-label="Обозначения">
+          <li className="as-pill border-2 border-ink bg-white text-ink"><span className="h-2.5 w-2.5 rounded-full bg-peach" aria-hidden />пройдено {cleared}</li>
+          <li className="as-pill border-2 border-ink bg-white text-ink"><Flag size={13} className="fill-ink" aria-hidden />вы здесь · уровень {levelNo} из {road.nodes.length}</li>
+          <li className="as-pill hidden border-2 border-ink bg-white text-ink sm:inline-flex"><Castle size={13} aria-hidden />цель сезона</li>
+        </ul>
+        <div
+          className="relative w-full overflow-hidden rounded-[40px] bg-rose [aspect-ratio:1.15/1] sm:rounded-full sm:[aspect-ratio:2.7/1]"
+          style={{ backgroundImage: "radial-gradient(rgba(59,36,34,.22) 1.2px, transparent 1.6px)", backgroundSize: "34px 34px" }}
+        >
+          <div className="absolute inset-x-[7%] bottom-[16%] top-[24%]">
+            <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+              {road.edges.map(([a, b]) => {
+                const na = nodeById(road, a)!, nb = nodeById(road, b)!;
+                const fill = edgeFill(road, a, b);
+                const common = { x1: na.x * 100, y1: na.y * 100, x2: nb.x * 100, y2: nb.y * 100, vectorEffect: "non-scaling-stroke" as const };
+                return (
+                  <g key={`${a}-${b}`}>
+                    <line {...common} stroke="#FFCEC2" strokeOpacity={0.45} strokeWidth={4} strokeDasharray={fill >= 1 ? undefined : "2 9"} strokeLinecap="round" />
+                    <motion.line {...common} stroke="#FFCEC2" strokeWidth={5} strokeLinecap="round" initial={false} animate={{ pathLength: fill }} transition={reduce ? instant : { duration: 0.9, ease: "easeInOut" }} />
+                  </g>
+                );
+              })}
+            </svg>
 
-        {road.nodes.map((n) => {
-          const done = n.status === "completed" || n.status === "current";
-          const isSel = selected.id === n.id;
-          return (
-            <button
-              key={n.id}
-              type="button"
-              onClick={() => setPicked(n.id)}
-              aria-label={`${n.title}: ${NODE_STATUS_LABEL[n.status]}, ${requirementShort(road, n)}`}
-              aria-pressed={isSel}
-              className="group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1.5 focus-visible:outline-none"
-              style={{ left: `${n.x * 100}%`, top: `${n.y * 100}%` }}
-            >
-              <span
-                className={`flex items-center justify-center rounded-full border-2 transition-colors duration-500 group-focus-visible:ring-2 group-focus-visible:ring-offset-2 group-focus-visible:ring-[var(--fg)] ${n.type === "boss" ? "h-8 w-8 sm:h-10 sm:w-10" : "h-5 w-5 sm:h-7 sm:w-7"} ${
-                  done ? "border-[var(--fg)] bg-[var(--fg)]" : n.status === "next" ? "border-[var(--fg)] border-dashed bg-transparent" : "border-[var(--line)] bg-transparent opacity-60"
-                } ${isSel ? "ring-2 ring-[var(--fg)] ring-offset-2 ring-offset-transparent" : ""}`}
-              >
-                {n.type === "boss" && <span className={`h-2 w-2 rounded-full ${done ? "bg-[var(--field)]" : "bg-[var(--fg)]"}`} />}
-              </span>
-              <span className={`max-w-[6.5rem] text-center text-[11px] leading-tight sm:text-xs ${n.status === "locked" ? "text-[var(--muted)] opacity-70" : "text-[var(--fg)]"}`}>{n.title}</span>
-            </button>
-          );
-        })}
+            {road.nodes.map((n) => {
+              const isSel = selected.id === n.id;
+              const here = n.id === hereId;
+              const next = n.id === nextId;
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => setPicked(n.id)}
+                  aria-label={`${n.title}: ${NODE_STATUS_LABEL[n.status]}, ${requirementShort(road, n)}`}
+                  aria-pressed={isSel}
+                  className="group absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 rounded-2xl focus-visible:outline-none"
+                  style={{ left: `${n.x * 100}%`, top: `${n.y * 100}%` }}
+                >
+                  <span className={`rounded-full transition-transform group-hover:scale-105 group-focus-visible:ring-2 group-focus-visible:ring-cream ${isSel ? "ring-2 ring-cream ring-offset-4 ring-offset-rose" : ""}`}>
+                    <NodeToken n={n} here={here} next={next} />
+                  </span>
+                  <span className={`${here ? "mt-3 sm:mt-5" : ""} max-w-[6.5rem] whitespace-nowrap text-center text-[11px] font-extrabold leading-tight sm:max-w-none sm:text-sm ${n.status === "locked" && !next ? "text-cream/60" : "text-cream"}`}>
+                    {n.title}
+                    {next && <span className="ml-1 hidden rounded-full bg-cream px-1.5 py-px text-[10px] font-extrabold text-ink sm:inline">дальше</span>}
+                  </span>
+                </button>
+              );
+            })}
 
-        {/* Маркеры команд: переезжают по серверной позиции. Две команды на одном узле расходятся в стороны. */}
-        {road.teams.map((team, i) => {
-          const at = nodeById(road, team.positionNodeId);
-          if (!at) return null;
-          const same = road.teams.filter((x) => x.positionNodeId === team.positionNodeId);
-          const offset = (same.indexOf(team) - (same.length - 1) / 2) * 64;
-          const mine = team.key === road.teamKey;
-          const filled = i === 0;
-          return (
-            <motion.div
-              key={team.key}
-              data-testid={`marker-${team.key}`}
-              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-1/2"
-              initial={false}
-              animate={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }}
-              transition={reduce ? instant : MARKER_SPRING}
-              aria-hidden
-            >
-              <span className="relative -top-7 flex flex-col items-center sm:-top-9" style={{ marginLeft: offset }}>
-                <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-medium ${filled ? "bg-[var(--fg)] text-[var(--field)]" : "border border-[var(--fg)] bg-[var(--field)] text-[var(--fg)]"} ${mine && road.mode === "teams" ? "ring-2 ring-[var(--fg)] ring-offset-1 ring-offset-transparent" : ""}`}>{team.name}</span>
-                <span className="h-2 w-px bg-[var(--fg)]" />
-              </span>
-            </motion.div>
-          );
-        })}
+            {/* Маркеры команд: переезжают по серверной позиции. Две команды на одном узле расходятся в стороны. */}
+            {road.teams.map((team) => {
+              const at = nodeById(road, team.positionNodeId);
+              if (!at) return null;
+              const same = road.teams.filter((x) => x.positionNodeId === team.positionNodeId);
+              const offset = (same.indexOf(team) - (same.length - 1) / 2) * 60;
+              const mine = team.key === road.teamKey || road.mode !== "teams";
+              const label = road.mode === "teams" ? `${team.key}${mine ? " · мы" : ""}` : "Мы";
+              return (
+                <motion.div
+                  key={team.key}
+                  data-testid={`marker-${team.key}`}
+                  className="pointer-events-none absolute z-10 -translate-x-1/2"
+                  initial={false}
+                  animate={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }}
+                  transition={reduce ? instant : MARKER_SPRING}
+                  aria-hidden
+                >
+                  <span className={`relative flex flex-col items-center ${team.positionNodeId === hereId ? "-top-[5.75rem] sm:-top-[6.75rem]" : "-top-[3.75rem] sm:-top-[4.25rem]"}`} style={{ marginLeft: offset }}>
+                    <span className={`whitespace-nowrap rounded-full border-2 border-ink px-2 py-0.5 text-[11px] font-extrabold sm:text-xs ${mine ? "bg-ink text-cream" : "bg-white text-ink"}`}>{label}</span>
+                  </span>
+                </motion.div>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
-      {/* Подробности: этап, прогресс общего испытания, вклад участников */}
-      <aside className="flex shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl bg-[var(--card)] p-4 text-sm text-[var(--fg)] lg:w-72">
-        <div>
-          <p className="text-[15px] font-bold text-[var(--muted)]">{NODE_STATUS_LABEL[selected.status]}</p>
-          <p className="mt-1 text-base font-medium">{selected.title}</p>
-          <p className="mt-1 text-xs text-[var(--muted)]">
-            {requirementLong(road, selected)}
-            {selected.reward && ` · награда ${selected.reward.xp} XP, ${selected.reward.coins} монет`}
-            {selected.reachedAt && ` · пройден ${new Date(selected.reachedAt).toLocaleTimeString()}`}
-          </p>
-        </div>
+      {/* ---------- Подробности: этап, прогресс, вклад ---------- */}
+      <aside className="grid gap-3 text-sm text-ink sm:grid-cols-2">
+        <section className="flex flex-col gap-1.5 rounded-[20px] bg-paper p-4">
+          <p className="text-[13px] font-extrabold uppercase tracking-wide text-mute">{NODE_STATUS_LABEL[selected.status]}</p>
+          <p className="font-display text-xl leading-tight"><span className="relative top-0.5">{selected.title}</span></p>
+          <p className="text-[13px] text-mute">{requirementLong(road, selected)}</p>
+          {selected.reward && (
+            <p className="flex items-center gap-1.5 text-[13px] font-bold">награда {selected.reward.xp} XP, {selected.reward.coins} монет <SeedIcon className="h-4 w-4" /></p>
+          )}
+          {selected.reachedAt && <p className="text-xs text-mute">пройден {new Date(selected.reachedAt).toLocaleTimeString()}</p>}
+          {road.winner && (
+            <p role="status" className="mt-1 rounded-xl bg-ink px-3 py-2 text-xs font-bold text-cream">
+              {road.winner === "draw" ? "Ничья: обе команды достигли цели" : road.mode === "teams" ? `Победила команда ${road.winner}${road.winner === road.teamKey ? " — это вы" : ""}` : "Цель достигнута"}
+            </p>
+          )}
+        </section>
 
-        {road.winner && (
-          <p role="status" className="rounded-xl bg-[var(--fg)] px-3 py-2 text-xs font-medium text-[var(--field)]">
-            {road.winner === "draw" ? "Ничья: обе команды достигли цели" : road.mode === "teams" ? `Победила команда ${road.winner}${road.winner === road.teamKey ? " — это вы" : ""}` : "Цель достигнута"}
-          </p>
-        )}
-
-        <div>
+        <section className="flex flex-col gap-2.5 rounded-[20px] bg-paper p-4">
           {road.mode === "teams" ? (
             <ul className="flex flex-col gap-2.5">
               {road.teams.map((team) => (
                 <li key={team.key}>
                   <div className="mb-1 flex justify-between text-xs">
-                    <span className={team.key === road.teamKey ? "font-medium" : "text-[var(--muted)]"}>{team.name}{team.key === road.teamKey && " (вы)"}</span>
-                    <span className="tabular-nums text-[var(--muted)]">{team.points}/{road.goal}</span>
+                    <span className={team.key === road.teamKey ? "font-extrabold" : "text-mute"}>{team.name}{team.key === road.teamKey && " (вы)"}</span>
+                    <span className="tabular-nums text-mute">{team.points}/{road.goal}</span>
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-[var(--line)]" role="progressbar" aria-label={team.name} aria-valuenow={team.points} aria-valuemin={0} aria-valuemax={road.goal}>
-                    <motion.div className="h-full rounded-full bg-[var(--fg)]" initial={false} animate={{ width: `${Math.min(100, (team.points / road.goal) * 100)}%` }} transition={reduce ? instant : { duration: 0.8 }} />
+                  <div className="h-2.5 overflow-hidden rounded-full border-2 border-ink bg-white" role="progressbar" aria-label={team.name} aria-valuenow={team.points} aria-valuemin={0} aria-valuemax={road.goal}>
+                    <motion.div className={`h-full rounded-full ${team.key === road.teamKey ? "bg-peach" : "bg-line"}`} initial={false} animate={{ width: `${Math.min(100, (team.points / road.goal) * 100)}%` }} transition={reduce ? instant : { duration: 0.8 }} />
                   </div>
                 </li>
               ))}
-              {road.next && <p className="text-xs text-[var(--muted)]">Вашей команде {nextText!.replace(/^До/, "до")}</p>}
+              {road.next && <p className="text-xs text-mute">Вашей команде {nextText!.replace(/^До/, "до")}</p>}
             </ul>
           ) : (
-            <>
-              <div className="mb-1.5 flex justify-between text-xs text-[var(--muted)]">
+            <div>
+              <div className="mb-1.5 flex justify-between text-xs text-mute">
                 <span>{road.completed ? "Цель достигнута" : nextText ?? road.title}</span>
                 <span className="tabular-nums">{road.points}/{road.goal}</span>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--line)]" role="progressbar" aria-valuenow={road.points} aria-valuemin={0} aria-valuemax={road.goal}>
-                <motion.div className="h-full rounded-full bg-[var(--fg)]" initial={false} animate={{ width: `${pct}%` }} transition={reduce ? instant : { duration: 0.8 }} />
+              <div className="h-2.5 overflow-hidden rounded-full border-2 border-ink bg-white" role="progressbar" aria-valuenow={road.points} aria-valuemin={0} aria-valuemax={road.goal}>
+                <motion.div className="h-full rounded-full bg-peach" initial={false} animate={{ width: `${pct}%` }} transition={reduce ? instant : { duration: 0.8 }} />
               </div>
-            </>
+            </div>
           )}
           {tdRules ? (
             <>
-              <p className="mt-2 text-xs text-[var(--muted)]">Узлы карты открывают победы в Tower Defense на перерыве. Фокус-сессии дают очки вклада и пополняют казну команды — это проверяет сервер.</p>
+              <p className="text-xs text-mute">Узлы карты открывают победы в Tower Defense на перерыве. Фокус-сессии пополняют казну команды.</p>
               {(typeof road.focusPoints === "number" || typeof road.treasuryCoins === "number") && (
-                <p className="mt-1 flex justify-between text-xs" data-testid="road-team-stats">
+                <p className="flex justify-between text-xs font-bold" data-testid="road-team-stats">
                   {typeof road.focusPoints === "number" && <span>Очки вклада: <span className="tabular-nums">{road.focusPoints}</span></span>}
-                  {typeof road.treasuryCoins === "number" && <span>Казна: <span className="tabular-nums">{road.treasuryCoins}🪙</span></span>}
+                  {typeof road.treasuryCoins === "number" && <span className="inline-flex items-center gap-1">Казна: <span className="tabular-nums">{road.treasuryCoins}</span><SeedIcon className="h-3.5 w-3.5" /></span>}
                 </p>
               )}
             </>
           ) : (
-            <p className="mt-2 text-xs text-[var(--muted)]">Очко команде даёт каждая завершённая фокус-сессия — это проверяет сервер.</p>
+            <p className="text-xs text-mute">Очко команде даёт каждая завершённая фокус-сессия — это проверяет сервер.</p>
           )}
-        </div>
-
-        <div>
-          <p className="mb-1.5 text-[15px] font-bold text-[var(--muted)]">Вклад</p>
-          {road.contributions.length === 0 ? (
-            <p className="text-xs text-[var(--muted)]">Пока никто не внёс очков.</p>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {road.contributions.map((c) => (
-                <li key={c.userId} className="flex justify-between text-xs">
-                  <span className="truncate">{c.name}{c.team && ` · ${c.team}`}{c.userId === meId && " (вы)"}</span>
-                  <span className="tabular-nums">{c.points}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+          <div>
+            <p className="mb-1 text-xs font-extrabold text-mute">Вклад</p>
+            {road.contributions.length === 0 ? (
+              <p className="text-xs text-mute">Пока никто не внёс очков.</p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {road.contributions.map((c) => (
+                  <li key={c.userId} className="flex justify-between text-xs">
+                    <span className="truncate">{c.name}{c.team && ` · ${c.team}`}{c.userId === meId && " (вы)"}</span>
+                    <span className="tabular-nums">{c.points}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
       </aside>
     </div>
   );

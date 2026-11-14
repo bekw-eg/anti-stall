@@ -92,7 +92,7 @@ export function SheetPanel({ t, sheet, onClose, top = 0 }: { t: Tomato; sheet: S
           <button ref={closeRef} type="button" onClick={onClose} aria-label="Закрыть панель" className="flex h-11 w-11 items-center justify-center rounded-[14px] border-2 border-ink bg-white as-shadow-sm"><X size={20} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {sheet === "map" && <div className="h-[min(78vh,640px)] min-h-[420px]"><RoadMap road={t.snapshot.challenge} meId={t.snapshot.me?.userId} /></div>}
+          {sheet === "map" && <div><RoadMap road={t.snapshot.challenge} meId={t.snapshot.me?.userId} /></div>}
           {sheet === "stats" && <StatsPanel t={t} />}
           {sheet === "social" && <SocialPanel t={t} />}
           {sheet === "profile" && (

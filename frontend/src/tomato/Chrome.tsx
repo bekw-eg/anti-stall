@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
+import { Sparkles } from "lucide-react";
 import type { Conn, Toast } from "./useTomato";
 
 /** Состояние соединения: подключение, переподключение, офлайн. Только когда есть что сказать. */
@@ -53,23 +54,49 @@ export function DemoBadge({ compact = false, className = "" }: { compact?: boole
   );
 }
 
+/**
+ * Уведомления. Обычные — пилюлями слева внизу; награды («+7 XP · +6 монет») — крупно по центру экрана,
+ * чтобы их было видно поверх игры.
+ */
 export function Toasts({ toasts }: { toasts: Toast[] }) {
+  const plain = toasts.filter((t) => t.tone !== "reward");
+  const rewards = toasts.filter((t) => t.tone === "reward");
   return (
-    <div className="pointer-events-none absolute bottom-28 left-5 z-30 flex flex-col items-start gap-2 sm:left-8" aria-live="polite">
-      <AnimatePresence>
-        {toasts.map((t) => (
-          <motion.div
-            key={t.id}
-            layout
-            initial={{ opacity: 0, y: -10, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10 }}
-            className={`rounded-full px-4 py-2 text-sm shadow-lg ${t.tone === "error" ? "bg-red-600 text-white" : t.tone === "warning" ? "bg-amber-400 text-zinc-950 ring-1 ring-amber-600/30" : "bg-white text-zinc-900 ring-1 ring-black/10"}`}
-          >
-            {t.text}
-          </motion.div>
-        ))}
-      </AnimatePresence>
-    </div>
+    <>
+      <div className="pointer-events-none fixed bottom-28 left-4 z-40 flex max-w-[calc(100vw-2rem)] flex-col items-start gap-2 sm:left-8" aria-live="polite">
+        <AnimatePresence>
+          {plain.map((t) => (
+            <motion.div
+              key={t.id}
+              layout
+              initial={{ opacity: 0, y: -10, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10 }}
+              className={`rounded-full border-2 border-ink px-4 py-2 text-sm font-extrabold shadow-[0_4px_0_#3B2422] ${t.tone === "error" ? "bg-rose text-white" : t.tone === "warning" ? "bg-peach text-ink" : "bg-white text-ink"}`}
+            >
+              {t.text}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+      <div className="pointer-events-none fixed inset-x-0 top-[26%] z-50 flex flex-col items-center gap-3 px-4" aria-live="polite">
+        <AnimatePresence>
+          {rewards.map((t) => (
+            <motion.div
+              key={t.id}
+              data-testid="reward-pop"
+              initial={{ opacity: 0, scale: 0.5, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, y: -30 }}
+              transition={{ type: "spring", stiffness: 300, damping: 18 }}
+              className="flex items-center gap-3 rounded-full border-[3px] border-ink bg-white px-6 py-3 text-ink shadow-[0_6px_0_#3B2422]"
+            >
+              <Sparkles size={26} className="shrink-0 text-peach" strokeWidth={2.6} aria-hidden />
+              <span className="font-display text-2xl leading-none sm:text-3xl"><span className="relative top-0.5">{t.text}</span></span>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+    </>
   );
 }
