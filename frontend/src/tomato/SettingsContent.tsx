@@ -1,42 +1,51 @@
 import { useState } from "react";
-import { motion } from "framer-motion";
 import { Check, ChevronLeft, ChevronRight, Copy, LogOut } from "lucide-react";
-import { extractRoomCode, roomLink } from "./format";
+import { extractRoomCode, formatSpan, roomLink } from "./format";
 import { ProfilePanel } from "./ProfilePanel";
-import type { Tomato } from "./useTomato";
-
-const WORK_PRESETS = [15, 25, 45, 50];
-const REST_PRESETS = [5, 10, 15];
+import { DEFAULT_LIMITS, type Tomato } from "./useTomato";
 
 const field =
   "w-full rounded-xl border-0 bg-white/80 px-4 py-3 text-[15px] text-zinc-900 outline-none ring-1 ring-black/5 transition placeholder:text-zinc-400 focus:bg-white focus:ring-2 focus:ring-zinc-900 disabled:opacity-60";
 
-function Segmented({ label, values, value, onChange, disabled }: { label: string; values: number[]; value: number; onChange: (v: number) => void; disabled?: boolean }) {
+const clamp = (v: number, [min, max]: [number, number]) => Math.min(max, Math.max(min, v));
+
+/**
+ * Свободный ввод длительности (ч / мин / сек) вместо пресетов. Значение — секунды; при выходе из поля
+ * подтягивается к границам, которые задаёт сервер (он всё равно проверяет их сам).
+ */
+export function DurationInput({ label, seconds, limits, onChange, disabled }: { label: string; seconds: number; limits: [number, number]; onChange: (v: number) => void; disabled?: boolean }) {
+  const parts = { h: Math.floor(seconds / 3600), m: Math.floor((seconds % 3600) / 60), s: seconds % 60 };
+  const set = (k: "h" | "m" | "s", raw: string) => {
+    const n = Math.max(0, Math.floor(Number(raw) || 0));
+    const next = { ...parts, [k]: n };
+    onChange(next.h * 3600 + next.m * 60 + next.s);
+  };
+  const out = seconds < limits[0] || seconds > limits[1];
+  const box = "w-full min-w-0 rounded-lg border-0 bg-white/80 px-2 py-2 text-center text-[15px] tabular-nums text-zinc-900 outline-none ring-1 ring-black/5 focus:bg-white focus:ring-2 focus:ring-zinc-900 disabled:opacity-60";
   return (
-    <fieldset disabled={disabled} className="min-w-0">
+    <fieldset disabled={disabled} className="min-w-0" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onChange(clamp(seconds, limits)); }}>
       <legend className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">{label}</legend>
-      <div className="relative flex rounded-xl bg-white/50 p-1" role="radiogroup" aria-label={label}>
-        {values.map((v) => (
-          <button
-            key={v}
-            type="button"
-            role="radio"
-            aria-checked={value === v}
-            onClick={() => onChange(v)}
-            className="relative flex-1 rounded-lg py-2 text-sm font-medium tabular-nums text-zinc-600 transition-colors aria-checked:text-white disabled:cursor-not-allowed"
-          >
-            {value === v && <motion.span layoutId={`seg-${label}`} className="absolute inset-0 rounded-lg bg-zinc-900" transition={{ type: "spring", stiffness: 400, damping: 32 }} />}
-            <span className="relative">{v}</span>
-          </button>
+      <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-white/50 p-1">
+        {(["h", "m", "s"] as const).map((k) => (
+          <label key={k} className="flex min-w-0 items-center gap-1 text-xs text-zinc-500">
+            <input type="number" inputMode="numeric" min={0} max={k === "h" ? 24 : 59} value={parts[k]} onChange={(e) => set(k, e.target.value)} aria-label={`${label}: ${k === "h" ? "часы" : k === "m" ? "минуты" : "секунды"}`} className={box} />
+            <span className="shrink-0">{k === "h" ? "ч" : k === "m" ? "м" : "с"}</span>
+          </label>
         ))}
       </div>
+      <p className={`mt-1.5 text-[11px] ${out ? "text-red-600" : "text-zinc-500"}`}>от {formatSpan(limits[0])} до {formatSpan(limits[1])}</p>
     </fieldset>
   );
 }
 
 export interface FormState {
+  /** Фокус, секунды (вводит пользователь) */
   work: number;
+  /** Перерыв, секунды */
   rest: number;
+  /** Сколько циклов «фокус → перерыв» запланировано: столько остановок на карте */
+  cycles: number;
+  setCycles: (v: number) => void;
   demo: boolean;
   teamMode: boolean;
   setTeamMode: (v: boolean) => void;
@@ -61,8 +70,13 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
   const codeOk = extractRoomCode(code) !== null;
 
   const demo = form.demo || t.demoMode; // демо-сервер: песочный аккаунт создаёт только демо-комнаты
-  const settingsInput = demo ? { demo: true, focusSeconds: 25, breakSeconds: 15 } : { focusMinutes: form.work, breakMinutes: form.rest };
-  const changed = room ? (room.demo ? false : room.settings.focusSec !== form.work * 60 || room.settings.breakSec !== form.rest * 60) : false;
+  const lim = t.limits ?? DEFAULT_LIMITS;
+  const focusLim = demo ? lim.demoFocusSeconds : lim.focusSeconds;
+  const breakLim = demo ? lim.demoBreakSeconds : lim.breakSeconds;
+  const settingsInput = { ...(demo && !inRoom ? { demo: true } : {}), focusSeconds: form.work, breakSeconds: form.rest, cycles: form.cycles };
+  const valid = form.work >= focusLim[0] && form.work <= focusLim[1] && form.rest >= breakLim[0] && form.rest <= breakLim[1];
+  const cyclesLocked = inRoom && room!.cycleNo > 0; // план циклов задаёт карту — меняется только до первого фокуса
+  const changed = room ? room.settings.focusSec !== form.work || room.settings.breakSec !== form.rest || (room.settings.cycles ?? 4) !== form.cycles : false;
 
   return (
     <div className="flex h-full flex-col gap-6 overflow-y-auto p-6 sm:p-8 [&_*]:[--fg:#111]">
@@ -91,9 +105,21 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
       {view === "profile" && t.user ? <ProfilePanel t={t} /> : (<>
       {/* Таймер */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Segmented label="Фокус, мин" values={WORK_PRESETS} value={form.work} onChange={form.setWork} disabled={locked || demo} />
-        <Segmented label="Перерыв, мин" values={REST_PRESETS} value={form.rest} onChange={form.setRest} disabled={locked || demo} />
+        <DurationInput label="Фокус" seconds={form.work} limits={focusLim} onChange={form.setWork} disabled={locked} />
+        <DurationInput label="Перерыв" seconds={form.rest} limits={breakLim} onChange={form.setRest} disabled={locked} />
       </div>
+      <label className="block">
+        <span className="mb-2 block text-xs font-medium uppercase tracking-wider text-zinc-500">Циклов «фокус → перерыв»</span>
+        <input
+          type="number" inputMode="numeric" min={lim.cycles[0]} max={lim.cycles[1]} value={form.cycles} disabled={locked || cyclesLocked}
+          onChange={(e) => form.setCycles(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+          onBlur={() => form.setCycles(clamp(form.cycles, lim.cycles))}
+          className={`${field} tabular-nums`}
+        />
+        <span className="mt-1.5 block text-[11px] text-zinc-500">
+          {cyclesLocked ? "План уже идёт — число циклов не меняется до новой комнаты" : `Остановок на карте столько же, сколько перерывов (${lim.cycles[0]}–${lim.cycles[1]}). После перерыва следующий фокус стартует сам.`}
+        </span>
+      </label>
 
       {/* На демо-сервере демо-режим не выбирается: он включён и заблокирован, причина — в подписи */}
       {t.demoMode && !inRoom && (
@@ -102,7 +128,7 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
           <span>
             <span className="block font-medium text-zinc-900">Демо-режим</span>
             <span id="demo-mode-note" className="text-xs text-zinc-500">
-              Фокус 25 секунд, перерыв 15 секунд. Включён всегда: это демо-песочница — здесь создаются только демо-комнаты,
+              Короткие циклы в секундах для показа. Включён всегда: это демо-песочница — здесь создаются только демо-комнаты,
               а прогресс не переносится в реальный аккаунт.
             </span>
           </span>
@@ -131,8 +157,8 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
           {room!.phase !== "waiting" && <p className="mt-2 text-xs text-zinc-500">Сменить команду можно между циклами.</p>}
         </fieldset>
       )}
-      {inRoom && room!.demo && <p className="text-xs text-zinc-500">Демо-комната: фокус {room!.settings.focusSec} с, перерыв {room!.settings.breakSec} с.</p>}
-      {locked && !room!.demo && <p className="text-xs text-zinc-500">Длительность меняет создатель комнаты до старта сессии.</p>}
+      {inRoom && room!.demo && <p className="text-xs text-zinc-500">Демо-комната: фокус {formatSpan(room!.settings.focusSec)}, перерыв {formatSpan(room!.settings.breakSec)}.</p>}
+      {locked && <p className="text-xs text-zinc-500">Длительность меняет создатель комнаты, пока комната ждёт старта.</p>}
 
       {/* Имя */}
       <label className="block">
@@ -144,7 +170,7 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
         <>
           <button
             type="button"
-            disabled={!nameOk || t.busy}
+            disabled={!nameOk || !valid || t.busy}
             onClick={() => t.createRoom(t.name, { ...settingsInput, teamMode: form.teamMode })}
             className="rounded-xl bg-zinc-900 py-3.5 text-[15px] font-medium text-white transition-colors hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 disabled:cursor-not-allowed disabled:bg-zinc-400"
           >
@@ -172,7 +198,7 @@ export function SettingsContent({ t, form, onCollapse, initialCode = "" }: { t: 
       ) : (
         <>
           {canEditRoom && changed && (
-            <button type="button" disabled={t.busy} onClick={() => t.updateSettings(settingsInput)} className="rounded-xl bg-zinc-900 py-3.5 text-[15px] font-medium text-white hover:bg-black disabled:bg-zinc-400">
+            <button type="button" disabled={t.busy || !valid} onClick={() => t.updateSettings(settingsInput)} className="rounded-xl bg-zinc-900 py-3.5 text-[15px] font-medium text-white hover:bg-black disabled:bg-zinc-400">
               Сохранить настройки
             </button>
           )}

@@ -13,7 +13,12 @@ export function buildRoutes({ config, users, rooms, game, social, td, voice, clo
   r.add('GET', '/api/config', () => ok({
     serverTime: clock.now(),
     demoMode: config.demoMode,
-    pomodoro: { focusMinutes: config.limits.focusMinutes, breakMinutes: config.limits.breakMinutes, defaults: { focusMinutes: 25, breakMinutes: 5 } },
+    pomodoro: {
+      focusSeconds: config.limits.focusSeconds, breakSeconds: config.limits.breakSeconds, cycles: config.limits.cycles,
+      demoFocusSeconds: config.limits.demoFocusSeconds, demoBreakSeconds: config.limits.demoBreakSeconds,
+      defaults: { focusSeconds: 25 * 60, breakSeconds: 5 * 60, cycles: 4, demoFocusSeconds: 25, demoBreakSeconds: 15 },
+      qualityTeamMin: config.economy.quality.teamMin,
+    },
     economy: { ...config.economy, levelFormula: 'xp(level) = 50 * level * (level - 1)', xpForLevel: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(xpForLevel) },
     social: { help: HELP_TYPES, prank: PRANK_TYPES, boost: config.social.boost, shield: config.social.shield, prankRules: { cooldownMs: config.social.prank.cooldownMs, demoCooldownMs: config.social.prank.demoCooldownMs, maxPerBreak: config.social.prank.maxPerBreak } },
     presence: { onlineWindowMs: config.onlineWindowMs, graceMs: config.graceMs, broadcastTickMs: config.broadcastTickMs },
@@ -66,6 +71,8 @@ export function buildRoutes({ config, users, rooms, game, social, td, voice, clo
   r.add('POST', '/api/rooms/:id/task', ({ user, params, body }) => ok(rooms.setTask(user, params.id, body)));
   r.add('POST', '/api/rooms/:id/start', ({ user, params }) => ok(rooms.startFocus(user, params.id)));
   r.add('POST', '/api/rooms/:id/session/abort', ({ user, params }) => ok(rooms.abortSession(user, params.id)));
+  // Внимание во время фокуса: клиент сообщает «ушёл со вкладки / вернулся» (может только снизить качество)
+  r.add('POST', '/api/rooms/:id/session/attention', ({ user, params, body }) => ok(rooms.reportAttention(user, params.id, body)));
   r.add('POST', '/api/rooms/:id/session/result', ({ user, params, body }) => ok(rooms.recordResult(user, params.id, body)));
   r.add('POST', '/api/rooms/:id/skip-break', ({ user, params }) => ok(rooms.skipBreak(user, params.id)));
   r.add('POST', '/api/rooms/:id/heartbeat', ({ user, params }) => {

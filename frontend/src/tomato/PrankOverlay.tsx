@@ -27,9 +27,10 @@ export function PrankOverlay({ t }: { t: Tomato }) {
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
   const snap = t.snapshot;
   const meId = snap?.me?.userId;
+  const myTeam = snap?.room.mode === "teams" ? snap?.me?.team : null;
   const now = t.serverNow();
   const active = !snap || snap.room.phase !== "break" ? [] : t.feed.filter(
-    (a) => a.kind === "prank" && a.status === "applied" && a.toUserId === meId && a.effectEndsAt !== null && a.effectEndsAt > now && !dismissed.has(a.id),
+    (a) => a.kind === "prank" && a.status === "applied" && (a.toUserId === meId || (myTeam && a.toTeam === myTeam)) && a.effectEndsAt !== null && a.effectEndsAt > now && !dismissed.has(a.id),
   );
   useNow(500, active.length > 0);
   const fog = active.find((a) => a.type === "fog");

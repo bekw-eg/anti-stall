@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -235,6 +235,13 @@ export class Db {
     // v4: песочные аккаунты демо-режима (users.sandbox); все существующие пользователи — обычные
     const userCols = this.sql.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
     if (!userCols.includes('sandbox')) this.sql.exec('ALTER TABLE users ADD COLUMN sandbox INTEGER NOT NULL DEFAULT 0');
+    // v5: план циклов комнаты (карта = остановка на каждый перерыв) и качество фокуса
+    if (!cols.includes('cycles')) this.sql.exec('ALTER TABLE rooms ADD COLUMN cycles INTEGER NOT NULL DEFAULT 4');
+    const sessCols = this.sql.prepare('PRAGMA table_info(focus_sessions)').all().map((c) => c.name);
+    if (!sessCols.includes('away_ms')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN away_ms INTEGER NOT NULL DEFAULT 0');
+    if (!sessCols.includes('away_since')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN away_since INTEGER');
+    if (!sessCols.includes('away_kind')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN away_kind TEXT');
+    if (!sessCols.includes('quality')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN quality REAL');
     this.sql.prepare("INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version', ?)").run(String(SCHEMA_VERSION));
   }
 

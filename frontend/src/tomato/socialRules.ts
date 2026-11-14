@@ -3,7 +3,9 @@ import type { Tomato } from "./useTomato";
 
 export type ActionType = "boost" | "shield" | "fog" | "sticker";
 export const KIND: Record<ActionType, "help" | "prank"> = { boost: "help", shield: "help", fog: "prank", sticker: "prank" };
-export const ACTION_TEXT: Record<ActionType, string> = { boost: "бонус к XP", shield: "щит от шуток", fog: "туман", sticker: "стикер" };
+export const ACTION_TEXT: Record<ActionType, string> = { boost: "бонус к XP", shield: "щит от шуток", fog: "туман", sticker: "липучка" };
+/** Цвета команд (как в макете): A — лосось, B — мокко; общий режим — светлый лосось */
+export const TEAM_COLOR: Record<string, string> = { A: "#EAA695", B: "#A0726D", shared: "#FFCEC2" };
 /** Цена щита по умолчанию; актуальную присылает сервер (GET /api/config → t.shieldCost) */
 export const SHIELD_COST = 10;
 
@@ -25,8 +27,8 @@ export function disabledReason(type: ActionType, target: Member, t: Pick<Tomato,
     if (type === "shield" && me.coins < shieldCost) return `Нужно ${shieldCost} монет`;
     return null;
   }
-  if (!me.prankEnabled) return "Вы выключили шутки — отправлять их тоже нельзя";
-  if (!target.prankEnabled) return "У игрока шутки выключены";
+  // Шутки — дебафф команде соперника (выключить нельзя): своим не отправляются
+  if (snap.room.mode === "teams" && target.team === me.team) return "Шутки летят только в команду соперника";
   if (target.status === "focusing") return "Игрок занимается";
   return null;
 }

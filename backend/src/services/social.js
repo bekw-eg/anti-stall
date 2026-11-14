@@ -5,13 +5,14 @@ import { reqObject, reqString } from '../validate.js';
 const DAY = 86_400_000;
 
 /**
- * Помощь и пакости. Правила (все проверяет сервер):
- *  - только во время перерыва комнаты (в Focus — 409 WRONG_PHASE);
+ * Помощь (баффы своей команде) и шутки (дебаффы команде соперника). Правила (все проверяет сервер):
+ *  - только во время перерыва комнаты (в Focus — 409 WRONG_PHASE): фокус шутки не трогают;
  *  - только между участниками одной комнаты, не себе;
- *  - пакости: получатель может их отключить (и тогда сам их не отправляет),
- *    кулдаун, лимит за перерыв, один тип на одного получателя за перерыв,
- *    эффект гарантированно заканчивается к концу перерыва, «Щит» блокирует пакость;
- *  - помощь: «Бонус» (+XP к следующей сессии друга) и «Щит» (стоит монет).
+ *  - шутки — игровая механика, выключить их нельзя. В режиме Team A/B шутка летит в игрока команды соперника
+ *    и действует на всю его команду: ослабляет её башни в Tower Defense до конца эффекта (не дольше перерыва);
+ *    в общем режиме (одна команда) это короткий визуальный эффект у получателя;
+ *  - кулдаун, лимит за перерыв, один тип на одного получателя за перерыв; «Щит» любого игрока команды поглощает шутку;
+ *  - помощь: «Бонус» (+XP к следующей сессии) и «Щит» (стоит монет) — только своей команде.
  */
 export function createSocialService(ctx, game, rooms) {
   const { db, clock, config } = ctx;
@@ -32,6 +33,8 @@ export function createSocialService(ctx, game, rooms) {
     if (db.get("SELECT 1 x FROM focus_sessions WHERE user_id = ? AND status = 'active'", user.id)) throw E.conflict('FOCUS_ACTIVE', 'Вы сейчас в фокус-сессии');
     return { room, type, target };
   }
+
+  const teamOf = (room, userId) => db.get('SELECT team_key FROM room_members WHERE room_id = ? AND user_id = ?', room.id, userId)?.team_key;
 
   const sentThisCycle = (room, senderId, kind, type, targetId) =>
     db.get(
@@ -89,8 +92,9 @@ export function createSocialService(ctx, game, rooms) {
     return db.tx(() => {
       const { room, type, target } = resolve(user, roomKey, body);
       if (!PRANK_TYPES.includes(type)) throw E.badRequest('UNKNOWN_PRANK_TYPE', 'Неизвестный тип пакости', { allowed: PRANK_TYPES });
-      if (!user.prank_enabled) throw E.conflict('PRANKS_DISABLED_SELF', 'Вы отключили пакости — отправлять их тоже нельзя');
-      if (!target.prank_enabled) throw E.conflict('PRANKS_DISABLED', 'Получатель отключил пакости');
+      const teams = room.mode === 'teams';
+      const targetTeam = teams ? teamOf(room, target.id) : null;
+      if (teams && targetTeam === teamOf(room, user.id)) throw E.conflict('NOT_RIVAL', 'Шутки летят только в команду соперника');
       const t = clock.now();
       if (db.get("SELECT 1 x FROM focus_sessions WHERE user_id = ? AND status = 'active'", target.id)) {
         throw E.conflict('TARGET_FOCUSING', 'Получатель сейчас занимается — пакости ему не отправляются');
@@ -103,7 +107,12 @@ export function createSocialService(ctx, game, rooms) {
       if (sentThisCycle(room, user.id, 'prank') >= cfg.prank.maxPerBreak) throw E.tooMany('PRANK_BREAK_LIMIT', 'Лимит пакостей за перерыв исчерпан');
       if (sentThisCycle(room, user.id, 'prank', type, target.id) > 0) throw E.conflict('ALREADY_SENT', 'Этот эффект вы уже отправляли этому игроку в этот перерыв');
 
-      const shield = db.get("SELECT * FROM user_effects WHERE user_id = ? AND kind = 'shield' AND consumed_at IS NULL AND expires_at > ? ORDER BY id LIMIT 1", target.id, t);
+      // Щит: в командах — любой активный щит игрока команды-цели, в общем режиме — щит самого получателя
+      const shield = teams
+        ? db.get(
+          `SELECT e.* FROM user_effects e JOIN room_members m ON m.user_id = e.user_id AND m.room_id = ? AND m.left_at IS NULL AND m.team_key = ?
+           WHERE e.kind = 'shield' AND e.consumed_at IS NULL AND e.expires_at > ? ORDER BY e.id LIMIT 1`, room.id, targetTeam, t)
+        : db.get("SELECT * FROM user_effects WHERE user_id = ? AND kind = 'shield' AND consumed_at IS NULL AND expires_at > ? ORDER BY id LIMIT 1", target.id, t);
       const blocked = Boolean(shield);
       if (shield) db.run('UPDATE user_effects SET consumed_at = ? WHERE id = ?', t, shield.id);
       // Эффект никогда не «протекает» в Focus: заканчивается не позже конца перерыва.
@@ -113,7 +122,8 @@ export function createSocialService(ctx, game, rooms) {
         room.id, room.cycle_id, 'prank', type, user.id, target.id, blocked ? 'blocked' : 'applied', t, endsAt,
       ).lastInsertRowid;
       game.checkAchievements(user.id);
-      const data = { actionId: Number(id), type, from: user.id, to: target.id, blocked, effectEndsAt: endsAt, at: t };
+      const debuff = teams ? cfg.prank.types[type].debuff ?? null : null;
+      const data = { actionId: Number(id), type, from: user.id, to: target.id, team: targetTeam, debuff, blocked, effectEndsAt: endsAt, at: t };
       db.emit({ scope: 'room', roomId: room.id, type: 'prank_applied', data });
       return { applied: !blocked, ...data };
     });

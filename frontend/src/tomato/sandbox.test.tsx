@@ -119,7 +119,7 @@ describe("демо-песочница: интерфейс", () => {
   it("на демо-сервере чекбокс «Демо-режим» включён, заблокирован и объясняет почему; комната создаётся демо", () => {
     const createRoom = vi.fn(async () => true);
     const t = { snapshot: null, user: null, name: "Лотти", setName: () => undefined, demoMode: true, busy: false, createRoom, joinRoom: vi.fn() } as unknown as Tomato;
-    const form: FormState = { work: 25, rest: 5, demo: false, teamMode: false, setWork: vi.fn(), setRest: vi.fn(), setDemo: vi.fn(), setTeamMode: vi.fn() };
+    const form: FormState = { work: 25, rest: 5, demo: false, teamMode: false, cycles: 4, setCycles: vi.fn(), setWork: vi.fn(), setRest: vi.fn(), setDemo: vi.fn(), setTeamMode: vi.fn() };
     const m = mount(<SettingsContent t={t} form={form} onCollapse={() => undefined} />);
     const box = m.host.querySelector<HTMLInputElement>('input[aria-describedby="demo-mode-note"]')!;
     expect(box.checked).toBe(true);

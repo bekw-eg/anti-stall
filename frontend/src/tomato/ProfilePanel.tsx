@@ -54,22 +54,6 @@ export function ProfilePanel({ t }: { t: Tomato }) {
         )}
       </div>
 
-      <label className="flex cursor-pointer items-start gap-3 text-sm text-zinc-700">
-        <input
-          type="checkbox"
-          className="mt-1 h-4 w-4 accent-zinc-900"
-          checked={progress.prankEnabled}
-          onChange={async (e) => {
-            // галочка переключается сразу; при ошибке сервера — откат
-            const on = e.target.checked;
-            setProgress((p) => (p ? { ...p, prankEnabled: on } : p));
-            const ok = await t.setPranksEnabled(on);
-            if (!ok) setProgress((p) => (p ? { ...p, prankEnabled: !on } : p));
-          }}
-        />
-        <span>Получать дружеские шутки<span className="block text-xs text-zinc-500">Если выключить, отправлять их тоже нельзя.</span></span>
-      </label>
-
       <div className="flex rounded-xl bg-white/50 p-1" role="tablist">
         {([["upgrades", "Улучшения"], ["achievements", "Достижения"], ["history", "История"]] as const).map(([id, label]) => (
           <button

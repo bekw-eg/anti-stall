@@ -140,6 +140,11 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                   <span>база {current.hp}/{current.hpMax}</span>
                   <span>побеждено {current.kills}/{current.total}</span>
                 </p>
+                {!finished && (current.debuffs?.length ?? 0) > 0 && (
+                  <p role="status" data-testid="td-debuffs" className="mt-2 rounded-xl border border-[var(--line)] px-3 py-1.5 text-xs">
+                    Шутки соперника: {current.debuffs!.map((d) => (d.type === "fog" ? `туман — дальность башен −${Math.round((1 - d.rangeMult) * 100)}%` : `липучка — башни стреляют в ${d.cooldownMult} раза реже`)).join("; ")}
+                  </p>
+                )}
                 {finished && (
                   <p role="status" className="mt-2 rounded-xl bg-[var(--fg)] px-3 py-2 text-xs font-medium text-[var(--field)]">
                     {current.status === "won" ? `Победа! Награда начислена сервером (только участникам раунда).` : current.status === "lost" ? "База пала. Башни остались — усильте оборону в следующий перерыв." : "Перерыв закончился — раунд завершён, продолжаем учёбу."}

@@ -40,19 +40,37 @@ export const ACHIEVEMENTS = {
   level_5: { id: 'level_5', title: 'Опытный ботан', description: 'Достигните 5 уровня', reward: { coins: 50 }, condition: (s) => s.level >= 5 },
 };
 
-// ---- Road Map: общая карта командного испытания (узлы + связи).
-// requiredPoints — сколько командных очков нужно для достижения узла.
-export const ROADMAP = {
-  id: 'forest-march',
-  title: 'Марш к крепости экзамена',
-  nodes: [
-    { id: 'camp', title: 'Лагерь', x: 0.08, y: 0.72, requiredPoints: 0, type: 'start' },
-    { id: 'forest', title: 'Лес знаний', x: 0.3, y: 0.38, requiredPoints: 2, type: 'focus_goal' },
-    { id: 'bridge', title: 'Мост дедлайнов', x: 0.54, y: 0.66, requiredPoints: 4, type: 'focus_goal' },
-    { id: 'fortress', title: 'Крепость экзамена', x: 0.82, y: 0.3, requiredPoints: 6, type: 'boss' },
-  ],
-  edges: [['camp', 'forest'], ['forest', 'bridge'], ['bridge', 'fortress']],
-};
+// ---- Road Map: карта командного испытания строится под план комнаты.
+// Одна остановка на каждый перерыв: после N-го цикла команда, отфокусировавшаяся достойно, делает шаг к узлу N.
+// Последний узел — «Крепость экзамена» (финал). requiredPoints узла = номер перерыва (шаги команды).
+const STOP_TITLES = [
+  'Лес знаний', 'Мост дедлайнов', 'Болото прокрастинации', 'Перевал формул', 'Река конспектов', 'Пещера билетов',
+  'Башня теорем', 'Долина повторений', 'Ущелье шпаргалок', 'Плато практики', 'Кряж задач',
+];
+export const ROADMAP_ID = 'forest-march';
+export const ROADMAP_TITLE = 'Марш к крепости экзамена';
+
+export function buildRoadmap(cycles = 4) {
+  const n = Math.max(1, Math.min(STOP_TITLES.length + 1, Math.floor(cycles) || 1));
+  const nodes = [{ id: 'camp', title: 'Лагерь', requiredPoints: 0, type: 'start' }];
+  for (let i = 1; i < n; i++) nodes.push({ id: `stop-${i}`, title: STOP_TITLES[i - 1], requiredPoints: i, type: 'focus_goal' });
+  nodes.push({ id: 'fortress', title: 'Крепость экзамена', requiredPoints: n, type: 'boss' });
+  // «Змейка» слева направо: узлы попеременно сверху и снизу — как фишки на игровом поле
+  const last = nodes.length - 1;
+  nodes.forEach((node, i) => {
+    node.x = Math.round((0.08 + (0.84 * i) / last) * 1000) / 1000;
+    node.y = i === 0 ? 0.72 : i === last ? 0.3 : i % 2 ? 0.38 : 0.66;
+  });
+  const edges = nodes.slice(1).map((node, i) => [nodes[i].id, node.id]);
+  return { id: ROADMAP_ID, title: ROADMAP_TITLE, nodes, edges };
+}
+/** Карта по умолчанию (план из 4 циклов) — для справочного GET /api/config. */
+export const ROADMAP = buildRoadmap(4);
+
+/** Узел карты, после которого открывается этап мини-игры: этапы растянуты по карте пропорционально её длине. */
+export function stageNodeIndex(stageIdx, stagesCount, lastNodeIdx) {
+  return stagesCount <= 1 ? 0 : Math.round((stageIdx * lastNodeIdx) / (stagesCount - 1));
+}
 
 export const HELP_TYPES = ['boost', 'shield'];
 export const PRANK_TYPES = ['fog', 'sticker'];
@@ -98,7 +116,7 @@ export const TD = {
       waves: [{ at: 2, groups: [{ type: 'runner', count: 4, gap: 2.2 }] }, { at: 16, groups: [{ type: 'grunt', count: 3, gap: 3 }] }],
     },
     {
-      id: 'forest', node: 'forest', title: 'Оборона Леса знаний', hpScale: 1.5, reward: { xp: 20, coins: 12 },
+      id: 'forest', node: 'forest', title: 'Первая засада', hpScale: 1.5, reward: { xp: 20, coins: 12 },
       waves: [
         { at: 2, groups: [{ type: 'runner', count: 6, gap: 1.8 }] },
         { at: 18, groups: [{ type: 'grunt', count: 5, gap: 2.4 }] },
@@ -106,7 +124,7 @@ export const TD = {
       ],
     },
     {
-      id: 'bridge', node: 'bridge', title: 'Оборона Моста дедлайнов', hpScale: 2.4, reward: { xp: 30, coins: 18 },
+      id: 'bridge', node: 'bridge', title: 'Оборона перевала', hpScale: 2.4, reward: { xp: 30, coins: 18 },
       waves: [
         { at: 2, groups: [{ type: 'grunt', count: 6, gap: 2 }] },
         { at: 20, groups: [{ type: 'tank', count: 2, gap: 5 }, { type: 'runner', count: 6, gap: 1.4, delay: 2 }] },

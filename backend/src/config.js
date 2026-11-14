@@ -39,10 +39,13 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
       taskMax: 80,
       maxMembers: 12,
       maxRoomsPerUser: 5,
-      focusMinutes: [10, 120],
-      breakMinutes: [3, 30],
+      // Длительности вводит пользователь (секунды); сервер проверяет только границы.
+      // Условные рамки концепта: фокус от 1 мин до 24 ч, перерыв от 10 с до 2 ч.
+      focusSeconds: [60, 24 * 3600],
+      breakSeconds: [10, 2 * 3600],
+      cycles: [1, 12], // сколько циклов «фокус → перерыв» запланировано: столько остановок на карте
       demoFocusSeconds: [5, 600],
-      demoBreakSeconds: [5, 300],
+      demoBreakSeconds: [10, 300],
     },
 
     economy: {
@@ -50,8 +53,12 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
       xpPerSession: 100,
       coinsPerSession: 20,
       teamPointsPerSession: 1,
-      minRewardFactor: 0.4, // награда масштабируется длиной сессии, чтобы не фармить короткие
-      maxRewardFactor: 2,
+      minRewardFactor: 0, // награда линейно зависит от длины сессии: короткие фокусы не фармятся
+      maxRewardFactor: 4, // выше 100 минут награда за одну сессию не растёт
+      // Качество фокуса = доля времени, когда участник был во вкладке и в сети (считает сервер).
+      // Награда умножается на качество; команда продвигается по карте, только если хотя бы половина
+      // её участников цикла отфокусировалась с качеством не ниже teamMin.
+      quality: { teamMin: 0.6 },
       dailyRewardedSessions: 16, // потолок наград за сутки (анти-накрутка) — для обычных комнат, в т.ч. на демо-сервере
       demoDailyRewardedSessions: 500, // только для демо-комнат (room.demo): за показ проходят десятки 25-секундных циклов
       challengeReward: { xp: 150, coins: 60 },
@@ -87,7 +94,12 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
         cooldownMs: 20_000,
         demoCooldownMs: 1_000, // только для демо-комнат: перерыв там длится секунды
         maxPerBreak: 3,
-        types: { fog: { durationMs: 15_000 }, sticker: { durationMs: 10_000 } },
+        // Шутки = дебаффы команде соперника в Tower Defense (только на перерыве, отключить нельзя):
+        // fog — «Туман»: дальность башен соперника ниже; sticker — «Липучка»: башни соперника стреляют реже.
+        types: {
+          fog: { durationMs: 15_000, debuff: { rangeMult: 0.6 } },
+          sticker: { durationMs: 10_000, debuff: { cooldownMult: 2 } },
+        },
       },
     },
   };

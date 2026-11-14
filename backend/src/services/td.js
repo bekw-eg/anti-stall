@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BASE_HP, ROADMAP, TD, UPGRADES } from '../catalog.js';
+import { BASE_HP, TD, UPGRADES, buildRoadmap, stageNodeIndex } from '../catalog.js';
 import { E } from '../errors.js';
 import { reqObject, reqString } from '../validate.js';
 import { PATH_LENGTH, advanceTo, buildSchedule, currentWave, newState, nominalSeconds, publicEnemies, slotById } from '../td/engine.js';
@@ -22,7 +22,12 @@ export function createTd(ctx, game) {
   let rooms = null;
 
   const stageDef = (id) => TD.stages.find((s) => s.id === id);
-  const nodeTitle = (id) => ROADMAP.nodes.find((n) => n.id === id)?.title ?? id;
+  /** Узел карты (по плану циклов комнаты), после которого открывается этап. */
+  function stageNode(room, stage) {
+    const map = buildRoadmap(room.cycles);
+    const idx = stageNodeIndex(TD.stages.indexOf(stage), TD.stages.length, map.nodes.length - 1);
+    return { ...map.nodes[idx], index: idx };
+  }
 
   // ------------------------------------------------------------------ вспомогательное
   const memberRow = (roomId, userId) => db.get('SELECT * FROM room_members WHERE room_id = ? AND user_id = ? AND left_at IS NULL', roomId, userId);
@@ -50,7 +55,8 @@ export function createTd(ctx, game) {
     };
   }
 
-  const stageUnlocked = (room, team, stage) => stage.node === 'camp' || Boolean(db.get('SELECT 1 x FROM team_nodes WHERE room_id = ? AND team_key = ? AND node_id = ?', room.id, team, stage.node));
+  const teamSteps = (room, team) => db.get('SELECT points FROM team_progress WHERE room_id = ? AND team_key = ?', room.id, team)?.points ?? 0;
+  const stageUnlocked = (room, team, stage) => teamSteps(room, team) >= stageNode(room, stage).index;
   const towersOf = (room, team) => db.all(
     'SELECT t.slot_id AS slot, t.type, t.level, t.owner_id AS ownerId, u.name AS ownerName FROM td_towers t JOIN users u ON u.id = t.owner_id WHERE t.room_id = ? AND t.team_key = ? ORDER BY t.slot_id',
     room.id, team,
@@ -76,6 +82,8 @@ export function createTd(ctx, game) {
       t: state.t, wave: currentWave(state, schedule), waves: stage.waves.length, spawned: state.spawned, total: schedule.length,
       hp: Math.round(state.hp), hpMax: state.hpMax, kills: state.kills, leaked: state.leaked,
       enemies: row.status === 'running' ? publicEnemies(state) : [],
+      // Активные дебаффы команды (шутки соперника) — клиент только показывает
+      debuffs: teamDebuffs(room, row.team_key, row.cycle_id).filter((d) => d.untilMs > clock.now()).map((d) => ({ type: d.type, endsAt: d.untilMs, rangeMult: d.rangeMult ?? 1, cooldownMult: d.cooldownMult ?? 1 })),
       result: row.result ? JSON.parse(row.result) : null,
     };
   }
@@ -95,7 +103,7 @@ export function createTd(ctx, game) {
     const team = teamOf(room, userId);
     const stats = teamStats(room, team);
     const stages = TD.stages.map((s) => ({
-      id: s.id, title: s.title, node: s.node, nodeTitle: nodeTitle(s.node), unlocked: stageUnlocked(room, team, s),
+      id: s.id, title: s.title, node: stageNode(room, s).id, nodeTitle: stageNode(room, s).title, unlocked: stageUnlocked(room, team, s),
       reward: s.reward, waves: s.waves.length, enemies: buildSchedule(s).length, hpScale: s.hpScale, ...bestOf(room, team, s.id),
     }));
     const unlockedIdx = stages.map((s, i) => (s.unlocked ? i : -1)).filter((i) => i >= 0);
@@ -121,12 +129,25 @@ export function createTd(ctx, game) {
   }
 
   // ------------------------------------------------------------------ симуляция раунда
+  /** Шутки соперника, попавшие в команду в этот перерыв (реальное время, мс). */
+  function teamDebuffs(room, team, cycleId) {
+    if (room.mode !== 'teams') return [];
+    return db.all(
+      `SELECT a.type, a.created_at AS fromMs, a.effect_ends_at AS untilMs FROM social_actions a
+       JOIN room_members m ON m.room_id = a.room_id AND m.user_id = a.target_id
+       WHERE a.room_id = ? AND a.cycle_id IS ? AND a.kind = 'prank' AND a.status = 'applied' AND m.team_key = ? ORDER BY a.id`,
+      room.id, cycleId, team,
+    ).map((d) => ({ ...d, ...(config.social.prank.types[d.type]?.debuff ?? {}) }));
+  }
+
   function simContext(row, room) {
     const stage = stageDef(row.stage_id);
+    const toGame = (ms) => Math.max(0, ((ms - row.started_at) / 1000) * row.speed); // реальное время → игровое
     return {
       stage, schedule: buildSchedule(stage),
       towers: towersOf(room, row.team_key).map((t) => ({ slot: t.slot, type: t.type, level: t.level })),
       damageMult: teamStats(room, row.team_key).damageMult,
+      debuffs: teamDebuffs(room, row.team_key, row.cycle_id).map((d) => ({ ...d, from: toGame(d.fromMs), until: toGame(d.untilMs) })),
     };
   }
 
@@ -267,7 +288,7 @@ export function createTd(ctx, game) {
       const unlocked = TD.stages.filter((s) => stageUnlocked(room, team, s));
       const stage = b.stageId === undefined ? unlocked[unlocked.length - 1] : stageDef(reqString(b.stageId, 'stageId', { max: 20 }));
       if (!stage) throw E.notFound('STAGE_NOT_FOUND', 'Такого этапа нет');
-      if (!stageUnlocked(room, team, stage)) throw E.forbidden('STAGE_LOCKED', `Этап откроется, когда команда пройдёт «${nodeTitle(stage.node)}» на карте`, { node: stage.node });
+      if (!stageUnlocked(room, team, stage)) throw E.forbidden('STAGE_LOCKED', `Этап откроется, когда команда дойдёт до «${stageNode(room, stage).title}» на карте`, { node: stageNode(room, stage).id });
       const t = clock.now();
       const remaining = (room.phase_ends_at - t) / 1000;
       if (remaining < cfg.minRemainingSec) throw E.conflict('TOO_LATE', 'До конца перерыва слишком мало времени для раунда');

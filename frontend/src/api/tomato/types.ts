@@ -56,6 +56,8 @@ export interface Roadmap {
   teamKey: string;
   points: number;
   goal: number;
+  /** План циклов комнаты: карта — одна остановка на каждый перерыв */
+  cycles?: { planned: number; started: number };
   completed: boolean;
   finished: boolean;
   winner: "A" | "B" | "draw" | null;
@@ -83,7 +85,7 @@ export interface RoomInfo {
   cycleNo: number;
   demo: boolean;
   mode: "shared" | "teams";
-  settings: { focusSec: number; breakSec: number };
+  settings: { focusSec: number; breakSec: number; cycles?: number };
   phaseStartedAt: number;
   phaseEndsAt: number | null;
   serverTime: number;
@@ -249,6 +251,8 @@ export interface SocialAction {
   type: "boost" | "shield" | "fog" | "sticker";
   fromUserId: string;
   toUserId: string;
+  /** Команда, на которую подействовала шутка (режим Team A/B): дебафф её башен в Tower Defense */
+  toTeam?: string | null;
   status: "applied" | "blocked";
   at: number;
   effectEndsAt: number | null;
@@ -299,6 +303,8 @@ export interface CreateRoomInput {
   demo?: boolean;
   focusSeconds?: number;
   breakSeconds?: number;
+  /** Сколько циклов «фокус → перерыв» запланировано (остановок на карте) */
+  cycles?: number;
 }
 
 /** Все серверные события WebSocket: { type, ts, roomId?, reqId?, data } */
@@ -373,6 +379,8 @@ export interface TdRound {
   hpMax: number;
   kills: number;
   leaked: number;
+  /** Активные дебаффы команды от шуток соперника */
+  debuffs?: { type: "fog" | "sticker"; endsAt: number; rangeMult: number; cooldownMult: number }[];
   enemies: TdEnemy[];
   result: { hpLeft: number; hpMax: number; kills: number; leaked: number; total: number; gameTime: number } | null;
 }

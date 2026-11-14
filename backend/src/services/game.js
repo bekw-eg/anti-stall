@@ -1,4 +1,4 @@
-import { ACHIEVEMENTS, BASE_HP, ROADMAP, UPGRADES, levelForXp, upgradeCost, xpForLevel } from '../catalog.js';
+import { ACHIEVEMENTS, BASE_HP, ROADMAP_ID, UPGRADES, buildRoadmap, levelForXp, upgradeCost, xpForLevel } from '../catalog.js';
 import { E } from '../errors.js';
 
 const DAY = 86_400_000;
@@ -65,13 +65,26 @@ export function createGame(ctx) {
     );
   }
 
+  /**
+   * Качество фокуса: доля сессии, когда участник был на месте (вкладка открыта и в сети).
+   * Отлучки сервер копит сам: обрыв связи видит по присутствию, уход со вкладки сообщает клиент.
+   * Клиент может только СНИЗИТЬ своё качество — повысить его подменой данных нельзя.
+   */
+  function sessionQuality(session, endAt) {
+    const durMs = Math.max(1, Math.min(endAt, session.scheduled_end_at) - session.started_at);
+    const openAway = session.away_since !== null && session.away_since !== undefined ? Math.max(0, endAt - Math.max(session.away_since, session.started_at)) : 0;
+    const awayMs = Math.min(durMs, (session.away_ms ?? 0) + openAway);
+    return { quality: Math.round(Math.max(0, Math.min(1, 1 - awayMs / durMs)) * 100) / 100, awayMs };
+  }
+
   /** Сервер завершает сессию сам по часовым отметкам. Возвращает итог для события session_completed. */
   function completeSession(room, session, endAt) {
     const factor = room.demo
       ? 1
       : Math.min(eco.maxRewardFactor, Math.max(eco.minRewardFactor, room.focus_sec / (eco.standardFocusMinutes * 60)));
-    let xp = Math.round(eco.xpPerSession * factor);
-    const coins = Math.round(eco.coinsPerSession * factor);
+    const { quality, awayMs } = sessionQuality(session, endAt);
+    let xp = Math.round(eco.xpPerSession * factor * quality);
+    const coins = Math.round(eco.coinsPerSession * factor * quality);
 
     const rewardedToday = db.get(
       'SELECT COUNT(*) c FROM focus_sessions WHERE user_id = ? AND rewarded = 1 AND ended_at > ?',
@@ -82,7 +95,7 @@ export function createGame(ctx) {
 
     let boostPct = 0;
     let granted = false;
-    if (!capped) {
+    if (!capped && xp + coins > 0) {
       const boost = activeBoost(session.user_id, endAt);
       if (boost) {
         const aura = upgradeLevel(boost.source_user_id, 'team_aura');
@@ -91,47 +104,75 @@ export function createGame(ctx) {
         db.run('UPDATE user_effects SET consumed_at = ? WHERE id = ?', endAt, boost.id);
       }
       granted = grant(session.user_id, `focus:${session.id}`, 'focus_session', { xp, coins }, {
-        roomId: room.id, sessionId: session.id, boostPct,
+        roomId: room.id, sessionId: session.id, boostPct, quality,
       }).granted;
     }
     db.run(
-      `UPDATE focus_sessions SET status = 'completed', ended_at = ?, end_reason = ?, rewarded = ?, xp_awarded = ?, coins_awarded = ? WHERE id = ? AND status = 'active'`,
-      endAt, capped ? 'daily_cap' : 'finished', granted ? 1 : 0, granted ? xp : 0, granted ? coins : 0, session.id,
+      `UPDATE focus_sessions SET status = 'completed', ended_at = ?, end_reason = ?, rewarded = ?, xp_awarded = ?, coins_awarded = ?,
+         quality = ?, away_ms = ?, away_since = NULL, away_kind = NULL WHERE id = ? AND status = 'active'`,
+      endAt, capped ? 'daily_cap' : 'finished', granted ? 1 : 0, granted ? xp : 0, granted ? coins : 0, quality, awayMs, session.id,
     );
-    const summary = { sessionId: session.id, roomId: room.id, status: 'completed', rewarded: granted, capped, xp: granted ? xp : 0, coins: granted ? coins : 0, boostPct };
+    const summary = {
+      sessionId: session.id, roomId: room.id, status: 'completed', rewarded: granted, capped, xp: granted ? xp : 0, coins: granted ? coins : 0, boostPct,
+      quality, awaySec: Math.round(awayMs / 1000), countsForTeam: quality >= eco.quality.teamMin,
+    };
     db.emit({ scope: 'user', userId: session.user_id, type: 'session_completed', data: summary });
     return summary;
   }
 
   // ------------------------------------------------------------------ командное испытание / Road Map
-  function goalPoints() {
-    return ROADMAP.nodes[ROADMAP.nodes.length - 1].requiredPoints;
-  }
+  const roomRow = (roomId) => db.get('SELECT id, mode, cycles, cycle_no FROM rooms WHERE id = ?', roomId) ?? { id: roomId, mode: 'shared', cycles: 4, cycle_no: 0 };
+  const mapOf = (room) => buildRoadmap(room.cycles ?? 4);
+  const goalPoints = (room) => mapOf(room).nodes.at(-1).requiredPoints;
 
   const teamName = (key) => (key === 'shared' ? 'Команда' : `Команда ${key}`);
   const teamKeysOf = (room) => (room.mode === 'teams' ? ['A', 'B'] : ['shared']);
 
   /**
-   * Добавляет очки командам за награждённые сессии (каждая сессия — очко команде её игрока).
-   * Для каждой команды сервер сам фиксирует пройденные этапы и выдаёт награды один раз.
-   * В режиме 'teams' побеждает команда, первой набравшая цель (при одновременном финише — у кого больше очков,
-   * при равенстве — ничья: награду получают обе).
+   * Итог цикла для карты: каждая команда делает ОДИН шаг (к следующей остановке-перерыву), если хотя бы половина
+   * её участников цикла отфокусировалась качественно (качество ≥ economy.quality.teamMin). Сдавшиеся и пропавшие
+   * участники остаются в знаменателе — команда за них «платит». Вклад получают только качественные участники.
    */
-  function addTeamPoints(room, userIds) {
-    if (!userIds.length) return null;
-    const t = clock.now();
-    const teamOf = new Map(db.all('SELECT user_id, team_key FROM room_members WHERE room_id = ?', room.id).map((r) => [r.user_id, r.team_key]));
+  function scoreCycle(room) {
+    const sessions = db.all(
+      `SELECT s.user_id, s.status, s.quality, m.team_key FROM focus_sessions s
+       LEFT JOIN room_members m ON m.room_id = s.room_id AND m.user_id = s.user_id
+       WHERE s.room_id = ? AND s.cycle_id = ?`, room.id, room.cycle_id,
+    );
     const byTeam = new Map();
-    for (const uid of userIds) {
-      const key = room.mode === 'teams' ? (teamOf.get(uid) === 'B' ? 'B' : 'A') : 'shared';
-      if (!byTeam.has(key)) byTeam.set(key, []);
-      byTeam.get(key).push(uid);
+    for (const s of sessions) {
+      const key = room.mode === 'teams' ? (s.team_key === 'B' ? 'B' : 'A') : 'shared';
+      if (!byTeam.has(key)) byTeam.set(key, { total: 0, good: [] });
+      const x = byTeam.get(key);
+      x.total++;
+      if (s.status === 'completed' && (s.quality ?? 1) >= eco.quality.teamMin) x.good.push(s.user_id);
     }
-    const lastIdx = ROADMAP.nodes.length - 1;
+    const advancing = new Map();
+    const teams = [];
+    for (const [team, x] of byTeam) {
+      const ok = x.good.length > 0 && x.good.length * 2 >= x.total;
+      teams.push({ team, participants: x.total, focused: x.good.length, advanced: ok });
+      if (ok) advancing.set(team, x.good);
+    }
+    db.emit({ scope: 'room', roomId: room.id, type: 'cycle_scored', data: { cycleNo: room.cycle_no, teams } });
+    return addTeamSteps(room, advancing);
+  }
+
+  /** Продвигает команды на шаг; сервер сам фиксирует пройденные узлы и выдаёт награды один раз. */
+  function addTeamSteps(roomArg, advancing) {
+    const room = { ...roomRow(roomArg.id), ...roomArg };
+    if (!advancing.size) {
+      db.emit({ scope: 'room', roomId: room.id, type: 'roadmap_updated', data: { ...roadmapView(room.id), pointsBefore: null } });
+      return null;
+    }
+    const t = clock.now();
+    const map = mapOf(room);
+    const lastIdx = map.nodes.length - 1;
+    const goal = goalPoints(room);
     const touched = [];
     const everyContributor = new Set();
 
-    for (const [team, ids] of byTeam) {
+    for (const [team, ids] of advancing) {
       db.run('INSERT OR IGNORE INTO team_progress(room_id, team_key) VALUES (?,?)', room.id, team);
       const before = db.get('SELECT * FROM team_progress WHERE room_id = ? AND team_key = ?', room.id, team);
       for (const uid of ids) {
@@ -141,15 +182,14 @@ export function createGame(ctx) {
           room.id, team, uid, eco.teamPointsPerSession,
         );
       }
-      db.run('UPDATE team_progress SET points = points + ? WHERE room_id = ? AND team_key = ?', ids.length * eco.teamPointsPerSession, room.id, team);
+      if (before.points < goal) db.run('UPDATE team_progress SET points = points + 1 WHERE room_id = ? AND team_key = ?', room.id, team);
       const after = db.get('SELECT * FROM team_progress WHERE room_id = ? AND team_key = ?', room.id, team);
       const contributorIds = () => db.all('SELECT user_id FROM team_contributions WHERE room_id = ? AND team_key = ? AND points > 0', room.id, team).map((c) => c.user_id);
 
-      // Этапы карты: сервер сам фиксирует пересечение порога; награда за этап — один раз на участника с вкладом
-      for (const node of ROADMAP.nodes.filter((n, i) => i > 0 && before.points < n.requiredPoints && after.points >= n.requiredPoints)) {
+      for (const node of map.nodes.filter((n, i) => i > 0 && before.points < n.requiredPoints && after.points >= n.requiredPoints)) {
         const ins = db.run('INSERT OR IGNORE INTO team_nodes(room_id, team_key, node_id, reached_at) VALUES (?,?,?,?)', room.id, team, node.id, t);
         if (ins.changes === 0) continue;
-        const isFinal = ROADMAP.nodes.indexOf(node) === lastIdx;
+        const isFinal = map.nodes.indexOf(node) === lastIdx;
         if (!isFinal) {
           for (const uid of contributorIds()) grant(uid, `node:${room.id}:${team}:${node.id}`, 'team_node', eco.nodeReward, { roomId: room.id, nodeId: node.id, team });
         }
@@ -159,20 +199,16 @@ export function createGame(ctx) {
       contributorIds().forEach((u) => everyContributor.add(u));
     }
 
-    // Победа: награда победителям один раз. В режиме 'teams' победа первой набравшей цель команды закрывает гонку.
+    // Победа: первая дошедшая до крепости команда (одновременно — ничья, награду получают обе).
     const decided = db.get('SELECT 1 x FROM team_progress WHERE room_id = ? AND completed_at IS NOT NULL', room.id);
     let winners = [];
     if (!decided) {
-      const finished = touched.filter((x) => x.after.points >= goalPoints());
-      if (finished.length) {
-        const best = Math.max(...finished.map((x) => x.after.points));
-        winners = finished.filter((x) => x.after.points === best);
-        for (const w of winners) {
-          db.run('UPDATE team_progress SET completed_at = ? WHERE room_id = ? AND team_key = ? AND completed_at IS NULL', t, room.id, w.team);
-          const contributors = w.contributorIds();
-          for (const uid of contributors) grant(uid, `challenge:${room.id}:${w.team}`, 'team_challenge', eco.challengeReward, { roomId: room.id, challenge: ROADMAP.id, team: w.team });
-          db.emit({ scope: 'room', roomId: room.id, type: 'challenge_completed', data: { team: w.team, draw: winners.length > 1, roadmapId: ROADMAP.id, reward: eco.challengeReward, contributors } });
-        }
+      winners = touched.filter((x) => x.after.points >= goal);
+      for (const w of winners) {
+        db.run('UPDATE team_progress SET completed_at = ? WHERE room_id = ? AND team_key = ? AND completed_at IS NULL', t, room.id, w.team);
+        const contributors = w.contributorIds();
+        for (const uid of contributors) grant(uid, `challenge:${room.id}:${w.team}`, 'team_challenge', eco.challengeReward, { roomId: room.id, challenge: ROADMAP_ID, team: w.team });
+        db.emit({ scope: 'room', roomId: room.id, type: 'challenge_completed', data: { team: w.team, draw: winners.length > 1, roadmapId: ROADMAP_ID, reward: eco.challengeReward, contributors } });
       }
     }
     for (const uid of everyContributor) checkAchievements(uid);
@@ -181,19 +217,20 @@ export function createGame(ctx) {
   }
 
   /**
-   * Состояние карты. В режиме 'teams' верхний уровень описывает команду зрителя (primaryTeam),
-   * а `teams` содержит обе команды — на одной карте у каждой свой маркер.
+   * Состояние карты. Узлы — остановки-перерывы по плану циклов комнаты. В режиме 'teams' верхний уровень описывает
+   * команду зрителя, а `teams` содержит обе команды — на одной карте у каждой своя фишка.
    */
   function roadmapView(roomId, viewerId = null) {
-    const room = db.get('SELECT mode FROM rooms WHERE id = ?', roomId) ?? { mode: 'shared' };
+    const room = roomRow(roomId);
+    const map = mapOf(room);
     const keys = teamKeysOf(room);
     const viewerTeam = viewerId ? db.get('SELECT team_key FROM room_members WHERE room_id = ? AND user_id = ? AND left_at IS NULL', roomId, viewerId)?.team_key : null;
     const teamKey = room.mode === 'teams' ? (keys.includes(viewerTeam) ? viewerTeam : 'A') : 'shared';
-    const goal = goalPoints();
-    const lastIdx = ROADMAP.nodes.length - 1;
+    const goal = goalPoints(room);
+    const lastIdx = map.nodes.length - 1;
 
     const rows = new Map(keys.map((k) => [k, db.get('SELECT * FROM team_progress WHERE room_id = ? AND team_key = ?', roomId, k) || { points: 0, completed_at: null }]));
-    const posIdx = (points) => { let r = 0; ROADMAP.nodes.forEach((n, i) => { if (points >= n.requiredPoints) r = i; }); return r; };
+    const posIdx = (points) => Math.max(0, Math.min(lastIdx, points));
     const winnersList = keys.filter((k) => rows.get(k).completed_at);
     const winner = winnersList.length === 0 ? null : winnersList.length === 1 ? winnersList[0] : 'draw';
 
@@ -202,47 +239,45 @@ export function createGame(ctx) {
     const reachedIdx = posIdx(prog.points);
     const nextIdx = Math.min(reachedIdx + 1, lastIdx);
     const done = Boolean(prog.completed_at);
-    const nodes = ROADMAP.nodes.map((n, i) => {
-      const prev = ROADMAP.nodes[Math.max(0, i - 1)];
-      const span = Math.max(1, n.requiredPoints - prev.requiredPoints);
-      return {
-        ...n,
-        status: i <= reachedIdx ? (i === reachedIdx && !done && prog.points < goal ? 'current' : 'completed') : i === nextIdx ? 'next' : 'locked',
-        challenge: n.type === 'start' ? null : { kind: 'team_focus_points', required: n.requiredPoints },
-        reachedAt: i === 0 ? null : reachedAt.get(n.id) ?? null,
-        reward: n.type === 'start' ? null : i === lastIdx ? eco.challengeReward : eco.nodeReward,
-        progress: i === 0 ? 1 : Math.min(1, Math.max(0, (prog.points - prev.requiredPoints) / span)),
-      };
-    });
-    const from = ROADMAP.nodes[reachedIdx];
-    const to = ROADMAP.nodes[nextIdx];
+    const nodes = map.nodes.map((n, i) => ({
+      ...n,
+      status: i <= reachedIdx ? (i === reachedIdx && !done && prog.points < goal ? 'current' : 'completed') : i === nextIdx ? 'next' : 'locked',
+      challenge: n.type === 'start' ? null : { kind: 'team_focus_cycles', required: n.requiredPoints },
+      reachedAt: i === 0 ? null : reachedAt.get(n.id) ?? null,
+      reward: n.type === 'start' ? null : i === lastIdx ? eco.challengeReward : eco.nodeReward,
+      progress: i <= reachedIdx ? 1 : 0,
+    }));
+    const from = map.nodes[reachedIdx];
+    const to = map.nodes[nextIdx];
     const finished = prog.points >= goal;
     const contributions = db.all(
       `SELECT c.user_id AS userId, u.name, c.points, c.team_key AS team FROM team_contributions c JOIN users u ON u.id = c.user_id
        WHERE c.room_id = ? ORDER BY c.points DESC, u.name`, roomId,
     );
     return {
-      roadmapId: ROADMAP.id,
-      title: ROADMAP.title,
+      roadmapId: map.id,
+      title: map.title,
       mode: room.mode,
       teamKey,
       points: prog.points,
       goal,
+      // План: сколько циклов (= перерывов = шагов карты) задумано и сколько уже начато
+      cycles: { planned: goal, started: room.cycle_no ?? 0 },
       completed: done,
       finished,
       completedAt: prog.completed_at,
       winner,
       reward: eco.challengeReward,
       positionNodeId: from.id,
-      // Следующий этап и доля пути до него: клиент рисует, но не вычисляет
+      // Следующая остановка: один качественный цикл команды = один шаг. Клиент рисует, но не вычисляет
       next: finished || from.id === to.id ? null : { nodeId: to.id, title: to.title, pointsNeeded: to.requiredPoints - prog.points },
-      segment: finished || from.id === to.id ? null : { from: from.id, to: to.id, progress: Math.min(1, Math.max(0, (prog.points - from.requiredPoints) / (to.requiredPoints - from.requiredPoints))) },
+      segment: finished || from.id === to.id ? null : { from: from.id, to: to.id, progress: 0 },
       teams: keys.map((k) => ({
-        key: k, name: teamName(k), points: rows.get(k).points, positionNodeId: ROADMAP.nodes[posIdx(rows.get(k).points)].id,
+        key: k, name: teamName(k), points: rows.get(k).points, positionNodeId: map.nodes[posIdx(rows.get(k).points)].id,
         finished: rows.get(k).points >= goal, completed: Boolean(rows.get(k).completed_at),
       })),
       nodes,
-      edges: ROADMAP.edges,
+      edges: map.edges,
       contributions: room.mode === 'teams' ? contributions : contributions.map(({ team, ...c }) => c), // eslint-disable-line no-unused-vars
     };
   }
@@ -479,7 +514,7 @@ export function createGame(ctx) {
   }
 
   return {
-    levelInfo, grant, spend, completeSession, addTeamPoints, roadmapView, gameView,
+    levelInfo, grant, spend, completeSession, scoreCycle, addTeamSteps, roadmapView, gameView,
     listUpgrades, purchaseUpgrade, upgradeLevel, checkAchievements, listAchievements, progress, effects, stats,
     studyStats, roomStats,
   };

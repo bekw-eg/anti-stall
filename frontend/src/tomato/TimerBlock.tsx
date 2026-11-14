@@ -18,7 +18,9 @@ export function TimerBlock({ t, mode, previewSeconds, summary }: { t: Tomato; mo
   const room = t.snapshot?.room;
   const live = room && (room.phase === "focus" || room.phase === "break") && t.remainingMs !== null;
   const seconds = live ? Math.ceil(t.remainingMs! / 1000) : room ? (room.phase === "completed" ? 0 : room.settings.focusSec) : previewSeconds;
-  const label = room ? PHASE_LABEL[room.phase] : "Готово";
+  // «Фокус · цикл 2 из 4» — как в макете; план циклов задаёт карту
+  const planned = room?.settings.cycles;
+  const label = room ? `${PHASE_LABEL[room.phase]}${(room.phase === "focus" || room.phase === "break") && planned ? ` · цикл ${room.cycleNo} из ${planned}` : ""}` : "Готово";
   const total = room && room.phaseEndsAt ? room.phaseEndsAt - room.phaseStartedAt : 0;
   const progress = live && total > 0 ? Math.min(1, Math.max(0, 1 - t.remainingMs! / total)) : 0;
   const inRoom = Boolean(room);

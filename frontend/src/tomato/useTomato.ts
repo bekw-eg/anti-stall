@@ -22,17 +22,37 @@ const store = {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** idle — нет комнаты; connecting — первое подключение; online; reconnecting — связь потеряна; offline — нет сети */
+/** Границы ввода длительностей, секунды (GET /api/config → pomodoro). */
+export interface TimerLimits {
+  focusSeconds: [number, number];
+  breakSeconds: [number, number];
+  cycles: [number, number];
+  demoFocusSeconds: [number, number];
+  demoBreakSeconds: [number, number];
+}
+export const DEFAULT_LIMITS: TimerLimits = { focusSeconds: [60, 86_400], breakSeconds: [10, 7_200], cycles: [1, 12], demoFocusSeconds: [5, 600], demoBreakSeconds: [10, 300] };
+
 export type Conn = "idle" | "connecting" | "online" | "reconnecting" | "offline";
 export interface Toast { id: number; text: string; tone: "info" | "reward" | "error" }
 
 const teamLabel = (team?: string) => (team === "A" || team === "B" ? `${team}: ` : "");
 
 function describeEvent(ev: ServerEvent, myId?: string, myTeam?: string): string | null {
-  const d = ev.data as { winner?: string; team?: string; draw?: boolean; kind?: string; xp?: number; coins?: number; levelUp?: boolean; level?: number; title?: string; rewarded?: boolean; status?: string; to?: string; blocked?: boolean };
+  const d = ev.data as { winner?: string; team?: string; draw?: boolean; kind?: string; xp?: number; coins?: number; levelUp?: boolean; level?: number; title?: string; rewarded?: boolean; status?: string; to?: string; blocked?: boolean; quality?: number; countsForTeam?: boolean; capped?: boolean; reason?: string; type?: string };
   switch (ev.type) {
     case "reward_granted": return d.kind === "achievement" ? null : `+${d.xp} XP · +${d.coins} монет${d.levelUp ? ` · уровень ${d.level}` : ""}`;
     case "achievement_unlocked": return `Достижение: ${d.title}`;
-    case "session_completed": return d.rewarded ? null : d.status === "completed" ? "Сессия завершена, дневной лимит наград исчерпан" : "Сессия прервана — без награды";
+    case "session_completed": {
+      if (d.status !== "completed") return d.reason === "user_abort" ? "Вы сдались — без награды, команда может не сделать шаг" : "Сессия прервана — без награды";
+      const q = `Качество фокуса ${Math.round((d.quality ?? 1) * 100)}%`;
+      if (d.capped) return `${q}. Дневной лимит наград исчерпан`;
+      return d.countsForTeam === false ? `${q} — маловато, команде этот фокус не засчитан` : q;
+    }
+    case "cycle_scored": {
+      const c = ev.data as { teams?: { team: string; advanced: boolean }[] };
+      const mine = c.teams?.find((x) => x.team === (myTeam ?? "shared")) ?? (c.teams?.length === 1 ? c.teams[0] : undefined);
+      return mine && !mine.advanced ? "Цикл не засчитан: меньше половины команды отфокусировались — шага по карте нет" : null;
+    }
     case "td_round_finished":
       if (myTeam && d.team !== myTeam) return null;
       return d.status === "won" ? "Оборона выстояла" : d.status === "lost" ? "База пала — в следующий перерыв получится лучше" : "Перерыв закончился — раунд завершён";
@@ -43,7 +63,11 @@ function describeEvent(ev: ServerEvent, myId?: string, myTeam?: string): string 
       const h = ev.data as { type?: string };
       return d.to === myId ? (h.type === "shield" ? "Вам подарили щит от шуток" : "Вам помогли: бонус к XP в следующей сессии") : null;
     }
-    case "prank_applied": return d.to === myId ? (d.blocked ? "Щит отразил шутку" : null) : null; // сама шутка видна на экране
+    case "prank_applied": {
+      const name = ({ fog: "туман", sticker: "липучку" } as Record<string, string>)[d.type ?? ""] ?? "шутку";
+      if (d.blocked) return d.to === myId || (myTeam && d.team === myTeam) ? "Щит команды отразил шутку соперника" : null;
+      return myTeam && d.team === myTeam ? `Соперник напустил ${name} на ваши башни` : null; // в общем режиме шутка видна на экране
+    }
     default: return null;
   }
 }
@@ -64,6 +88,8 @@ export function useTomato(initialCode?: string) {
   const [boostPct, setBoostPct] = useState(25); // бонус к XP от помощи — актуальный приходит из /api/config
   // правила шуток для подсказки в «Друзьях»; в демо-комнатах свой, короткий кулдаун
   const [prankRules, setPrankRules] = useState({ cooldownMs: 20_000, demoCooldownMs: 20_000, maxPerBreak: 3 });
+  // Границы длительностей (вводит пользователь, сервер проверяет); актуальные приходят из /api/config
+  const [limits, setLimits] = useState<TimerLimits>(DEFAULT_LIMITS);
   const [user, setUser] = useState<Me | null>(null);
   const [name, setName] = useState(store.get(NAME_KEY) ?? "");
   const [roomId, setRoomId] = useState<string | null>(null);
@@ -166,7 +192,9 @@ export function useTomato(initialCode?: string) {
         }
         client.config().then((c) => {
           if (cancelled) return;
-          const cfg = c as { social?: { shield?: { cost?: number }; boost?: { xpBonusPct?: number }; prankRules?: { cooldownMs?: number; demoCooldownMs?: number; maxPerBreak?: number } }; presence?: { graceMs?: number } };
+          const cfg = c as { social?: { shield?: { cost?: number }; boost?: { xpBonusPct?: number }; prankRules?: { cooldownMs?: number; demoCooldownMs?: number; maxPerBreak?: number } }; presence?: { graceMs?: number }; pomodoro?: Partial<TimerLimits> };
+          const pom = cfg.pomodoro;
+          if (pom && Array.isArray(pom.focusSeconds) && Array.isArray(pom.breakSeconds)) setLimits((l) => ({ ...l, ...pom }));
           if (typeof cfg.social?.shield?.cost === "number") setShieldCost(cfg.social.shield.cost);
           if (typeof cfg.social?.boost?.xpBonusPct === "number") setBoostPct(cfg.social.boost.xpBonusPct);
           const pr = cfg.social?.prankRules;
@@ -314,9 +342,9 @@ export function useTomato(initialCode?: string) {
         if (d.connection) setSnapshot((s) => s && { ...s, members: s.members.map((m) => (m.userId === d.userId ? { ...m, connection: d.connection! } : m)) });
       }
       if (ev.type === "help_applied" || ev.type === "prank_applied") {
-        const d = ev.data as { actionId: number; type: SocialAction["type"]; from: string; to: string; blocked?: boolean; at: number; effectEndsAt?: number | null };
+        const d = ev.data as { actionId: number; type: SocialAction["type"]; from: string; to: string; team?: string | null; blocked?: boolean; at: number; effectEndsAt?: number | null };
         const item: SocialAction = {
-          id: d.actionId, kind: ev.type === "help_applied" ? "help" : "prank", type: d.type, fromUserId: d.from, toUserId: d.to,
+          id: d.actionId, kind: ev.type === "help_applied" ? "help" : "prank", type: d.type, fromUserId: d.from, toUserId: d.to, toTeam: d.team ?? null,
           status: d.blocked ? "blocked" : "applied", at: d.at, effectEndsAt: d.effectEndsAt ?? null,
         };
         setFeed((f) => [item, ...f.filter((x) => x.id !== item.id)].slice(0, 30));
@@ -471,21 +499,21 @@ export function useTomato(initialCode?: string) {
 
   const recordResult = useCallback((result: "done" | "partial" | "not_done") => call(() => client.recordResult(rid, result)), [call, rid]);
 
-  /** Получать шутки: переключатель меняется сразу, сервер подтверждает (при ошибке — откат). */
-  const setPranksEnabled = useCallback(async (on: boolean) => {
-    const apply = (v: boolean) => {
-      setSnapshot((s) => (s?.me ? { ...s, me: { ...s.me, prankEnabled: v }, members: s.members.map((m) => (m.userId === s.me!.userId ? { ...m, prankEnabled: v } : m)) } : s));
-      setUser((u) => (u ? { ...u, prankEnabled: v } : u));
-    };
-    apply(on);
-    const r = await call(() => client.updateMe({ prankEnabled: on }));
-    if (!r) apply(!on);
-    return Boolean(r);
-  }, [call]);
+  // Качество фокуса: пока идёт своя сессия, сообщаем серверу об уходе со вкладки и возврате.
+  // Это может только снизить качество (обрывы связи сервер видит сам), поэтому подмена клиента ничего не даёт.
+  const focusing = snapshot?.me?.status === "focusing";
+  useEffect(() => {
+    if (!focusing || !rid || typeof document === "undefined") return;
+    const send = (state: "away" | "back") => { client.reportAttention(rid, state).catch(() => undefined); };
+    const onVis = () => send(document.visibilityState === "hidden" ? "away" : "back");
+    if (document.visibilityState === "hidden") send("away");
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [focusing, rid]);
 
   return {
-    boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
-    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled,
+    boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
+    call, push, td, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

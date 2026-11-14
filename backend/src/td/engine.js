@@ -92,12 +92,21 @@ export function stepState(state, ctx) {
   }
   state.enemies = alive;
 
-  // 3. стрельба башен (в порядке id слота — детерминированно)
+  // 3. стрельба башен (в порядке id слота — детерминированно). Дебаффы соперника (шутки) действуют по игровому времени.
+  let rangeMult = 1;
+  let cooldownMult = 1;
+  for (const d of ctx.debuffs ?? []) {
+    if (state.t < d.from || state.t >= d.until) continue;
+    rangeMult = Math.min(rangeMult, d.rangeMult ?? 1);
+    cooldownMult = Math.max(cooldownMult, d.cooldownMult ?? 1);
+  }
   const towers = [...ctx.towers].sort((a, b) => (a.slot < b.slot ? -1 : a.slot > b.slot ? 1 : 0));
   for (const tw of towers) {
     const cd = (state.cd[tw.slot] ?? 0) - dt;
     if (cd > 1e-9) { state.cd[tw.slot] = cd; continue; }
     const st = towerStats(tw.type, tw.level, ctx.damageMult);
+    st.range *= rangeMult;
+    st.cooldown *= cooldownMult;
     const pos = slotById(tw.slot);
     let target = null;
     let targetPos = null;

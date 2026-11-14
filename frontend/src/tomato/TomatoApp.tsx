@@ -3,7 +3,7 @@ import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "framer-
 import { BarChart3, Map as MapIcon, Settings, Swords, Timer, Users } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { ConnectionBanner, DemoBadge, Toasts } from "./Chrome";
-import { currentRouteCode } from "./format";
+import { currentRouteCode, formatSpan } from "./format";
 import { SPRING, FIELD_DARK, FIELD_LIGHT } from "./motion";
 import { PrankOverlay } from "./PrankOverlay";
 import { ParticipantsRow, RoadmapSlot } from "./RoomExtras";
@@ -47,10 +47,14 @@ export default function TomatoApp() {
   const gameOpen = panel === "game";
   const toggleMap = () => toggle("map");
   const toggleGame = () => toggle("game");
-  const [work, setWork] = useState(25);
-  const [rest, setRest] = useState(5);
+  // Длительности в секундах — их вводит пользователь (без пресетов), границы проверяет сервер
+  const [work, setWork] = useState(25 * 60);
+  const [rest, setRest] = useState(5 * 60);
+  const [cycles, setCycles] = useState(4);
   const [demoPick, setDemo] = useState(false);
   const demo = demoPick || t.demoMode; // демо-сервер: любая новая комната — демо
+  // Демо-сервер: стартовые значения короткие (секунды), пользователь всё равно может их поменять
+  useEffect(() => { if (t.demoMode) { setWork((w) => (w === 25 * 60 ? 25 : w)); setRest((r) => (r === 5 * 60 ? 15 : r)); } }, [t.demoMode]);
   const [teamMode, setTeamMode] = useState(false);
 
   const room = t.snapshot?.room;
@@ -74,8 +78,9 @@ export default function TomatoApp() {
     const id = room?.id ?? null;
     if (id && prevRoom.current !== id) {
       setOpen(false);
-      setWork(room!.settings.focusSec / 60 >= 1 ? Math.round(room!.settings.focusSec / 60) : 25);
-      setRest(room!.settings.breakSec / 60 >= 1 ? Math.round(room!.settings.breakSec / 60) : 5);
+      setWork(room!.settings.focusSec);
+      setRest(room!.settings.breakSec);
+      setCycles(room!.settings.cycles ?? 4);
       setDemo(room!.demo);
     }
     if (!id && prevRoom.current) { setOpen(true); setPanel(null); }
@@ -89,18 +94,23 @@ export default function TomatoApp() {
   const showStats = inRoom && panel === "stats" && !open;
   const mode = open ? "settings" : showMap || showGame || showSocial || showStats ? "map" : "room";
   const phase = room?.phase;
-  useEffect(() => { if (inRoom && phase !== "break") setPanel((p) => (p === "game" ? null : p)); }, [inRoom, phase]); // новый перерыв — игра не открывается сама
+  // Перерыв не «пустой»: с его началом сразу открывается игра (Tower Defense команды); с концом — закрывается
+  const prevPhase = useRef(phase);
+  useEffect(() => {
+    if (inRoom && phase === "break" && prevPhase.current !== "break") setPanel("game");
+    if (inRoom && phase !== "break") setPanel((p) => (p === "game" ? null : p));
+    prevPhase.current = phase;
+  }, [inRoom, phase]);
   const { loadTd } = t;
   useEffect(() => { if (showGame) loadTd(); }, [showGame, loadTd]);
 
   const dark = inRoom && room!.phase === "break" && !open;
   const vars = { ...(dark ? DARK_VARS : LIGHT_VARS), "--timer": open ? "#111111" : "var(--fg)" } as React.CSSProperties;
-  const previewSeconds = demo ? 25 : work * 60;
-  // Сводка под таймером: настройки комнаты (если она есть) или выбранные в форме
-  const sumDemo = room ? room.demo : demo;
-  const sumFocus = room ? (room.demo ? room.settings.focusSec : room.settings.focusSec / 60) : demo ? 25 : work;
-  const sumBreak = room ? (room.demo ? room.settings.breakSec : room.settings.breakSec / 60) : demo ? 15 : rest;
-  const sumUnit = sumDemo ? "сек" : "мин";
+  const previewSeconds = work;
+  // Сводка под таймером: настройки комнаты (если она есть) или введённые в форме
+  const sumFocus = room ? room.settings.focusSec : work;
+  const sumBreak = room ? room.settings.breakSec : rest;
+  const sumCycles = room ? room.settings.cycles ?? 4 : cycles;
 
   const headBtn = "flex items-center gap-2 rounded-full bg-[var(--card)] px-4 py-2 text-sm font-medium transition-colors hover:bg-white/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-current";
   const reveal = {
@@ -195,9 +205,9 @@ export default function TomatoApp() {
                   mode={mode}
                   previewSeconds={previewSeconds}
                   summary={!desktop ? null : (
-                    <div className="flex h-28 w-40 flex-col items-center justify-center rounded-2xl bg-[#d9d9d9] text-zinc-900">
-                      <span className="text-3xl font-light tabular-nums">{sumFocus} / {sumBreak}</span>
-                      <span className="mt-1 text-xs text-zinc-500">фокус / перерыв, {sumUnit}</span>
+                    <div className="flex h-28 min-w-40 flex-col items-center justify-center rounded-2xl bg-[#d9d9d9] px-4 text-zinc-900">
+                      <span className="text-xl font-light tabular-nums">{formatSpan(sumFocus)} / {formatSpan(sumBreak)}</span>
+                      <span className="mt-1 text-xs text-zinc-500">фокус / перерыв · циклов: {sumCycles}</span>
                     </div>
                   )}
                 />
@@ -272,7 +282,7 @@ export default function TomatoApp() {
                     <SettingsContent
                       t={t}
                       initialCode={currentRouteCode()}
-                      form={{ work, rest, demo, teamMode, setWork, setRest, setDemo, setTeamMode }}
+                      form={{ work, rest, cycles, demo, teamMode, setWork, setRest, setCycles, setDemo, setTeamMode }}
                       onCollapse={() => (inRoom ? setOpen(false) : setScreen("welcome"))}
                     />
                   </motion.aside>

@@ -85,7 +85,7 @@ function Controls({ t }: { t: Tomato }) {
         }}
         className={`${btn} border border-[var(--line)] text-[var(--muted)] hover:text-[var(--fg)]`}
       >
-        {confirm ? "Точно? Награды не будет" : "Завершить досрочно"}
+        {confirm ? "Точно? Без награды, команда может не сделать шаг" : "Сдаться"}
       </button>
     );
   }
@@ -204,7 +204,7 @@ function ActionMenu({ member, t }: { member: Member; t: Tomato }) {
     ["boost", "Бонус к XP", () => t.help(member.userId, "boost")],
     ["shield", "Щит от шуток · 10 монет", () => t.help(member.userId, "shield")],
     ["fog", "Шутка: туман", () => t.prank(member.userId, "fog")],
-    ["sticker", "Шутка: стикер", () => t.prank(member.userId, "sticker")],
+    ["sticker", "Шутка: липучка", () => t.prank(member.userId, "sticker")],
   ] as const;
   return (
     <span className="relative">

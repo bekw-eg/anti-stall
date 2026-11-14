@@ -51,23 +51,32 @@ export function createRoomsService(ctx, game, users, td) {
     if (!sandbox && demo) throw E.forbidden('DEMO_SANDBOX_ONLY', 'Демо-комнаты доступны только песочным (демо) аккаунтам');
   }
 
+  /** Секунды из тела запроса: focusSeconds (основной ввод) или устаревшее focusMinutes (старые клиенты). */
+  function secondsField(body, secKey, minKey, fallback, [min, max]) {
+    if (body[secKey] !== undefined) return reqInt(body[secKey], secKey, { min, max });
+    if (body[minKey] !== undefined) {
+      const sec = Number(body[minKey]) * 60;
+      return reqInt(Number.isFinite(sec) ? Math.round(sec) : body[minKey], minKey, { min, max });
+    }
+    return reqInt(fallback, secKey, { min, max });
+  }
+
   function parseSettings(body, existing) {
     const demo = existing ? Boolean(existing.demo) : body.demo === true;
     if (body.demo !== undefined && typeof body.demo !== 'boolean') throw E.badRequest('INVALID_FIELD', 'Поле demo должно быть boolean', { field: 'demo' });
-    if (demo) {
-      if (!config.demoMode) throw E.forbidden('DEMO_DISABLED', 'Демо-режим выключен на сервере');
-      return {
-        demo: 1,
-        focusSec: reqInt(body.focusSeconds ?? existing?.focus_sec ?? 25, 'focusSeconds', { min: L.demoFocusSeconds[0], max: L.demoFocusSeconds[1] }),
-        breakSec: reqInt(body.breakSeconds ?? existing?.break_sec ?? 15, 'breakSeconds', { min: L.demoBreakSeconds[0], max: L.demoBreakSeconds[1] }),
-      };
+    if (demo && !config.demoMode) throw E.forbidden('DEMO_DISABLED', 'Демо-режим выключен на сервере');
+    const focusLim = demo ? L.demoFocusSeconds : L.focusSeconds;
+    const breakLim = demo ? L.demoBreakSeconds : L.breakSeconds;
+    const cycles = body.cycles === undefined ? existing?.cycles ?? 4 : reqInt(body.cycles, 'cycles', { min: L.cycles[0], max: L.cycles[1] });
+    // План циклов задаёт карту: после старта первого цикла его менять нельзя, иначе «поедут» остановки
+    if (existing && existing.cycle_no > 0 && cycles !== existing.cycles) {
+      throw E.conflict('CYCLES_LOCKED', 'Число циклов меняется только до первого фокуса', { field: 'cycles' });
     }
-    const focusMin = body.focusMinutes ?? (existing ? existing.focus_sec / 60 : 25);
-    const breakMin = body.breakMinutes ?? (existing ? existing.break_sec / 60 : 5);
     return {
-      demo: 0,
-      focusSec: reqInt(focusMin, 'focusMinutes', { min: L.focusMinutes[0], max: L.focusMinutes[1] }) * 60,
-      breakSec: reqInt(breakMin, 'breakMinutes', { min: L.breakMinutes[0], max: L.breakMinutes[1] }) * 60,
+      demo: demo ? 1 : 0,
+      focusSec: secondsField(body, 'focusSeconds', 'focusMinutes', existing?.focus_sec ?? (demo ? 25 : 25 * 60), focusLim),
+      breakSec: secondsField(body, 'breakSeconds', 'breakMinutes', existing?.break_sec ?? (demo ? 15 : 5 * 60), breakLim),
+      cycles,
     };
   }
 
@@ -91,8 +100,8 @@ export function createRoomsService(ctx, game, users, td) {
       } while (db.get('SELECT 1 x FROM rooms WHERE code = ?', code));
       const t = clock.now();
       db.run(
-        `INSERT INTO rooms(id, code, name, host_id, phase, focus_sec, break_sec, demo, mode, phase_started_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-        id, code, name, user.id, 'waiting', s.focusSec, s.breakSec, s.demo, mode, t, t,
+        `INSERT INTO rooms(id, code, name, host_id, phase, focus_sec, break_sec, cycles, demo, mode, phase_started_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        id, code, name, user.id, 'waiting', s.focusSec, s.breakSec, s.cycles, s.demo, mode, t, t,
       );
       db.run('INSERT INTO room_members(room_id, user_id, role, team_key, joined_at) VALUES (?,?,?,?,?)', id, user.id, 'host', mode === 'teams' ? 'A' : 'shared', t);
       for (const key of mode === 'teams' ? ['A', 'B'] : ['shared']) db.run('INSERT INTO team_progress(room_id, team_key) VALUES (?,?)', id, key);
@@ -173,9 +182,9 @@ export function createRoomsService(ctx, game, users, td) {
         if (b.demo !== Boolean(room.demo)) throw E.badRequest('INVALID_FIELD', 'Тип комнаты (demo) нельзя менять после создания', { field: 'demo' });
       }
       const s = parseSettings(b, room);
-      db.run('UPDATE rooms SET focus_sec = ?, break_sec = ? WHERE id = ?', s.focusSec, s.breakSec, room.id);
+      db.run('UPDATE rooms SET focus_sec = ?, break_sec = ?, cycles = ? WHERE id = ?', s.focusSec, s.breakSec, s.cycles, room.id);
       if (b.name !== undefined) db.run('UPDATE rooms SET name = ? WHERE id = ?', reqString(b.name, 'name', { min: 1, max: L.roomNameMax }), room.id);
-      db.emit({ scope: 'room', roomId: room.id, type: 'settings_changed', data: { focusSec: s.focusSec, breakSec: s.breakSec } });
+      db.emit({ scope: 'room', roomId: room.id, type: 'settings_changed', data: { focusSec: s.focusSec, breakSec: s.breakSec, cycles: s.cycles } });
       db.emit(stateEvent(room.id));
       return snapshot(room.id, user.id);
     });
@@ -258,37 +267,45 @@ export function createRoomsService(ctx, game, users, td) {
       if (room.demo && !config.demoMode) throw E.forbidden('DEMO_DISABLED', 'Демо-режим выключен на сервере');
       requireSandboxMatch(Boolean(room.demo), user);
       if (activeSessionOf(user.id)) throw E.conflict('ALREADY_FOCUSING', 'У вас уже идёт фокус-сессия в другой комнате');
-
-      const t = clock.now();
-      const cycleId = randomUUID();
-      const cycleNo = room.cycle_no + 1;
-      const endsAt = t + room.focus_sec * 1000;
-      const members = db.all(
-        `SELECT m.user_id, m.task_title, u.last_seen_at, u.sandbox FROM room_members m JOIN users u ON u.id = m.user_id
-         WHERE m.room_id = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.rowid`, room.id,
-      );
-      db.run("UPDATE rooms SET phase = 'focus', cycle_id = ?, cycle_no = ?, phase_started_at = ?, phase_ends_at = ? WHERE id = ?", cycleId, cycleNo, t, endsAt, room.id);
-      db.run('UPDATE room_members SET is_ready = 0 WHERE room_id = ?', room.id);
-
-      const participants = [];
-      const skipped = [];
-      for (const m of members) {
-        if (Boolean(m.sandbox) !== Boolean(room.demo)) { skipped.push({ userId: m.user_id, reason: 'sandbox_mismatch' }); continue; } // только старые данные
-        if (m.user_id !== user.id && t - m.last_seen_at > config.graceMs) { skipped.push({ userId: m.user_id, reason: 'offline' }); continue; }
-        if (activeSessionOf(m.user_id)) { skipped.push({ userId: m.user_id, reason: 'busy_elsewhere' }); continue; }
-        const id = randomUUID();
-        db.run(
-          `INSERT INTO focus_sessions(id, room_id, cycle_id, cycle_no, user_id, task_title, started_at, scheduled_end_at, duration_sec, status, demo)
-           VALUES (?,?,?,?,?,?,?,?,?,'active',?)`,
-          id, room.id, cycleId, cycleNo, m.user_id, m.task_title, t, endsAt, room.focus_sec, room.demo,
-        );
-        participants.push(m.user_id);
-      }
-      db.emit({ scope: 'room', roomId: room.id, type: 'timer_started', data: { cycleId, cycleNo, phase: 'focus', phaseStartedAt: t, phaseEndsAt: endsAt, serverTime: t, participants, skipped } });
-      db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'waiting', to: 'focus', cycleId, phaseStartedAt: t, phaseEndsAt: endsAt } });
-      db.emit(stateEvent(room.id));
-      return { ...snapshot(room.id, user.id), start: { participants, skipped } };
+      const start = beginCycle(room, clock.now(), user.id);
+      return { ...snapshot(room.id, user.id), start };
     });
+  }
+
+  /**
+   * Запуск цикла фокуса в момент `t`. initiatorId — хост, нажавший «Начать» (его не проверяем на офлайн);
+   * null — автоматический старт следующего цикла по окончании перерыва.
+   */
+  function beginCycle(room, t, initiatorId = null) {
+    const from = room.phase;
+    const cycleId = randomUUID();
+    const cycleNo = room.cycle_no + 1;
+    const endsAt = t + room.focus_sec * 1000;
+    const members = db.all(
+      `SELECT m.user_id, m.task_title, u.last_seen_at, u.sandbox FROM room_members m JOIN users u ON u.id = m.user_id
+       WHERE m.room_id = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.rowid`, room.id,
+    );
+    db.run("UPDATE rooms SET phase = 'focus', cycle_id = ?, cycle_no = ?, phase_started_at = ?, phase_ends_at = ? WHERE id = ?", cycleId, cycleNo, t, endsAt, room.id);
+    db.run('UPDATE room_members SET is_ready = 0 WHERE room_id = ?', room.id);
+
+    const participants = [];
+    const skipped = [];
+    for (const m of members) {
+      if (Boolean(m.sandbox) !== Boolean(room.demo)) { skipped.push({ userId: m.user_id, reason: 'sandbox_mismatch' }); continue; } // только старые данные
+      if (m.user_id !== initiatorId && t - m.last_seen_at > config.graceMs) { skipped.push({ userId: m.user_id, reason: 'offline' }); continue; }
+      if (activeSessionOf(m.user_id)) { skipped.push({ userId: m.user_id, reason: 'busy_elsewhere' }); continue; }
+      const id = randomUUID();
+      db.run(
+        `INSERT INTO focus_sessions(id, room_id, cycle_id, cycle_no, user_id, task_title, started_at, scheduled_end_at, duration_sec, status, demo)
+         VALUES (?,?,?,?,?,?,?,?,?,'active',?)`,
+        id, room.id, cycleId, cycleNo, m.user_id, m.task_title, t, endsAt, room.focus_sec, room.demo,
+      );
+      participants.push(m.user_id);
+    }
+    db.emit({ scope: 'room', roomId: room.id, type: 'timer_started', data: { cycleId, cycleNo, cycles: room.cycles, phase: 'focus', phaseStartedAt: t, phaseEndsAt: endsAt, serverTime: t, participants, skipped, auto: initiatorId === null } });
+    db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from, to: 'focus', cycleId, phaseStartedAt: t, phaseEndsAt: endsAt } });
+    db.emit(stateEvent(room.id));
+    return { participants, skipped };
   }
 
   function endSessionEarly(room, sess, status, reason) {
@@ -297,7 +314,10 @@ export function createRoomsService(ctx, game, users, td) {
     db.emit({ scope: 'room', roomId: room.id, type: 'player_status_changed', data: { userId: sess.user_id, status, reason } });
   }
 
-  /** Досрочное завершение СВОЕЙ сессии. Остальные участники продолжают, награды нет. */
+  /**
+   * «Сдаться»: досрочный выход из СВОЕЙ сессии (обязательный сценарий кейса). Это не пропуск фокуса:
+   * таймер комнаты идёт дальше, награды нет, а сдавшийся остаётся в знаменателе команды — она может не сделать шаг по карте.
+   */
   function abortSession(user, idOrCode) {
     return db.tx(() => {
       advanceInTx(findRoom(idOrCode).id);
@@ -306,7 +326,7 @@ export function createRoomsService(ctx, game, users, td) {
       requirePhase(room, 'focus');
       const sess = db.get("SELECT * FROM focus_sessions WHERE room_id = ? AND cycle_id = ? AND user_id = ? AND status = 'active'", room.id, room.cycle_id, user.id);
       if (!sess) throw E.notFound('NO_ACTIVE_SESSION', 'У вас нет активной сессии в этой комнате');
-      endSessionEarly(room, sess, 'aborted', 'user_abort');
+      endSessionEarly(room, { ...sess, ...closeAway(sess, clock.now()) }, 'aborted', 'user_abort');
       db.emit(stateEvent(room.id));
       return { sessionId: sess.id, status: 'aborted', rewarded: false };
     });
@@ -318,7 +338,7 @@ export function createRoomsService(ctx, game, users, td) {
       const room = findRoom(idOrCode);
       requireHost(room, user);
       requirePhase(room, 'break');
-      toWaiting(room, clock.now());
+      endBreak(room, clock.now());
       return snapshot(room.id, user.id);
     });
   }
@@ -331,6 +351,66 @@ export function createRoomsService(ctx, game, users, td) {
     db.emit(stateEvent(room.id));
   }
 
+  /**
+   * Перерыв закончился (по таймеру или пропуском): если план циклов не выполнен — сразу следующий фокус,
+   * иначе комната ждёт хоста (можно продолжить сверх плана, если команда ещё не дошла до крепости).
+   */
+  function endBreak(room, at) {
+    // Автостарт, только если план не выполнен и в комнате есть кто-то в сети (иначе пустые циклы «прокрутились» бы сами)
+    const someoneHere = db.get('SELECT 1 x FROM room_members m JOIN users u ON u.id = m.user_id WHERE m.room_id = ? AND m.left_at IS NULL AND ? - u.last_seen_at <= ?', room.id, at, config.graceMs);
+    const auto = room.cycle_no < room.cycles && Boolean(someoneHere) && !(room.demo && !config.demoMode);
+    if (!auto) return toWaiting(room, at);
+    td.closeRounds(room, at);
+    beginCycle(room, at, null);
+  }
+
+  /** Закрывает открытую отлучку сессии (для итогового качества). */
+  function closeAway(sess, at) {
+    if (sess.away_since === null || sess.away_since === undefined) return {};
+    const awayMs = (sess.away_ms ?? 0) + Math.max(0, at - sess.away_since);
+    db.run('UPDATE focus_sessions SET away_ms = ?, away_since = NULL, away_kind = NULL WHERE id = ?', awayMs, sess.id);
+    return { away_ms: awayMs, away_since: null, away_kind: null };
+  }
+
+  /**
+   * Присутствие во время фокуса для оценки качества: пропал из сети дольше onlineWindowMs — отлучка
+   * с момента последнего сигнала; вернулся — отлучка закрывается. Видит сервер сам, клиент на это не влияет.
+   */
+  function trackPresence(room, ref) {
+    const rows = db.all(
+      `SELECT s.*, u.last_seen_at FROM focus_sessions s JOIN users u ON u.id = s.user_id
+       WHERE s.room_id = ? AND s.cycle_id = ? AND s.status = 'active'`, room.id, room.cycle_id,
+    );
+    for (const s of rows) {
+      const gone = ref - s.last_seen_at > config.onlineWindowMs;
+      if (gone && s.away_since === null) {
+        db.run("UPDATE focus_sessions SET away_since = ?, away_kind = 'offline' WHERE id = ?", Math.max(s.started_at, s.last_seen_at), s.id);
+      } else if (!gone && s.away_kind === 'offline') {
+        closeAway(s, s.last_seen_at);
+      }
+    }
+  }
+
+  /**
+   * Клиент сообщает, что участник ушёл со вкладки / вернулся (только во время своей сессии).
+   * Это может лишь уменьшить качество фокуса — поэтому подмена клиента ничего не даёт.
+   */
+  function reportAttention(user, idOrCode, body) {
+    const b = reqObject(body);
+    if (b.state !== 'away' && b.state !== 'back') throw E.badRequest('INVALID_FIELD', 'state: away | back', { field: 'state' });
+    return db.tx(() => {
+      const room = findRoom(idOrCode);
+      requireMember(room, user);
+      const sess = db.get("SELECT * FROM focus_sessions WHERE room_id = ? AND cycle_id IS ? AND user_id = ? AND status = 'active'", room.id, room.cycle_id, user.id);
+      if (!sess) return { tracked: false };
+      const t = clock.now();
+      if (b.state === 'away' && sess.away_since === null) db.run("UPDATE focus_sessions SET away_since = ?, away_kind = 'client' WHERE id = ?", t, sess.id);
+      if (b.state === 'back' && sess.away_since !== null) closeAway(sess, t);
+      const cur = db.get('SELECT away_ms, away_since FROM focus_sessions WHERE id = ?', sess.id);
+      return { tracked: true, state: b.state, awayMs: cur.away_ms + (cur.away_since !== null ? t - cur.away_since : 0) };
+    });
+  }
+
   /** Прерывает сессии тех, кто пропал дольше grace-периода (переподключение внутри grace допустимо). */
   function expireAbsent(room, ref) {
     const gone = db.all(
@@ -339,6 +419,7 @@ export function createRoomsService(ctx, game, users, td) {
       room.id, room.cycle_id, ref, config.graceMs,
     );
     for (const s of gone) {
+      closeAway(s, ref);
       db.run("UPDATE focus_sessions SET status = 'abandoned', end_reason = 'disconnected', ended_at = ? WHERE id = ?", ref, s.id);
       db.emit({ scope: 'user', userId: s.user_id, type: 'session_completed', data: { sessionId: s.id, roomId: room.id, status: 'abandoned', rewarded: false, xp: 0, coins: 0, reason: 'disconnected' } });
       db.emit({ scope: 'room', roomId: room.id, type: 'player_status_changed', data: { userId: s.user_id, status: 'abandoned', reason: 'disconnected' } });
@@ -354,10 +435,11 @@ export function createRoomsService(ctx, game, users, td) {
       const res = game.completeSession(room, s, endAt);
       if (res.rewarded) rewardedUsers.push(s.user_id);
     }
+    const breakNo = room.cycle_no;
     const breakEnds = endAt + room.break_sec * 1000;
     db.run("UPDATE rooms SET phase = 'break', phase_started_at = ?, phase_ends_at = ? WHERE id = ?", endAt, breakEnds, room.id);
-    db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'focus', to: 'break', cycleId: room.cycle_id, phaseStartedAt: endAt, phaseEndsAt: breakEnds, completed: active.length, rewarded: rewardedUsers.length } });
-    game.addTeamPoints(room, rewardedUsers);
+    db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'focus', to: 'break', cycleId: room.cycle_id, phaseStartedAt: endAt, phaseEndsAt: breakEnds, completed: active.length, rewarded: rewardedUsers.length, breakNo, cycles: room.cycles } });
+    game.scoreCycle(room);
     db.emit(stateEvent(room.id));
   }
 
@@ -367,11 +449,12 @@ export function createRoomsService(ctx, game, users, td) {
     const t = clock.now();
     for (let guard = 0; guard < 1000 && room; guard++) {
       if (room.phase === 'focus') {
+        trackPresence(room, Math.min(t, room.phase_ends_at));
         expireAbsent(room, Math.min(t, room.phase_ends_at));
         if (t < room.phase_ends_at) break;
         finishFocus(room);
       } else if (room.phase === 'break' && t >= room.phase_ends_at) {
-        toWaiting(room, room.phase_ends_at);
+        endBreak(room, room.phase_ends_at);
       } else {
         if (room.phase === 'break') td.tick(room, t); // игровые раунды живут только внутри перерыва
         break;
@@ -422,7 +505,7 @@ export function createRoomsService(ctx, game, users, td) {
         isReady: Boolean(m.is_ready),
         task: m.task_title, status: memberStatus(room, sess), connection: connectionState(m.last_seen_at, t),
         prankEnabled: Boolean(m.prank_enabled), contribution: contributions.get(m.user_id) ?? 0,
-        session: sess ? { id: sess.id, status: sess.status, rewarded: Boolean(sess.rewarded) } : null,
+        session: sess ? { id: sess.id, status: sess.status, rewarded: Boolean(sess.rewarded), quality: sess.quality ?? null } : null,
       };
     });
 
@@ -430,7 +513,7 @@ export function createRoomsService(ctx, game, users, td) {
       room: {
         id: room.id, code: room.code, name: room.name, hostId: room.host_id, phase: room.phase,
         cycleId: room.cycle_id, cycleNo: room.cycle_no, demo: Boolean(room.demo), mode: room.mode,
-        settings: { focusSec: room.focus_sec, breakSec: room.break_sec },
+        settings: { focusSec: room.focus_sec, breakSec: room.break_sec, cycles: room.cycles },
         phaseStartedAt: room.phase_started_at, phaseEndsAt: room.phase_ends_at,
         serverTime: t, remainingMs: room.phase_ends_at ? Math.max(0, room.phase_ends_at - t) : null,
       },
@@ -472,7 +555,7 @@ export function createRoomsService(ctx, game, users, td) {
   return {
     findRoom, requireMember, requirePhase, memberRow, loadRoom,
     create, join, leave, close, updateSettings, setTask, setTeam, setReady, recordResult,
-    startFocus, abortSession, skipBreak, advance, runningRoomIds, recoverAfterRestart,
+    startFocus, abortSession, skipBreak, reportAttention, advance, runningRoomIds, recoverAfterRestart,
     snapshot, connectionState,
   };
 }

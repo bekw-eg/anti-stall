@@ -4,7 +4,19 @@ export const pad = (n: number) => n.toString().padStart(2, "0");
 
 export function formatTime(totalSeconds: number) {
   const s = Math.max(0, Math.round(totalSeconds));
+  // Длительность вводит пользователь (фокус до 24 ч): от часа показываем ч:мм:сс
+  if (s >= 3600) return `${Math.floor(s / 3600)}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
   return `${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
+}
+
+/** Точная длительность словами без нулевых частей: «1 ч 30 мин», «45 с», «2 мин 10 с». */
+export function formatSpan(totalSeconds: number) {
+  const s = Math.max(0, Math.round(totalSeconds));
+  const parts: string[] = [];
+  if (s >= 3600) parts.push(`${Math.floor(s / 3600)} ч`);
+  if (Math.floor((s % 3600) / 60)) parts.push(`${Math.floor((s % 3600) / 60)} мин`);
+  if (s % 60 || !parts.length) parts.push(`${s % 60} с`);
+  return parts.join(" ");
 }
 
 const CODE_RE = /^[A-Z0-9]{6}$/;
