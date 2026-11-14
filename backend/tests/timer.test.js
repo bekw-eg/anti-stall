@@ -86,7 +86,8 @@ describe('синхронизированный Pomodoro', () => {
     await w.advance(20_000, [lotti, boris]);
     await w.advance(5_000, [lotti, anya]);
     await w.advance(25 * 60_000, [lotti, anya]);
-    assert.equal((await anya.progress()).xp, 100, 'короткий обрыв не лишает награды');
+    // короткий обрыв не прерывает сессию, но 25 с отлучки из 1500 снижают качество фокуса до 0.98
+    assert.equal((await anya.progress()).xp, 98, 'короткий обрыв не лишает награды');
     assert.equal((await boris.progress()).xp, 0, 'долгое отсутствие — награды нет');
     const s = (await boris.get('/api/users/me/sessions')).body.sessions[0];
     assert.equal(s.status, 'abandoned');
@@ -118,6 +119,6 @@ describe('синхронизированный Pomodoro', () => {
     await late.post('/api/rooms/join', { code: L.room.code });
     await w.advance(25 * 60_000 + 1000, [L.host, late]);
     assert.equal((await late.progress()).xp, 0);
-    assert.equal((await L.host.progress()).xp, 125); // 100 за фокус + 25 за остановку карты
+    assert.equal((await L.host.progress()).xp, 100); // узлы карты дают только победы в Tower Defense
   });
 });

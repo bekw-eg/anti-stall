@@ -7,6 +7,7 @@ include:
       - /jobs/rules.yaml
 
 stages:
+  - test
   - build
   - deploy
 
@@ -39,6 +40,20 @@ variables:
   # Порты на ВМ: основной стенд и демо-стенд для жюри (ускоренное время, отдельная БД)
   APP_PORT: "80"
   DEMO_PORT: "8081"
+
+# 0. Тесты в каждом MR и в master: backend (node --test), типы и тесты frontend (tsc + vitest).
+# Пока allow_failure: true — красные тесты видны в пайплайне, но не блокируют сборку и деплой.
+# Когда убедимся, что раннер стабильно запускает node-образ, флаг можно снять.
+test:
+  stage: test
+  image: $NODE_IMAGE
+  extends:
+    - .rules-merge-or-master-or-parent
+  allow_failure: true
+  script:
+    - node --version
+    - cd backend && npm ci --no-audit --no-fund && npm test
+    - cd ../frontend && npm ci --no-audit --no-fund && npx tsc --noEmit -p tsconfig.app.json && npx vitest run
 
 # 1. Сборка ЕДИНОГО образа (frontend + backend: backend раздаёт собранный frontend, REST /api и WebSocket /ws
 # на одном порту) через Kaniko и публикация в registry. Раньше собирался только frontend — без backend стенд не работал.

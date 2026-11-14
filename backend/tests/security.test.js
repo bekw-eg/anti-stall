@@ -167,13 +167,13 @@ describe('защита от читов (как в cheat-check)', () => {
 
   test('10 параллельных HTTP-покупок при деньгах на одну: успешна ровно одна, баланс не уходит в минус', async () => {
     const coins = (await P.progress()).coins;
-    assert.equal(coins, 55, '20 за сессию + 10 «Первый фокус» + 15 «Командный игрок» + 10 за остановку карты');
+    assert.equal(coins, 45, '20 за сессию + 10 «Первый фокус» + 15 «Командный игрок»');
     const results = await Promise.all(Array.from({ length: 10 }, () => P.post('/api/users/me/upgrades/base_walls/purchase', {})));
     assert.equal(results.filter((x) => x.status === 200).length, 1);
     assert.ok(results.filter((x) => x.status !== 200).every((x) => x.body.error.code === 'INSUFFICIENT_FUNDS'));
     const after = await P.progress();
     assert.ok(after.coins >= 0);
-    assert.equal(after.coins, 55 - 30 + 15);
+    assert.equal(after.coins, 45 - 30 + 15);
     assert.equal(after.upgrades.find((u) => u.id === 'base_walls').level, 1);
     assert.equal((await txOf(P, 'upgrade_purchase')).length, 1);
   });

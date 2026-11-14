@@ -1,0 +1,28 @@
+# Зависимости и сборка
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Локальные базы и данные (прогресс игроков, демо-база)
+backend/data/
+*.db
+*.db-*
+
+# Артефакты прогонов и логи
+e2e/artifacts/
+coverage/
+*.log
+
+# Локальные материалы команды (бэкапы, макеты, отчёты) — в репозиторий не кладём
+figma-handoff/
+figma-handoff.zip
+*.docx
+AUDIT_*.md
+
+# Среда и редакторы
+.env
+.env.*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

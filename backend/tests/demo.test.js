@@ -25,7 +25,7 @@ describe('демо-режим для жюри', () => {
       await L.rest[0].post(L.path('/session/abort')); // досрочно — награды нет и в демо
       await w.advance(16_000, L.users);
       assert.equal((await L.host.get(L.path())).body.room.phase, 'break');
-      assert.equal((await L.host.progress()).xp, 125); // 100 за фокус + 25 за остановку карты (1 из 2 качественно — шаг засчитан)
+      assert.equal((await L.host.progress()).xp, 100); // 100 за фокус; узлы карты дают только победы в Tower Defense
       assert.equal((await L.rest[0].progress()).xp, 0);
       // та же защита от прерванных/покинутых сессий и те же границы
       assert.equal((await L.host.post('/api/rooms', { demo: true, focusSeconds: 1 })).body.error.code, 'INVALID_FIELD');

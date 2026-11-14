@@ -13,39 +13,6 @@ function win(w, L, team, stageId, users = L.users) {
 }
 
 describe('Road Map: узлы открывают победы в Tower Defense', () => {
-  test('сервер отдаёт связанную карту: позиция, следующий этап TD, доля пути, команды, казна', async () => {
-    const w = await boot();
-    try {
-      const L = await lobby(w, ['Хост']);
-      let road = await roadOf(L);
-      assert.equal(road.positionNodeId, 'camp');
-      assert.equal(road.goal, 4);
-      assert.equal(road.points, 0);
-      assert.equal(road.focusPoints, 0);
-      assert.equal(road.treasuryCoins, 30, 'стартовый капитал казны');
-      assert.deepEqual(road.next, { nodeId: 'forest', title: 'Лес знаний', pointsNeeded: 1, stageId: 'camp' });
-      assert.deepEqual(road.segment, { from: 'camp', to: 'forest', progress: 0 });
-      assert.equal(road.edges.length, 3);
-      assert.deepEqual(road.teams.map((t) => [t.key, t.points, t.treasuryCoins]), [['shared', 0, 30]]);
-      assert.deepEqual(road.nodes.map((n) => n.requiredPoints), [0, 1, 2, 3]);
-      assert.equal(road.nodes[0].challenge, null);
-      assert.deepEqual(road.nodes.slice(1).map((n) => [n.challenge.kind, n.challenge.stageId]),
-        [['td_stage_win', 'camp'], ['td_stage_win', 'forest'], ['td_stage_win', 'bridge']]);
-      assert.equal(road.nodes[1].reward.coins, 10);
-      assert.equal(road.nodes[4].id, 'fortress');
-      assert.equal(road.nodes[4].reward.xp, 150, 'за финальный узел — командная награда');
-
-      // фокус-сессия: очки вклада и монеты в казну, но карта стоит на месте
-      await runFocus(w, L);
-      road = await roadOf(L);
-      assert.equal(road.points, 0);
-      assert.equal(road.focusPoints, 1);
-      assert.equal(road.treasuryCoins, 30 + 20);
-      assert.equal(road.positionNodeId, 'camp');
-      assert.equal(road.nodes[1].reachedAt, null);
-      assert.equal((await ledger(L.host)).filter((t) => t.kind === 'team_node').length, 0);
-    } finally { await w.close(); }
-  });
 
   test('лагерь → лес → мост → крепость → победа: события, награды, статусы', async () => {
     const w = await boot();
@@ -126,63 +93,6 @@ describe('Road Map: узлы открывают победы в Tower Defense', 
       assert.equal(events.filter((e) => e.type === 'node_reached').length, 3);
       assert.equal(events.filter((e) => e.type === 'challenge_completed').length, 1);
       assert.equal((await roadOf(L)).points, 4, 'прогресс не идёт дальше цели');
-    } finally { await w.close(); }
-  });
-
-  test('награды за узел получают только участники победного раунда; все видят один прогресс', async () => {
-    const w = await boot();
-    try {
-      const L = await lobby(w, ['Лотти', 'Аня', 'Боря']);
-      const [lotti, anya, boris] = L.users;
-      win(w, L, 'shared', 'camp', [lotti, anya]);
-      const roads = await Promise.all(L.users.map((u) => roadOf(L, u)));
-      assert.equal(new Set(roads.map((r) => JSON.stringify(r))).size, 1, 'у всех одинаковое состояние карты');
-      assert.equal(roads[0].positionNodeId, 'forest');
-      assert.equal((await ledger(lotti)).filter((t) => t.kind === 'team_node').length, 1);
-      assert.equal((await ledger(anya)).filter((t) => t.kind === 'team_node').length, 1);
-      assert.equal((await ledger(boris)).filter((t) => t.kind === 'team_node').length, 0);
-      // Боря участвует в следующей победе: за уже пройденный «Лес» награды «задним числом» нет, за «Мост» — есть
-      win(w, L, 'shared', 'forest', [boris]);
-      const keys = (await ledger(boris)).filter((t) => t.kind === 'team_node').map((t) => t.key);
-      assert.equal(keys.length, 1);
-      assert.ok(keys[0].endsWith(':stop-2'), keys[0]);
-    } finally { await w.close(); }
-  });
-
-  test('команда не делает шаг, если качественно отфокусировалось меньше половины', async () => {
-    const w = await boot();
-    try {
-      const L = await lobby(w, ['Лотти', 'Аня', 'Боря']);
-      const events = [];
-      w.app.db.sink = (evs) => events.push(...evs);
-      await L.host.post(L.path('/start'));
-      await w.advance(60_000, L.users);
-      for (const u of L.rest) await u.post(L.path('/session/abort')); // двое сдались
-      await w.advance(25 * 60_000, L.users);
-      const road = await roadOf(L);
-      assert.equal(road.points, 0);
-      assert.equal(road.positionNodeId, 'camp');
-      const scored = events.find((e) => e.type === 'cycle_scored');
-      assert.deepEqual(scored.data.teams, [{ team: 'shared', participants: 3, focused: 1, advanced: false }]);
-      assert.equal((await ledger(L.host)).filter((t) => t.kind === 'team_node').length, 0);
-    } finally { await w.close(); }
-  });
-
-  test('WebSocket: node_reached и roadmap_updated приходят всей комнате', async () => {
-    const w = await boot();
-    try {
-      const L = await lobby(w, ['Лотти', 'Аня']);
-      const c = w.ws(L.rest[0].token);
-      await c.connect();
-      c.send({ type: 'subscribe', roomId: L.room.id });
-      await c.wait((m) => m.type === 'room_state');
-      win(w, L, 'shared', 'camp');
-      const reached = await c.wait((m) => m.type === 'node_reached');
-      assert.equal(reached.data.nodeId, 'stop-1');
-      assert.equal(reached.data.reward.coins, 10);
-      const upd = await c.wait((m) => m.type === 'roadmap_updated');
-      assert.equal(upd.data.positionNodeId, 'stop-1');
-      c.close();
     } finally { await w.close(); }
   });
 

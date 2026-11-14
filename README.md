@@ -14,19 +14,16 @@
 
 | Документ | Содержание |
 |---|---|
-| [docs/REQUIREMENTS_MATRIX.md](docs/REQUIREMENTS_MATRIX.md) | Матрица требований кейса: реализация (файл:строка), автотест, UI, статус. Отдельно: критерии жюри |
 | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | Сценарий показа жюри из 10 шагов, подготовка стенда, тайминги, запасные варианты |
-| [docs/SECURITY_QA.md](docs/SECURITY_QA.md) | Проверка защиты экономики: механизм, автотест и результат `cheat-check` по каждому пункту |
-| [docs/FINAL_REPORT.md](docs/FINAL_REPORT.md) | Итоговый отчёт этапа 6: исходное состояние, изменения, результаты проверок, что не завершено |
+| [docs/DEPLOY.md](docs/DEPLOY.md) | Деплой на ВМ через Spirit CI: переменные, откат, диагностика |
 | [backend/docs/API.md](backend/docs/API.md) | REST и WebSocket API |
 | [backend/docs/DEMO_MODE.md](backend/docs/DEMO_MODE.md) | Демо-режим и песочница |
 | [backend/docs/VOICE.md](backend/docs/VOICE.md) | Голосовой канал (WebRTC, STUN/TURN) |
-| [backend/docs/FRONTEND_INTEGRATION.md](backend/docs/FRONTEND_INTEGRATION.md) | Как подключить frontend к API |
-| [frontend/docs/FRONTEND_V2.md](frontend/docs/FRONTEND_V2.md) | Устройство интерфейса |
 | [backend/README.md](backend/README.md) | Архитектура backend и игровые правила |
 
-`backend/README.md` и `backend/docs/REPORT.md` написаны на прошлых этапах, и часть цифр там устарела
-(например, число тестов и достижений). Актуальные данные — в `docs/`.
+`backend/README.md` написан на прошлых этапах, и часть цифр там устарела (например, число тестов и достижений).
+Старые отчёты этапов (матрица требований, QA безопасности, итоговые отчёты) убраны из репозитория, чтобы не устаревали
+и не тратили контекст ИИ-ассистентов; их копия хранится у команды локально.
 
 ## Структура репозитория
 
@@ -36,7 +33,7 @@ backend/              Node.js-сервер: REST, WebSocket, SQLite (node:sqlite
                       services/ (users, rooms, game, social, td), http/, ws/ (hub, voice), td/engine.js
   tests/              125 автотестов (node:test, управляемые часы)
   scripts/            demo.mjs, demo-seed.mjs, demo-bots.mjs, cheat-check.mjs, lib/client.mjs
-  docs/               API.md, DEMO_MODE.md, VOICE.md, FRONTEND_INTEGRATION.md, REPORT.md
+  docs/               API.md, DEMO_MODE.md, VOICE.md
 frontend/             Vite + React + TypeScript + Tailwind + Framer Motion
   src/tomato/         интерфейс (Welcome → Настройки → комната), useTomato.ts — всё серверное состояние
   src/api/tomato/     типизированный клиент REST и WebSocket

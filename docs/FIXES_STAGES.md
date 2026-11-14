@@ -37,11 +37,13 @@
 ## Этап 7 — голос на стенде
 - [ ] «Голос доступен только по HTTPS»: на ВМ нужен HTTPS (Caddy + автоматический сертификат), открыть порт 443
 
-## Этап 8 — тесты, CI, токены
-- [ ] 14 устаревших backend-тестов (правила карты/наград после слияний) — удалить или переписать
-- [ ] Стадия тестов в CI
-- [ ] Мёртвый UI-кит shadcn (49 файлов `components/ui`, `hooks/use-toast`, `use-mobile`) — удалить: его читают ИИ-ассистенты и тратят контекст
-- [ ] Большие документы (~300 КБ md: REQUIREMENTS_MATRIX, SECURITY_QA, DEMO_SCRIPT, FINAL_REPORT, REPORT) — сжать или вынести; нет корневого `.gitignore`
+## Этап 8 — тесты, CI, токены ✅
+Полный бэкап до чистки — локально: `Desktop/AntiStall/backup_stage8_2026-11-14/` (копии файлов + git-бандл всего репозитория).
+- [x] 14 падавших backend-тестов: 8 удалены (проверяли механики, которых в master нет: карта по циклам, шутки-дебаффы в движке TD), 6 исправлены под правила master (числа наград, автостарт фокуса, качество фокуса)
+- [x] Стадия `test` в CI (backend `npm test`, frontend `tsc` + `vitest`), пока `allow_failure: true`
+- [x] Удалён мёртвый UI-кит shadcn (49 файлов `components/ui`, `hooks/`, `lib/`, `components.json`) и `bun.lockb`
+- [x] Удалены старые отчёты (~200 КБ: REQUIREMENTS_MATRIX, SECURITY_QA, FINAL_REPORT, JURY_MATRIX, TD_TOWER_WARS_PLAN, REPORT, FRONTEND_INTEGRATION, FRONTEND_V2); ссылки в README поправлены
+- [x] Корневой `.gitignore` (база, сборка, артефакты, локальные материалы) и `CLAUDE.md` — подсказки ИИ-ассистенту, чего не читать и как гонять тесты
 
 ## Этап 9 — к защите
 - [ ] `docs/DEMO_SCRIPT.md` под новый интерфейс

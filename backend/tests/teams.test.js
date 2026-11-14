@@ -81,7 +81,7 @@ describe('командный режим Team A / Team B', () => {
       b2 = await road(L, anya);
       assert.equal(b2.nodes.find((n) => n.id === 'forest').reachedAt > 0, true, 'этап B фиксируется отдельно');
       // награды за этап: каждая команда получает свою один раз, ключи разные
-      assert.equal((await kinds(anya, 'team_node')).length, 2);
+      assert.equal((await kinds(anya, 'team_node')).length, 1); // одна победа B — одна награда за узел
       assert.equal((await kinds(lotti, 'team_node')).length, 1);
       assert.notEqual((await kinds(anya, 'team_node'))[0].key, (await kinds(lotti, 'team_node'))[0].key);
       a2 = await road(L, lotti);

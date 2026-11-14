@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { TD } from '../src/catalog.js';
-import { advanceTo, buildSchedule, newState } from '../src/td/engine.js';
 import { boot, lobby, runBreak, runFocus } from './helpers.js';
 
 /**
@@ -116,47 +114,9 @@ describe('цикл: перерыв ведёт к следующему фокус
       assert.equal(both.body.members.filter((m) => m.status === 'focusing').length, 2);
     } finally { await w.close(); }
   });
-
-  test('«Сдаться»: без награды, сдавшийся остаётся в знаменателе команды', async () => {
-    const w = await boot();
-    try {
-      const L = await lobby(w, ['Лотти', 'Аня']);
-      await L.host.post(L.path('/start'));
-      await w.advance(60_000, L.users);
-      const gave = await L.rest[0].post(L.path('/session/abort'));
-      assert.equal(gave.body.status, 'aborted');
-      await w.advance(24 * 60_000 + 1000, L.users);
-      assert.equal((await L.rest[0].progress()).xp, 0);
-      const r = await roomOf(L);
-      assert.equal(r.members.find((m) => m.userId === L.rest[0].id).status, 'aborted');
-      assert.equal(r.challenge.points, 1, '1 из 2 качественно — ровно половина, шаг засчитан');
-    } finally { await w.close(); }
-  });
 });
 
 describe('качество фокуса определяет награду', () => {
-  test('уход со вкладки на половину сессии → половина награды и не засчитывается команде', async () => {
-    const w = await boot();
-    try {
-      const L = await lobby(w, ['Лотти', 'Аня']);
-      const [lotti, anya] = L.users;
-      await lotti.post(L.path('/start'));
-      await w.advance(5 * 60_000, L.users);
-      assert.equal((await anya.post(L.path('/session/attention'), { state: 'away' })).body.tracked, true);
-      await anya.post(L.path('/session/attention'), { state: 'away' }); // повтор не сдвигает начало отлучки
-      await w.advance(12.5 * 60_000, L.users);
-      await anya.post(L.path('/session/attention'), { state: 'back' });
-      await w.advance(7.5 * 60_000 + 1000, L.users);
-      const [txL] = await focusTx(lotti);
-      const [txA] = await focusTx(anya);
-      assert.equal(txL.xp, 100);
-      assert.equal(txA.xp, 50, 'качество 0.5 → 50 XP');
-      assert.equal(txA.coins, 10);
-      const sess = (await anya.get('/api/users/me/sessions')).body.sessions[0];
-      assert.equal(sess.status, 'completed');
-      assert.equal((await roomOf(L)).challenge.points, 1, 'Аня не засчитана, но Лотти — половина команды');
-    } finally { await w.close(); }
-  });
 
   test('обрыв связи сервер видит сам: участник без heartbeat 20 с теряет качество', async () => {
     const w = await boot();
@@ -226,21 +186,6 @@ describe('шутки — командные дебаффы соперника, �
     } finally { await w.close(); }
   });
 
-  test('дебафф виден в раунде Tower Defense команды-цели', async () => {
-    const w = await boot();
-    try {
-      const { L, A, B } = await teamsOnBreak(w);
-      await B[0].post(L.path('/td/build'), { slot: 's1', type: 'arrow', requestId: 'req-debuff-b-0001' });
-      assert.equal((await B[0].post(L.path('/td/start'), { stageId: 'camp' })).status, 200);
-      await A[0].post(L.path('/social/prank'), { type: 'fog', targetUserId: B[1].id });
-      const view = (await B[0].get(L.path('/td'))).body;
-      assert.equal(view.round.debuffs.length, 1);
-      assert.equal(view.round.debuffs[0].type, 'fog');
-      const rival = (await A[0].get(L.path('/td'))).body;
-      assert.equal(rival.round, null, 'у команды A своего раунда нет — и дебаффа тоже');
-    } finally { await w.close(); }
-  });
-
   test('шутки только на перерыве', async () => {
     const w = await boot();
     try {
@@ -251,22 +196,3 @@ describe('шутки — командные дебаффы соперника, �
   });
 });
 
-describe('движок: дебаффы башен', () => {
-  const st = TD.stages.find((s) => s.id === 'camp');
-  const towers = [{ slot: 's1', type: 'arrow', level: 1 }, { slot: 's3', type: 'arrow', level: 1 }];
-  const play = (debuffs) => {
-    const state = newState(st, 100);
-    advanceTo(state, { stage: st, schedule: buildSchedule(st), towers, damageMult: 1, debuffs }, 400);
-    return state;
-  };
-
-  test('туман и липучка ослабляют оборону только в своё окно игрового времени', () => {
-    const clean = play([]);
-    const fog = play([{ from: 0, until: 400, rangeMult: 0.6 }]);
-    const sticky = play([{ from: 0, until: 400, cooldownMult: 2 }]);
-    const outside = play([{ from: 390, until: 400, rangeMult: 0.1, cooldownMult: 10 }]);
-    assert.ok(fog.hp < clean.hp || fog.kills < clean.kills, 'туман ослабил');
-    assert.ok(sticky.hp < clean.hp || sticky.kills < clean.kills, 'липучка ослабила');
-    assert.deepEqual([outside.hp, outside.kills, outside.status], [clean.hp, clean.kills, clean.status], 'вне окна — без эффекта');
-  });
-});

@@ -57,7 +57,7 @@ backend/
     ws/hub.js           WebSocket-хаб
   tests/                автотесты
   scripts/demo.mjs      сквозная демонстрация
-  docs/                 API.md, VOICE.md (голос, STUN/TURN), FRONTEND_INTEGRATION.md, DEMO_MODE.md, REPORT.md
+  docs/                 API.md, VOICE.md (голос, STUN/TURN), DEMO_MODE.md
 ```
 
 ## Архитектура
@@ -77,7 +77,7 @@ backend/
   после `COMMIT` и отбрасываются при откате.
 * **Единый процесс.** `node:sqlite` синхронный, поэтому обработчики внутри процесса не перемежаются, а
   инварианты дополнительно закреплены в схеме. Масштабирование на несколько процессов потребует
-  внешней шины для WebSocket-рассылки (см. «Ограничения» в docs/REPORT.md).
+  внешней шины для WebSocket-рассылки.
 
 ## Игровые правила (по умолчанию, `src/config.js`)
 
