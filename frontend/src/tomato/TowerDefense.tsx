@@ -28,11 +28,11 @@ const ENEMY_NAME: Record<EnemyType, string> = {
 };
 /** Подписи действующих эффектов на своём поле */
 const EFFECT_CHIP: Record<SpellId, { text: string; cls: string }> = {
-  haste: { text: "⚡ Башни ускорены", cls: "bg-lime-400 text-lime-950" },
-  repair: { text: "🛡️ Щит базы", cls: "bg-emerald-400 text-emerald-950" },
-  slow_towers: { text: "💤 Башни замедлены", cls: "bg-orange-400 text-orange-950" },
-  disable_tower: { text: "🧊 Башня заморожена", cls: "bg-rose-500 text-white" },
-  enrage_horde: { text: "😡 Ярость томатов", cls: "bg-red-500/90 text-white" },
+  haste: { text: "⚡ Башни ускорены", cls: "bg-lime text-ink" },
+  repair: { text: "🛡️ Щит базы", cls: "bg-lime text-ink" },
+  slow_towers: { text: "💤 Башни замедлены", cls: "bg-peach text-ink" },
+  disable_tower: { text: "🧊 Башня заморожена", cls: "bg-rose text-white" },
+  enrage_horde: { text: "😡 Ярость томатов", cls: "bg-rose text-white" },
 };
 
 const towerRange = (def: TdTowerDef | undefined, level: number) => (def ? def.range + 0.25 * (level - 1) : 0);
@@ -105,7 +105,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
       {/* HUD: справа на широком экране, снизу на телефоне */}
       <aside className="flex min-w-0 shrink-0 flex-col gap-3 text-sm text-[var(--fg)] lg:w-[22rem] lg:overflow-y-auto lg:pr-1 [scrollbar-width:thin] [&>*]:shrink-0">
         {!td.enabled ? (
-          <p role="status" className="rounded-2xl bg-[var(--card)] p-4 text-xs text-[var(--muted)]">Игра доступна только на перерыве. Сейчас — время учёбы.</p>
+          <p role="status" className="as-card p-4 text-xs font-bold text-mute">Игра доступна только на перерыве. Сейчас — время учёбы.</p>
         ) : (
           <>
             <Treasury coins={treasury} team={versus ? td.team : null} />
@@ -124,7 +124,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                     <span>побеждено {current.kills}/{current.total}</span>
                   </p>
                   {finished && (
-                    <p role="status" className={`mt-2 rounded-xl px-3 py-2 text-xs font-medium ${current.status === "won" ? "bg-emerald-400 text-emerald-950" : current.status === "lost" ? "bg-red-500 text-white" : "bg-[var(--fg)] text-[var(--field)]"}`}>
+                    <p role="status" className={`mt-2 rounded-xl px-3 py-2 text-xs font-medium ${current.status === "won" ? "bg-lime text-ink" : current.status === "lost" ? "bg-rose text-white" : "bg-ink text-paper"}`}>
                       {current.status === "won" ? "Победа! Академия выстояла. Награду получили все, кто играл в раунде." : current.status === "lost" ? "База пала. Башни остались, усильте оборону и попробуйте снова." : "Перерыв закончился, возвращаемся к учёбе."}
                     </p>
                   )}
@@ -142,7 +142,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                         disabled={!s.unlocked}
                         title={s.unlocked ? `Награда: ${s.reward.xp} XP, ${s.reward.coins} монет` : `Откроется после узла «${s.nodeTitle}» на карте`}
                         onClick={() => setStageId(s.id)}
-                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${stageId === s.id ? "bg-pink-400 text-pink-950" : "border border-[var(--line)] hover:bg-[var(--card)]"} disabled:cursor-not-allowed disabled:opacity-40`}
+                        className={`rounded-full px-3 py-1.5 text-xs font-bold transition-colors ${stageId === s.id ? "bg-peach text-ink" : "border-2 border-ink bg-white hover:bg-blush"} disabled:cursor-not-allowed disabled:opacity-40`}
                       >
                         {s.unlocked ? s.title : `🔒 ${s.nodeTitle}`}
                       </button>
@@ -151,7 +151,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                   <p className="text-xs text-[var(--muted)]">
                     {stage.waves} волн · {stage.enemies} врагов · награда {stage.reward.xp} XP, {stage.reward.coins} монет{stage.wins === 0 ? " (×1,5 за первое прохождение)" : ""}
                   </p>
-                  <button type="button" disabled={!canAct || !stage.unlocked} onClick={() => run(() => actions.start(stageId))} className="rounded-xl bg-pink-400 py-2.5 text-sm font-semibold text-pink-950 shadow-[0_4px_0_#be185d] transition active:translate-y-0.5 active:shadow-none disabled:opacity-40">
+                  <button type="button" disabled={!canAct || !stage.unlocked} onClick={() => run(() => actions.start(stageId))} className="as-btn as-btn-sm as-btn-primary font-display w-full justify-center disabled:opacity-40">
                     Начать раунд
                   </button>
                 </div>
@@ -174,11 +174,11 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                         disabled={!canAct || treasury < d.cost}
                         onClick={() => run(() => actions.build(sel.id, d.id))}
                         title={treasury < d.cost ? `В казне не хватает ${d.cost - treasury} 🪙` : undefined}
-                        className="flex w-full items-center justify-between gap-2 rounded-xl border border-pink-300/40 bg-pink-400/10 px-3 py-2 text-left transition hover:bg-pink-400/20 active:scale-[.98] disabled:opacity-40"
+                        className="flex w-full items-center justify-between gap-2 rounded-xl border-2 border-ink bg-white px-3 py-2 text-left transition hover:bg-blush active:scale-[.98] disabled:opacity-40"
                       >
                         <TowerPreview type={d.id} size={34} className="shrink-0" />
                         <span className="min-w-0 flex-1"><span className="block font-medium">{TOWER_NAME[d.id] ?? d.title}</span><span className="block text-xs text-[var(--muted)]">{d.description} · урон {d.damage}, радиус {d.range}</span></span>
-                        <span className="shrink-0 font-semibold tabular-nums">{d.cost}🪙</span>
+                        <span className="font-display shrink-0 text-base tabular-nums">{d.cost}🪙</span>
                       </button>
                     </li>
                   ))}
@@ -199,7 +199,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                         disabled={!canAct || !merc.ok || mercCooling || treasury < m.cost}
                         onClick={() => sendUnit(m.id)}
                         title={`${m.title}: ${m.description}. HP ${m.hp}, урон по базе ${m.damage}${m.armor ? `, броня ${Math.round(m.armor * 100)}%` : ""}`}
-                        className="flex min-w-0 items-center gap-1.5 rounded-xl border border-red-400/40 bg-red-500/15 px-2.5 py-2 text-left text-xs font-medium transition hover:bg-red-500/25 active:scale-95 disabled:opacity-40"
+                        className="flex min-w-0 items-center gap-1.5 rounded-xl border-2 border-ink bg-white px-2.5 py-2 text-left text-xs font-bold transition hover:bg-blush active:scale-95 disabled:opacity-40"
                       >
                         <span aria-hidden>{MERC_ICON[m.id] ?? "🍅"}</span>
                         <span className="min-w-0 truncate">{MERC_SHORT[m.id] ?? m.title} · {m.cost}🪙</span>
@@ -224,7 +224,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                           onClick={() => run(() => actions.castSpell(sp.id))}
                           title={`${sp.title}: ${sp.description} (${sp.duration} с)${st.hint ? `. ${st.hint}` : ""}`}
                           data-spell={sp.id}
-                          className={`flex min-w-0 items-center gap-1.5 rounded-xl border px-2.5 py-2 text-left text-xs font-medium transition active:scale-95 disabled:opacity-40 ${attack ? "border-orange-400/40 bg-orange-500/15 hover:bg-orange-500/25" : "border-lime-400/40 bg-lime-400/10 hover:bg-lime-400/20"}`}
+                          className={`flex min-w-0 items-center gap-1.5 rounded-xl border-2 border-ink px-2.5 py-2 text-left text-xs font-bold transition active:scale-95 disabled:opacity-40 ${attack ? "bg-blush hover:bg-peach" : "bg-lime hover:bg-[#CDD38E]"}`}
                         >
                           <span aria-hidden>{SPELL_ICON[sp.id] ?? "✨"}</span>
                           <span className="min-w-0">{SPELL_SHORT[sp.id] ?? sp.title} · {sp.cost}🪙</span>
@@ -243,7 +243,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
               <Section title={rival ? "Соперник и Реванш" : "Реванш"}>
                 {rival && (
                   <div className="text-xs">
-                    <p className="mb-1 font-medium">Соперник · команда {rival.team}</p>
+                    <p className="mb-1 font-bold">Соперник · команда {rival.team}</p>
                     <p className="mb-1.5 flex justify-between gap-2 text-[var(--muted)]">
                       <span>башен: {rival.towers}</span>
                       <span className="tabular-nums">казна {rival.treasuryCoins ?? 0}🪙</span>
@@ -263,7 +263,7 @@ export function TowerDefense({ td, actions }: { td: TdView; actions: TdActions }
                   </div>
                 )}
                 {td.duel && (
-                  <div role="status" className="mt-2 rounded-xl bg-[var(--fg)] px-3 py-2 text-xs font-medium text-[var(--field)]">
+                  <div role="status" className="mt-2 rounded-xl bg-ink px-3 py-2 text-xs font-bold text-paper">
                     <p>{td.duel.winner === "draw" ? "Дуэль: ничья" : td.duel.winner === td.team ? "Дуэль выиграла ваша команда" : `Дуэль выиграла команда ${td.duel.winner}`}{td.duel.roundNo > 1 ? ` · раунд ${td.duel.roundNo}` : ""}</p>
                     {Object.keys(td.duel.scores).length > 0 && (
                       <p className="mt-0.5 tabular-nums opacity-70">{Object.entries(td.duel.scores).map(([k, v]) => `${k} ${v}`).join(" : ")}</p>
@@ -286,8 +286,8 @@ const stageTitle = (td: TdView, id: string) => td.stages.find((s) => s.id === id
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section aria-label={title} className="rounded-2xl bg-[var(--card)] p-3 ring-1 ring-inset ring-[var(--line)]">
-      <h3 className="mb-2 text-sm font-bold text-[var(--muted)]">{title}</h3>
+    <section aria-label={title} className="as-card p-3">
+      <h3 className="font-display mb-2 text-base uppercase leading-none text-ink">{title}</h3>
       {children}
     </section>
   );
@@ -295,9 +295,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function HpBar({ value, max, label, tone }: { value: number; max: number; label: string; tone: "pink" | "red" }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
-  const color = pct <= 30 ? "bg-red-500" : tone === "pink" ? "bg-gradient-to-r from-pink-400 to-rose-300" : "bg-gradient-to-r from-red-500 to-orange-400";
+  const color = pct <= 30 ? "bg-rose" : tone === "pink" ? "bg-peach" : "bg-rose";
   return (
-    <div className="h-2 overflow-hidden rounded-full bg-[var(--line)]" role="progressbar" aria-label={label} aria-valuenow={value} aria-valuemin={0} aria-valuemax={max}>
+    <div className="h-3 overflow-hidden rounded-full border-2 border-ink bg-soft" role="progressbar" aria-label={label} aria-valuenow={value} aria-valuemin={0} aria-valuemax={max}>
       <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${pct}%` }} />
     </div>
   );
@@ -307,7 +307,7 @@ function EffectChips({ effects, className = "" }: { effects: TdEffect[]; classNa
   const kinds = [...new Set(effects.map((e) => e.kind))];
   return (
     <div className={`flex flex-wrap gap-1 ${className}`}>
-      {kinds.map((k) => <span key={k} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${EFFECT_CHIP[k]?.cls ?? "bg-[var(--fg)] text-[var(--field)]"}`}>{EFFECT_CHIP[k]?.text ?? k}</span>)}
+      {kinds.map((k) => <span key={k} className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${EFFECT_CHIP[k]?.cls ?? "bg-ink text-paper"}`}>{EFFECT_CHIP[k]?.text ?? k}</span>)}
     </div>
   );
 }
@@ -336,10 +336,10 @@ function Treasury({ coins, team }: { coins: number; team: string | null }) {
   }, [coins]);
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-b from-amber-300 to-amber-400 px-4 py-3 text-amber-950 shadow-[0_6px_24px_-8px_rgba(251,191,36,.6)]">
-      <p className="text-sm font-bold opacity-70">{team ? `Казна команды ${team}` : "Казна команды"}</p>
-      <p className="flex items-baseline gap-1.5 text-2xl font-bold tabular-nums" aria-label={`Казна команды: ${coins} монет`} data-testid="treasury" data-value={coins}>
-        <span aria-hidden>Казна команды:</span>
+    <div className="relative overflow-hidden rounded-[24px] border-2 border-ink bg-ink px-4 py-3 text-paper shadow-[0_6px_0_#3B2422]">
+      <p className="text-sm font-bold text-peach">{team ? `Казна команды ${team}` : "Казна команды"}</p>
+      <p className="font-display flex items-baseline gap-1.5 text-3xl tabular-nums" aria-label={`Казна команды: ${coins} монет`} data-testid="treasury" data-value={coins}>
+        <span aria-hidden className="sr-only">Казна команды:</span>
         <span aria-hidden>{shown}</span>
         <span aria-hidden>🪙</span>
       </p>
@@ -348,7 +348,7 @@ function Treasury({ coins, team }: { coins: number; team: string | null }) {
           <motion.span
             key={delta.id}
             aria-hidden
-            className={`absolute right-3 top-2 rounded-full px-2 py-0.5 text-xs font-bold ${delta.d > 0 ? "bg-emerald-500 text-white" : "bg-red-600 text-white"}`}
+            className={`absolute right-3 top-2 rounded-full px-2 py-0.5 text-xs font-bold ${delta.d > 0 ? "bg-lime text-ink" : "bg-rose text-white"}`}
             initial={{ opacity: 0, y: 8, scale: 0.8 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10 }}
@@ -372,13 +372,13 @@ function Rematch({ td, disabled, onRematch, showReason }: { td: TdView; disabled
   return (
     <div className="mt-2 flex flex-col gap-1.5">
       {r.available ? (
-        <button type="button" disabled={disabled} onClick={onRematch} className="rounded-xl bg-red-500 py-2.5 text-sm font-semibold text-white shadow-[0_4px_0_#991b1b] transition active:translate-y-0.5 active:shadow-none disabled:opacity-40">
+        <button type="button" disabled={disabled} onClick={onRematch} className="as-btn as-btn-sm as-btn-light font-display w-full justify-center disabled:opacity-40">
           Смена ролей / Реванш (Раунд {Math.max(2, r.roundNo)})
         </button>
       ) : (
         showReason && r.reason && <p className="text-xs text-[var(--muted)]" data-testid="rematch-reason">Реванш недоступен: {r.reason}</p>
       )}
-      {bonus && <p className="text-xs font-medium text-orange-300">{bonus}</p>}
+      {bonus && <p className="text-xs font-bold text-rose">{bonus}</p>}
     </div>
   );
 }
@@ -387,9 +387,9 @@ function TowerCard({ tower, def, maxLevel, treasury, disabled, onUpgrade }: { to
   const cost = tower.level < maxLevel ? def.upgradeCosts[tower.level - 1] : null;
   return (
     <div>
-      <p className="font-medium">{TOWER_NAME[def.id] ?? def.title} · уровень {tower.level}/{maxLevel}</p>
+      <p className="font-bold">{TOWER_NAME[def.id] ?? def.title} · уровень {tower.level}/{maxLevel}</p>
       <p className="text-xs text-[var(--muted)]">Построил: {tower.ownerName}. {def.description}.</p>
-      <button type="button" disabled={disabled || cost === null || treasury < (cost ?? 0)} onClick={onUpgrade} className="mt-2 w-full rounded-xl bg-pink-400 py-2 text-sm font-semibold text-pink-950 transition active:scale-[.98] disabled:opacity-40">
+      <button type="button" disabled={disabled || cost === null || treasury < (cost ?? 0)} onClick={onUpgrade} className="as-btn as-btn-sm as-btn-primary font-display mt-2 w-full justify-center disabled:opacity-40">
         {cost === null ? "Максимальный уровень" : `Улучшить · ${cost}🪙`}
       </button>
     </div>
@@ -516,20 +516,20 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
       style={{ "--td-ar": `${map.cols} / ${map.rows}` } as React.CSSProperties}
     >
       <div
-        className="relative overflow-hidden rounded-2xl shadow-[0_10px_40px_-12px_rgba(0,0,0,.6)] ring-2 ring-[#2f6b2a]"
+        className="relative overflow-hidden rounded-[24px] border-2 border-ink bg-lime shadow-[0_6px_0_#3B2422]"
         style={{ aspectRatio: `${map.cols} / ${map.rows}`, width: `min(100%, calc(100cqh * ${map.cols} / ${map.rows}))` }}
         data-testid="td-field"
       >
         <svg viewBox={`0 0 ${map.cols} ${map.rows}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Игровое поле">
           <defs>
             <pattern id={ids.grass} patternUnits="userSpaceOnUse" width={2} height={2}>
-              <rect width={2} height={2} fill="#6dbb58" />
-              <rect width={1} height={1} fill="#75c45f" />
-              <rect x={1} y={1} width={1} height={1} fill="#75c45f" />
-              <path d="M0.25 0.7l0.05-0.14l0.05 0.14M1.3 0.35l0.04-0.12l0.04 0.12M0.7 1.6l0.05-0.14l0.05 0.14M1.6 1.25l0.04-0.12l0.04 0.12" fill="none" stroke="#4e9a3f" strokeWidth={0.03} strokeLinecap="round" />
+              <rect width={2} height={2} fill="#D9DE9F" />
+              <rect width={1} height={1} fill="#E4E9B8" />
+              <rect x={1} y={1} width={1} height={1} fill="#E4E9B8" />
+              <path d="M0.25 0.7l0.05-0.14l0.05 0.14M1.3 0.35l0.04-0.12l0.04 0.12M0.7 1.6l0.05-0.14l0.05 0.14M1.6 1.25l0.04-0.12l0.04 0.12" fill="none" stroke="#B7BE7A" strokeWidth={0.03} strokeLinecap="round" />
             </pattern>
             <pattern id={ids.stones} patternUnits="userSpaceOnUse" width={0.6} height={0.6}>
-              <rect width={0.6} height={0.6} fill="#d9b98a" />
+              <rect width={0.6} height={0.6} fill="#EAA695" />
               <ellipse cx={0.15} cy={0.15} rx={0.11} ry={0.08} fill="#c7b39a" stroke="#9c8667" strokeWidth={0.015} />
               <ellipse cx={0.43} cy={0.3} rx={0.1} ry={0.09} fill="#cdbba3" stroke="#9c8667" strokeWidth={0.015} />
               <ellipse cx={0.2} cy={0.47} rx={0.09} ry={0.07} fill="#bfae95" stroke="#9c8667" strokeWidth={0.015} />
@@ -549,8 +549,8 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
           {decor.map((d, i) => <g key={i} transform={`translate(${d.x} ${d.y})`} aria-hidden><Decor kind={d.kind} /></g>)}
 
           {/* Тропа: край, утоптанная земля, камни */}
-          <polyline points={pathPoints} fill="none" stroke="#7a5a35" strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" />
-          <polyline points={pathPoints} fill="none" stroke="#d9b98a" strokeWidth={0.88} strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points={pathPoints} fill="none" stroke="#3B2422" strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" />
+          <polyline points={pathPoints} fill="none" stroke="#EAA695" strokeWidth={0.88} strokeLinecap="round" strokeLinejoin="round" />
           <polyline points={pathPoints} fill="none" stroke={`url(#${ids.stones})`} strokeWidth={0.72} strokeLinecap="round" strokeLinejoin="round" />
 
           {/* Портал томатов и Академия Аксолотлей */}
@@ -563,7 +563,7 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
 
           {/* Радиус выбранной башни */}
           {sel && selTower && (
-            <circle cx={sel.x} cy={sel.y} r={towerRange(td.towerTypes.find((d) => d.id === selTower.type), selTower.level)} fill="#ff7eb6" fillOpacity={0.12} stroke="#ff7eb6" strokeOpacity={0.8} strokeWidth={0.04} strokeDasharray="0.14 0.12" />
+            <circle cx={sel.x} cy={sel.y} r={towerRange(td.towerTypes.find((d) => d.id === selTower.type), selTower.level)} fill="#A0726D" fillOpacity={0.14} stroke="#3B2422" strokeOpacity={0.7} strokeWidth={0.04} strokeDasharray="0.14 0.12" />
           )}
 
           {/* Места и башни */}
@@ -587,18 +587,18 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
                 <circle r={0.62} fill="transparent" /> {/* увеличенная область нажатия для пальца */}
                 {tw ? (
                   <>
-                    <ellipse cy={0.32} rx={0.36} ry={0.11} fill="rgba(0,0,0,.25)" />
+                    <ellipse cy={0.32} rx={0.36} ry={0.11} fill="rgba(59,36,34,.25)" />
                     <AxolotlTower type={tw.type} level={tw.level} haste={hasted} slowed={slowedTowers} disabled={disabledSlots.has(s.id)} />
                   </>
                 ) : (
                   <>
-                    <circle r={0.36} fill="#efe2c4" fillOpacity={0.6} stroke="#8a6b42" strokeOpacity={0.55} strokeWidth={0.04} />
-                    <circle r={0.25} fill="none" stroke="#ffffff" strokeOpacity={isSel ? 0.95 : 0.7} strokeWidth={0.05} strokeDasharray="0.12 0.09" />
-                    <path d="M-0.09 0H0.09M0 -0.09V0.09" stroke="#ffffff" strokeOpacity={0.85} strokeWidth={0.05} strokeLinecap="round" />
+                    <rect x={-0.36} y={-0.36} width={0.72} height={0.72} rx={0.14} fill="#FFFFFF" fillOpacity={isSel ? 0.95 : 0.7} stroke="#3B2422" strokeOpacity={isSel ? 0.9 : 0.45} strokeWidth={0.04} />
+                    
+                    <path d="M-0.1 0H0.1M0 -0.1V0.1" stroke="#A0726D" strokeWidth={0.06} strokeLinecap="round" />
                   </>
                 )}
-                <circle r={0.54} fill="none" stroke="#ffffff" strokeWidth={0.05} className="opacity-0 group-focus-visible:opacity-100" />
-                {isSel && <circle r={0.5} fill="none" stroke="#ff7eb6" strokeWidth={0.08} />}
+                <circle r={0.54} fill="none" stroke="#3B2422" strokeWidth={0.05} className="opacity-0 group-focus-visible:opacity-100" />
+                {isSel && <circle r={0.5} fill="none" stroke="#A0726D" strokeWidth={0.08} />}
               </g>
             );
           })}
@@ -616,6 +616,11 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
 
         <canvas ref={canvasRef} data-testid="td-canvas" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden />
 
+        {current && (
+          <span aria-hidden className="font-display pointer-events-none absolute right-2 top-2 rounded-full border-2 border-ink bg-white px-2.5 py-1 text-xs uppercase leading-none text-ink">
+            Wave {Math.max(1, current.wave)}/{current.waves} · {current.enemies.length} 🍅
+          </span>
+        )}
         {effects.length > 0 && <EffectChips effects={effects} className="pointer-events-none absolute left-2 top-2" />}
 
         <AnimatePresence>
@@ -629,7 +634,7 @@ function TdField({ td, current, effects, selected, onSelect, hpPct }: {
               exit={{ opacity: 0 }}
               transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 260, damping: 18 }}
             >
-              <span className={`rounded-2xl px-5 py-2.5 text-lg font-display border-2 border-ink shadow-[0_6px_0_#3B2422] sm:text-2xl ${finished === "won" ? "bg-emerald-400 text-emerald-950" : finished === "lost" ? "bg-red-600 text-white" : "bg-zinc-900/85 text-white"}`}>
+              <span className={`rounded-2xl px-5 py-2.5 text-lg font-display border-2 border-ink shadow-[0_6px_0_#3B2422] sm:text-2xl ${finished === "won" ? "bg-lime text-ink" : finished === "lost" ? "bg-rose text-white" : "bg-ink text-paper"}`}>
                 {finished === "won" ? "Оборона выстояла!" : finished === "lost" ? "База пала" : "Перерыв закончился"}
               </span>
             </motion.div>
