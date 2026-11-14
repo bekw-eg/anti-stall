@@ -65,8 +65,9 @@ describe("клиент ↔ backend: Road Map", () => {
 
     const road0 = await lotti.roadmap(id);
     expect(road0.positionNodeId).toBe("camp");
-    expect(road0.next).toEqual({ nodeId: "forest", title: "Лес знаний", pointsNeeded: 2 });
-    expect(road0.edges).toHaveLength(3);
+    expect(road0.next).toEqual({ nodeId: "stop-1", title: "Лес знаний", pointsNeeded: 1 });
+    expect(road0.edges).toHaveLength(4); // план по умолчанию — 4 цикла: лагерь + остановка на каждый перерыв
+    expect(road0.cycles).toEqual({ planned: 4, started: 0 });
     expect(road0.teams).toHaveLength(1);
 
     const events: ServerEvent[] = [];
@@ -76,17 +77,17 @@ describe("клиент ↔ backend: Road Map", () => {
     await until(() => events.some((e) => e.type === "room_state"));
 
     await lotti.startFocus(id);
-    await advance(25 * 60_000 + 1000, [lotti, anya]); // обе сессии завершены → 2 очка → этап «Лес знаний»
+    await advance(25 * 60_000 + 1000, [lotti, anya]); // обе сессии качественные → команда делает шаг → остановка «Лес знаний»
     const [a, b] = await Promise.all([lotti.roadmap(id), anya.roadmap(id)]);
     expect(a).toEqual(b); // синхронизация между участниками
-    expect(a.positionNodeId).toBe("forest");
-    expect(a.nodes.find((n) => n.id === "forest")?.reachedAt).toBeGreaterThan(0);
-    expect(a.segment).toEqual({ from: "forest", to: "bridge", progress: 0 });
+    expect(a.positionNodeId).toBe("stop-1");
+    expect(a.nodes.find((n) => n.id === "stop-1")?.reachedAt).toBeGreaterThan(0);
+    expect(a.segment).toEqual({ from: "stop-1", to: "stop-2", progress: 0 });
 
     const reached = await until(() => events.find((e) => e.type === "node_reached"));
-    expect((reached.data as { nodeId: string }).nodeId).toBe("forest");
+    expect((reached.data as { nodeId: string }).nodeId).toBe("stop-1");
     expect((await lotti.progress()).xp).toBe(125); // 100 за сессию + 25 за этап (начислил сервер)
-    expect((await lotti.room(id)).challenge.positionNodeId).toBe("forest"); // тот же снимок в room_state
+    expect((await lotti.room(id)).challenge.positionNodeId).toBe("stop-1"); // тот же снимок в room_state
     sock.close();
   });
 });
@@ -109,7 +110,7 @@ describe("клиент ↔ backend: Tower Defense", () => {
 
     const view = await lotti.td(id);
     expect(view.enabled).toBe(true);
-    expect(view.stages.find((s) => s.id === "forest")?.unlocked).toBe(true); // 2 очка команды открыли узел «Лес знаний»
+    expect(view.stages.find((s) => s.id === "forest")?.unlocked).toBe(true); // шаг команды по карте открыл второй этап игры
     const before = (await lotti.progress()).coins;
 
     const built = await lotti.tdBuild(id, "s1", "arrow", "req-build-s1-0001");
@@ -183,17 +184,18 @@ describe("клиент ↔ backend: Team A/B", () => {
     expect([mine.teamKey, theirs.teamKey]).toEqual(["A", "B"]);
     expect(mine.teams.map((t) => t.key)).toEqual(["A", "B"]);
 
-    // по одному игроку в команде идут вровень: через 6 циклов — ничья, обе команды награждены
-    for (let i = 0; i < 6; i++) {
-      await lotti.startFocus(id);
+    // по одному игроку в команде идут вровень: план из 4 циклов, следующий фокус стартует сам после перерыва
+    await lotti.startFocus(id);
+    for (let i = 0; i < 4; i++) {
       await advance(25 * 60_000 + 1000, [lotti, anya]);
       await advance(5 * 60_000, [lotti, anya]);
     }
+    expect((await lotti.room(id)).room.phase).toBe("waiting"); // план выполнен — комната ждёт хоста
     const [a, b] = await Promise.all([lotti.roadmap(id), anya.roadmap(id)]);
     expect(a.winner).toBe("draw");
     expect(b.winner).toBe("draw");
     expect(a.completed && b.completed).toBe(true);
-    expect(a.teams.map((t) => t.points)).toEqual([6, 6]);
+    expect(a.teams.map((t) => t.points)).toEqual([4, 4]);
     await lotti.setTeam(id, "B"); // между циклами (waiting) смена разрешена
     await lotti.setTeam(id, "A");
     await lotti.startFocus(id);
@@ -238,9 +240,9 @@ describe("клиент ↔ backend", () => {
     const end = await lotti.room(id);
     expect(end.room.phase).toBe("break");
     const [pl, pa] = await Promise.all([lotti.progress(), anya.progress()]);
-    expect(pl.xp).toBe(100);
-    expect(pa.xp).toBe(0);
-    expect(end.challenge.points).toBe(1);
+    expect(pl.xp).toBe(125); // 100 за качественный фокус + 25 за остановку карты
+    expect(pa.xp).toBe(0); // сдалась — без награды
+    expect(end.challenge.points).toBe(1); // 1 из 2 отфокусировался качественно — половина, шаг засчитан
     expect(end.members.find((m) => m.name === "Аня2")?.status).toBe("aborted");
   });
 

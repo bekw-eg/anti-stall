@@ -109,10 +109,24 @@ export async function lobby(world, names = ['Лотти', 'Аня', 'Боря'],
   return { users, host, rest, room, path: (p = '') => `/api/rooms/${room.id}${p}` };
 }
 
-/** Прогоняет полную фокус-фазу: старт → +25 минут (все listed «живы») → перерыв. */
+/**
+ * Прогоняет полную фокус-фазу: старт → +25 минут (все listed «живы») → перерыв.
+ * Если фокус уже идёт (следующий цикл плана стартует сам после перерыва) — просто доживает до его конца.
+ */
 export async function runFocus(world, L, alive = L.users, minutes = 25) {
+  const cur = await L.host.get(L.path());
+  if (cur.body?.room?.phase === 'focus') {
+    await world.advance((cur.body.room.remainingMs ?? minutes * 60_000) + 1000, alive);
+    return { ...cur.body, start: { auto: true } };
+  }
   const start = await L.host.post(L.path('/start'));
   if (start.status !== 200) throw new Error('start: ' + JSON.stringify(start.body));
   await world.advance(minutes * 60_000 + 1000, alive);
   return start.body;
+}
+
+/** Доживает до конца перерыва (дальше по плану следующий фокус стартует сам). */
+export async function runBreak(world, L, alive = L.users) {
+  const cur = await L.host.get(L.path());
+  if (cur.body?.room?.phase === 'break') await world.advance((cur.body.room.remainingMs ?? 0) + 1000, alive);
 }

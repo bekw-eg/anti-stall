@@ -119,7 +119,7 @@ describe("демо-песочница: интерфейс", () => {
   it("на демо-сервере чекбокс «Демо-режим» включён, заблокирован и объясняет почему; комната создаётся демо", () => {
     const createRoom = vi.fn(async () => true);
     const t = { snapshot: null, user: null, name: "Лотти", setName: () => undefined, demoMode: true, busy: false, createRoom, joinRoom: vi.fn() } as unknown as Tomato;
-    const form: FormState = { work: 25, rest: 5, demo: false, teamMode: false, cycles: 4, setCycles: vi.fn(), setWork: vi.fn(), setRest: vi.fn(), setDemo: vi.fn(), setTeamMode: vi.fn() };
+    const form: FormState = { work: 25, rest: 15, demo: false, teamMode: false, cycles: 4, setCycles: vi.fn(), setWork: vi.fn(), setRest: vi.fn(), setDemo: vi.fn(), setTeamMode: vi.fn() };
     const m = mount(<SettingsContent t={t} form={form} onCollapse={() => undefined} />);
     const box = m.host.querySelector<HTMLInputElement>('input[aria-describedby="demo-mode-note"]')!;
     expect(box.checked).toBe(true);
@@ -127,7 +127,7 @@ describe("демо-песочница: интерфейс", () => {
     expect(m.host.querySelector("#demo-mode-note")?.textContent).toMatch(/демо-песочница/);
     const create = [...m.host.querySelectorAll("button")].find((b) => b.textContent === "Создать комнату")!;
     act(() => create.click());
-    expect(createRoom).toHaveBeenCalledWith("Лотти", { demo: true, focusSeconds: 25, breakSeconds: 15, teamMode: false });
+    expect(createRoom).toHaveBeenCalledWith("Лотти", { demo: true, focusSeconds: 25, breakSeconds: 15, cycles: 4, teamMode: false }); // длительности — из формы, в секундах
     m.unmount();
   });
 });
