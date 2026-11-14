@@ -19,7 +19,7 @@ function Stepper({ label, value, onChange, step, min, max, format, disabled }: {
   return (
     <div className="flex min-w-0 flex-col gap-1.5 sm:gap-2.5">
       <span className="as-label text-sm">{label}</span>
-      <div className="flex h-12 items-center overflow-hidden rounded-[16px] border-2 border-ink bg-white sm:h-[60px] sm:rounded-[18px]">
+      <div className="flex h-12 items-center overflow-hidden rounded-[16px] border-2 border-ink bg-white sm:h-[52px] sm:rounded-[18px] 2xl:h-[60px]">
         <button type="button" className={btn} disabled={disabled || value - step < min} onClick={() => onChange(Math.max(min, value - step))} aria-label={`${label}: меньше`}><Minus size={20} aria-hidden /></button>
         <output className="min-w-0 flex-1 truncate text-center text-base font-extrabold sm:text-xl" aria-live="polite">{format(value)}</output>
         <button type="button" className={btn} disabled={disabled || value + step > max} onClick={() => onChange(Math.min(max, value + step))} aria-label={`${label}: больше`}><Plus size={20} aria-hidden /></button>
@@ -141,10 +141,10 @@ export function Lobby({ t }: { t: Tomato }) {
   return (
     <div className="grid flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] xl:grid-cols-[minmax(0,1fr)_minmax(360px,540px)]">
       {/* ---------- Setup ---------- */}
-      <section className="flex flex-col items-center justify-center gap-5 px-4 py-8 sm:px-8 sm:py-10 lg:px-16 lg:py-6 2xl:gap-7" aria-label="Подготовка к циклу">
+      <section className="flex flex-col items-center justify-center gap-4 px-4 py-6 sm:px-8 sm:py-8 lg:px-16 lg:py-5 2xl:gap-7" aria-label="Подготовка к циклу">
         <div className="flex flex-col items-center gap-2 text-center">
           <p className="text-lg font-bold text-mute sm:text-xl">{closed ? "сессия завершена" : planDone ? "дополнительный цикл длится" : room.cycleNo > 0 ? "следующий цикл длится" : "первый цикл длится"}</p>
-          <p className="font-display text-[clamp(4rem,min(17vw,19vh),13.75rem)] leading-none pt-[0.12em] text-rose" data-testid="lobby-timer">{formatTime(focusSec)}</p>
+          <p className="font-display text-[clamp(3.5rem,min(15vw,14vh),13.75rem)] leading-none pt-[0.12em] text-rose" data-testid="lobby-timer">{formatTime(focusSec)}</p>
         </div>
 
         {!closed && (
@@ -160,7 +160,8 @@ export function Lobby({ t }: { t: Tomato }) {
                 Все запланированные циклы пройдены ({room.settings.cycles ?? 4}). Можно продолжить: следующий цикл пойдёт сверх плана.
               </p>
             )}
-            <p className="max-w-[640px] text-center text-base text-mute">
+            {/* на невысоких экранах (ноутбук 1366×768) подсказку прячем, чтобы «Начать фокус» не уходила под полосу голоса */}
+            <p className="max-w-[640px] text-center text-base text-mute [@media(max-height:820px)]:hidden">
               {isHost ? "Настройки меняете вы. " : "Настройки меняет создатель комнаты. "}Награда — только за полный цикл фокуса.
             </p>
             <div className="w-full max-w-[600px]"><TaskInput t={t} /></div>

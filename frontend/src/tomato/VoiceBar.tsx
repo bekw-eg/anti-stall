@@ -90,7 +90,7 @@ export function VoiceBar({ conn, voice: v, meId, note, tone = "dark" }: { conn: 
       initial={{ y: 24, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ ...SPRING, delay: 0.1 }}
-      className={`flex min-h-[4.25rem] w-full flex-wrap items-center gap-x-4 gap-y-2 rounded-[22px] px-3 py-2.5 sm:flex-nowrap sm:pl-6 ${light ? "bg-cream text-ink" : "bg-ink text-cream"}`}
+      className={`flex min-h-[3.25rem] w-full items-center gap-x-3 gap-y-2 rounded-[18px] px-3 py-1.5 sm:min-h-[4.25rem] sm:gap-x-4 sm:rounded-[22px] sm:py-2.5 sm:pl-6 ${light ? "bg-cream text-ink" : "bg-ink text-cream"}`}
       data-testid="voice-bar"
       data-voice-status={v.status}
     >
@@ -98,6 +98,8 @@ export function VoiceBar({ conn, voice: v, meId, note, tone = "dark" }: { conn: 
         <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${dot}`} aria-hidden />
         <span className="whitespace-nowrap text-[17px] font-extrabold">Голос{v.peers.length ? ` · ${v.peers.length}` : ""}</span>
         <span className={`hidden max-w-[16rem] truncate text-[15px] xl:inline ${light ? "text-mute" : "text-[#D8BDB6]"} empty:hidden`} role="status" data-testid="voice-status">{statusText(v, conn)}</span>
+        {/* на узком экране статус скрыт — но почему нельзя войти, сказать нужно */}
+        {(!v.supported || v.error) && <span className={`truncate text-[13px] xl:hidden ${light ? "text-mute" : "text-[#D8BDB6]"}`}>{!v.supported ? "нужен HTTPS" : v.error}</span>}
       </div>
 
       <ul className="flex min-w-0 items-center -space-x-1.5" aria-label="В голосовом канале">
@@ -107,7 +109,7 @@ export function VoiceBar({ conn, voice: v, meId, note, tone = "dark" }: { conn: 
         {extra > 0 && <li className="pl-3 text-sm font-bold">+{extra}</li>}
       </ul>
 
-      {note ? <p className={`order-last w-full min-w-0 text-[15px] sm:order-none sm:w-auto sm:flex-1 sm:truncate ${light ? "text-mute" : "text-[#D8BDB6]"}`} title={typeof note === "string" ? note : undefined}>{note}</p> : <span className="hidden sm:block sm:flex-1" aria-hidden />}
+      {note ? <p className={`hidden min-w-0 flex-1 truncate text-[15px] sm:block ${light ? "text-mute" : "text-[#D8BDB6]"}`} title={typeof note === "string" ? note : undefined}>{note}</p> : <span className="hidden sm:block sm:flex-1" aria-hidden />}
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
         {!v.inVoice ? (

@@ -16,23 +16,24 @@ function RoadStrip({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }) {
   const nodes = road.nodes ?? [];
   const current = nodes.find((n) => n.status === "current") ?? nodes.find((n) => n.status === "next");
   return (
-    <section aria-label="Дорога команды" className="flex flex-col gap-4 rounded-[28px] bg-paper p-4 sm:flex-row sm:items-center sm:gap-6 sm:p-5">
-      <ol className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-2" aria-label="Узлы карты">
+    <section aria-label="Дорога команды" className="flex flex-col gap-2.5 rounded-[20px] bg-paper p-3 sm:flex-row sm:items-center sm:gap-6 sm:rounded-[28px] sm:p-5">
+      {/* на телефоне узлы — одной строкой с прокруткой, а не стопкой из трёх строк над игрой */}
+      <ol className="-mx-1 flex min-w-0 flex-1 flex-nowrap items-center gap-x-1 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:gap-y-2 sm:overflow-visible sm:px-0 sm:pb-0" aria-label="Узлы карты">
         {nodes.map((n, i) => {
           const done = n.status === "completed";
           const here = n === current;
           return (
             <li key={n.id} className="flex min-w-0 shrink-0 items-center gap-1">
               {i > 0 && <span className={`h-1.5 w-6 rounded-full sm:w-10 ${done || here ? "bg-peach" : "bg-line"}`} aria-hidden />}
-              <span className={`flex items-center gap-2 rounded-full border-2 px-3 py-1.5 text-sm font-extrabold sm:text-[15px] ${here ? "border-ink bg-peach text-ink" : done ? "border-peach bg-white text-ink" : "border-line bg-white text-mute"}`}>
+              <span className={`flex items-center gap-1.5 whitespace-nowrap rounded-full border-2 px-2.5 py-1 text-[13px] font-extrabold sm:gap-2 sm:px-3 sm:py-1.5 sm:text-[15px] ${here ? "border-ink bg-peach text-ink" : done ? "border-peach bg-white text-ink" : "border-line bg-white text-mute"}`}>
                 {here && <Flag size={14} aria-hidden />}{done && <Check size={14} aria-hidden />}{n.title}
               </span>
             </li>
           );
         })}
       </ol>
-      <div className="flex shrink-0 items-center gap-4">
-        <p className="text-[15px] text-mute"><span className="font-display text-2xl text-ink"><span className="relative top-0.5">{road.points}/{road.goal}</span></span> побед до цели</p>
+      <div className="flex shrink-0 items-center justify-between gap-4">
+        <p className="text-[15px] text-mute"><span className="font-display text-xl text-ink sm:text-2xl"><span className="relative top-0.5">{road.points}/{road.goal}</span></span> побед до цели</p>
         <button type="button" onClick={onOpenMap} className="as-btn as-btn-secondary as-btn-sm">Карта</button>
       </div>
     </section>

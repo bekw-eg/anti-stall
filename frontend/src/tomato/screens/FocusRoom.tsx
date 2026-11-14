@@ -30,9 +30,9 @@ function EndEarly({ t }: { t: Tomato }) {
         if (!confirm) { setConfirm(true); timer.current = setTimeout(() => setConfirm(false), 4000); return; }
         clearTimeout(timer.current); setConfirm(false); t.abortSession();
       }}
-      className={`flex flex-col items-start rounded-[16px] border-2 px-3 py-1.5 text-left transition-colors sm:px-4 sm:py-2 ${confirm ? "border-peach bg-cocoa" : "border-[#8A625C] hover:bg-cocoa"}`}
+      className={`flex flex-col items-start rounded-[12px] border-2 px-2.5 py-1 text-left transition-colors sm:rounded-[16px] sm:px-4 sm:py-2 ${confirm ? "border-peach bg-cocoa" : "border-[#8A625C] hover:bg-cocoa"}`}
     >
-      <span className="font-display text-base leading-tight text-cream sm:text-lg"><span className="relative top-0.5">{confirm ? "Точно завершить?" : "Завершить досрочно"}</span></span>
+      <span className="whitespace-nowrap font-display text-sm leading-tight text-cream sm:text-lg"><span className="relative top-0.5"><span className="sm:hidden">{confirm ? "Точно?" : "Завершить"}</span><span className="hidden sm:inline">{confirm ? "Точно завершить?" : "Завершить досрочно"}</span></span></span>
       <span className="hidden text-[13px] text-[#D8BDB6] sm:block">{confirm ? "нажмите ещё раз, награды не будет" : "монеты за этот цикл не начислятся"}</span>
     </button>
   );

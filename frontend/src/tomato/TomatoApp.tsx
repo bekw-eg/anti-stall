@@ -9,7 +9,7 @@ import { EndEarly, FocusRoom } from "./screens/FocusRoom";
 import { JoinScreen, type JoinMode } from "./screens/JoinScreen";
 import { Landing } from "./screens/Landing";
 import { Lobby } from "./screens/Lobby";
-import { DARK_VARS, LIGHT_VARS, RoomNav, SheetPanel, type Sheet } from "./screens/RoomChrome";
+import { DARK_VARS, LIGHT_VARS, ProfileChip, RoomNav, SheetPanel, type Sheet } from "./screens/RoomChrome";
 import { useStickers, type Stickers } from "./screens/Stickers";
 import { Logo, MemberAvatar, PhasePill } from "./screens/ui";
 import { client, useTomato, type Tomato } from "./useTomato";
@@ -130,12 +130,13 @@ function RoomHeader({ t, onOpen, headerRef, active, stickers }: { t: Tomato; onO
   const planDone = room.cycleNo >= planned;
 
   return (
-    <header ref={headerRef} className={`sticky top-0 z-40 flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3 sm:px-8 sm:py-4 lg:px-12 ${dark ? "bg-ink" : "border-b-2 border-soft bg-white"}`}>
-      <div className="flex min-w-0 grow basis-[16rem] items-center gap-3 sm:gap-4">
+    <header ref={headerRef} className={`sticky top-0 z-40 flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 sm:gap-x-5 sm:gap-y-3 sm:px-8 sm:py-4 lg:px-12 ${dark ? "bg-ink" : "border-b-2 border-soft bg-white"}`}>
+      {/* ряд 1 на телефоне: логотип, комната, профиль; с sm — как раньше, всё в одну линию */}
+      <div className="flex w-full min-w-0 items-center gap-2.5 sm:w-auto sm:grow sm:basis-[16rem] sm:gap-4">
         <Logo tone={dark ? "cream" : "ink"} compact />
         <span className={`hidden h-9 w-0.5 shrink-0 sm:block ${dark ? "bg-cocoa" : "bg-soft"}`} aria-hidden />
         <div className="flex min-w-0 flex-col gap-1">
-          <h1 className={`truncate text-lg font-extrabold leading-tight sm:text-[22px] ${dark ? "text-cream" : "text-ink"}`} title={room.name}>{room.name}</h1>
+          <h1 className={`truncate text-base font-extrabold leading-tight sm:text-[22px] ${dark ? "text-cream" : "text-ink"}`} title={room.name}>{room.name}</h1>
           <div className="flex flex-wrap items-center gap-2">
             {room.phase === "focus" && <PhasePill tone="cocoa" dot="#EAA695">фокус · {cycleLabel(room.cycleNo, planned)}</PhasePill>}
             {room.phase === "break" && <PhasePill>перерыв после: {cycleLabel(room.cycleNo, planned)}</PhasePill>}
@@ -144,20 +145,22 @@ function RoomHeader({ t, onOpen, headerRef, active, stickers }: { t: Tomato; onO
             {room.demo && <DemoBadge compact className="hidden sm:inline-flex" />}
           </div>
         </div>
+        <ProfileChip t={t} dark={dark} onOpen={() => onOpen("profile")} className="ml-auto sm:hidden" />
       </div>
 
       {(room.phase === "break" || room.phase === "focus") && (
-        <div className="order-last flex w-full justify-center xl:order-none xl:w-auto">
+        // телефон: справа во втором ряду рядом с иконками; планшет: слева во втором ряду; широкий — в одну линию
+        <div className="order-3 ml-auto flex sm:order-2 sm:ml-0 xl:order-none">
           {room.phase === "break" ? (
-            <div role="timer" aria-label={`Перерыв: ${formatTime(remaining)}`} className="flex items-center gap-3 rounded-full border-2 border-ink bg-petal py-1.5 pl-5 pr-1.5 as-shadow">
-              <span className="font-display text-lg sm:text-xl"><span className="relative top-0.5">перерыв</span></span>
-              <span className="rounded-full bg-white px-4 py-1 font-display text-3xl tabular-nums sm:text-[36px]"><span className="relative top-1">{formatTime(remaining)}</span></span>
+            <div role="timer" aria-label={`Перерыв: ${formatTime(remaining)}`} className="flex items-center gap-2 rounded-full border-2 border-ink bg-petal py-1 pl-3 pr-1 as-shadow-sm sm:gap-3 sm:py-1.5 sm:pl-5 sm:pr-1.5 sm:as-shadow">
+              <span className="font-display text-sm sm:text-xl"><span className="relative top-0.5">перерыв</span></span>
+              <span className="rounded-full bg-white px-2.5 py-0.5 font-display text-xl tabular-nums sm:px-4 sm:py-1 sm:text-[36px]"><span className="relative top-0.5 sm:top-1">{formatTime(remaining)}</span></span>
             </div>
           ) : <EndEarly t={t} />}
         </div>
       )}
 
-      <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+      <div className="order-2 flex shrink-0 items-center gap-2 sm:order-3 sm:ml-auto sm:gap-3 xl:order-none">
         {room.phase === "break" && (
           <ul className="hidden items-center -space-x-1.5 2xl:flex" aria-label="Участники">
             {snap.members.slice(0, 6).map((m) => <li key={m.userId}><MemberAvatar name={m.name} id={m.userId} connection={m.connection} size={34} host={m.role === "host"} /></li>)}

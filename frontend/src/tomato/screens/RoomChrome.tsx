@@ -24,7 +24,7 @@ export type Sheet = "map" | "stats" | "social" | "profile" | null;
 function NavButton({ onClick, label, children, dark, testId, pressed }: { onClick: () => void; label: string; children: React.ReactNode; dark: boolean; testId?: string; pressed?: boolean }) {
   return (
     <button type="button" onClick={onClick} aria-label={label} title={label} data-testid={testId} aria-pressed={pressed}
-      className={`inline-flex h-11 items-center gap-2 rounded-[14px] border-2 px-3 text-[15px] font-extrabold transition-colors ${dark ? `border-[#8A625C] text-cream hover:bg-cocoa ${pressed ? "bg-cocoa" : ""}` : `border-ink text-ink as-shadow-sm hover:bg-paper ${pressed ? "bg-lime" : "bg-white"}`}`}>
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-[12px] border-2 text-[15px] font-extrabold transition-colors sm:h-11 sm:w-auto sm:rounded-[14px] sm:px-3 ${dark ? `border-[#8A625C] text-cream hover:bg-cocoa ${pressed ? "bg-cocoa" : ""}` : `border-ink text-ink as-shadow-sm hover:bg-paper ${pressed ? "bg-lime" : "bg-white"}`}`}>
       {children}<span className="hidden 2xl:inline">{label}</span>
     </button>
   );
@@ -35,9 +35,9 @@ export function RoomNav({ t, dark = false, onOpen, active = null, stickers }: { 
   const me = t.snapshot?.me;
   const name = t.user?.name ?? t.name;
   return (
-    <div className="flex items-center gap-2 sm:gap-3">
+    <div className="flex items-center gap-1.5 sm:gap-3">
       {stickers && (
-        <span className="flex items-center gap-1">
+        <span className="flex items-center gap-1.5 sm:gap-1">
           <NavButton dark={dark} onClick={stickers.add} label={stickers.full ? "Стикеров максимум" : "Стикер"} testId="add-sticker"><StickyNote size={18} aria-hidden /></NavButton>
           {stickers.items.length > 0 && (
             <NavButton dark={dark} pressed={stickers.hidden} onClick={() => stickers.setHidden(!stickers.hidden)} label={stickers.hidden ? `Показать стикеры (${stickers.items.length})` : "Спрятать стикеры"} testId="toggle-stickers">
@@ -52,13 +52,22 @@ export function RoomNav({ t, dark = false, onOpen, active = null, stickers }: { 
       <span className={`hidden items-center gap-1.5 sm:inline-flex ${dark ? "text-cream" : "text-ink"}`} title="Ваши монеты" aria-label={`Монеты: ${me?.coins ?? 0}`}>
         <SeedIcon /><span className="font-display text-2xl leading-none" aria-hidden><span className="relative top-0.5">{me?.coins ?? 0}</span></span>
       </span>
-      <button type="button" onClick={() => onOpen("profile")} data-testid="open-profile" aria-label="Профиль и выход из комнаты"
-        className={`inline-flex h-12 items-center gap-2 rounded-full border-2 py-1 pl-1 pr-1 sm:pr-4 ${dark ? "border-[#8A625C] text-cream" : "border-ink bg-white text-ink"}`}>
-        <Avatar name={name || "?"} id={me?.userId} size={36} ring={dark ? "#FFF4EF" : "#3B2422"} />
-        <span className="hidden max-w-[9rem] truncate text-lg font-extrabold sm:inline">{name}</span>
-        <span className={`hidden text-base md:inline ${dark ? "text-[#D8BDB6]" : "text-mute"}`}>ур. {me?.level ?? t.user?.level ?? 1}</span>
-      </button>
+      <ProfileChip t={t} dark={dark} onOpen={() => onOpen("profile")} className="hidden sm:inline-flex" />
     </div>
+  );
+}
+
+/** Жетон профиля: на телефоне — только аватар в первом ряду шапки, с sm — имя и уровень в навигации. */
+export function ProfileChip({ t, dark, onOpen, className = "" }: { t: Tomato; dark: boolean; onOpen: () => void; className?: string }) {
+  const me = t.snapshot?.me;
+  const name = t.user?.name ?? t.name;
+  return (
+    <button type="button" onClick={onOpen} data-testid="open-profile" aria-label="Профиль и выход из комнаты"
+      className={`h-10 shrink-0 items-center gap-2 rounded-full border-2 p-0.5 sm:h-12 sm:py-1 sm:pl-1 sm:pr-4 ${dark ? "border-[#8A625C] text-cream" : "border-ink bg-white text-ink"} ${className || "inline-flex"}`}>
+      <Avatar name={name || "?"} id={me?.userId} size={32} ring={dark ? "#FFF4EF" : "#3B2422"} />
+      <span className="hidden max-w-[9rem] truncate text-lg font-extrabold sm:inline">{name}</span>
+      <span className={`hidden text-base md:inline ${dark ? "text-[#D8BDB6]" : "text-mute"}`}>ур. {me?.level ?? t.user?.level ?? 1}</span>
+    </button>
   );
 }
 
