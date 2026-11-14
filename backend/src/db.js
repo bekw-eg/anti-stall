@@ -268,6 +268,8 @@ export class Db {
     this.sql.exec(SCHEMA);
     // v2: командный режим комнаты ('shared' — одна общая команда, 'teams' — Team A против Team B)
     if (!columns('rooms').includes('mode')) this.sql.exec("ALTER TABLE rooms ADD COLUMN mode TEXT NOT NULL DEFAULT 'shared'");
+    // v5: число циклов комнаты (настройка «сколько фокусов»; карта — статичная ROADMAP из master)
+    if (!columns('rooms').includes('cycles')) this.sql.exec('ALTER TABLE rooms ADD COLUMN cycles INTEGER NOT NULL DEFAULT 4');
     // v3: статус готовности участника комнаты (is_ready)
     if (!columns('room_members').includes('is_ready')) this.sql.exec('ALTER TABLE room_members ADD COLUMN is_ready INTEGER NOT NULL DEFAULT 0');
     // v4: песочные аккаунты демо-режима (users.sandbox); все существующие пользователи — обычные

@@ -535,6 +535,18 @@ export function useTomato(initialCode?: string) {
 
   const recordResult = useCallback((result: "done" | "partial" | "not_done") => call(() => client.recordResult(rid, result)), [call, rid]);
 
+  /** Получать шутки: переключатель меняется сразу, сервер подтверждает (при ошибке — откат). */
+  const setPranksEnabled = useCallback(async (on: boolean) => {
+    const apply = (v: boolean) => {
+      setSnapshot((s) => (s?.me ? { ...s, me: { ...s.me, prankEnabled: v }, members: s.members.map((m) => (m.userId === s.me!.userId ? { ...m, prankEnabled: v } : m)) } : s));
+      setUser((u) => (u ? { ...u, prankEnabled: v } : u));
+    };
+    apply(on);
+    const r = await call(() => client.updateMe({ prankEnabled: on }));
+    if (!r) apply(!on);
+    return Boolean(r);
+  }, [call]);
+
   // Качество фокуса: пока идёт своя сессия, сообщаем серверу об уходе со вкладки и возврате.
   // Это может только снизить качество (обрывы связи сервер видит сам), поэтому подмена клиента ничего не даёт.
   const focusing = snapshot?.me?.status === "focusing";

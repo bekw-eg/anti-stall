@@ -256,8 +256,6 @@ export function stepState(state, ctx) {
     if (cd > 1e-9) { state.cd[tw.slot] = cd; continue; }
     if (mod.disabled) { state.cd[tw.slot] = 0; continue; } // заморожена кетчупом: готова, но молчит
     const st = towerStats(tw.type, tw.level, ctx.damageMult);
-    st.range *= rangeMult;
-    st.cooldown *= cooldownMult;
     const pos = slotById(tw.slot);
     let target = null;
     let targetPos = null;

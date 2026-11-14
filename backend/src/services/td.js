@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BASE_HP, TD, UPGRADES, buildRoadmap, stageNodeIndex } from '../catalog.js';
+import { BASE_HP, ROADMAP, TD, UPGRADES } from '../catalog.js';
 import { E } from '../errors.js';
 import { reqObject, reqString } from '../validate.js';
 import {
@@ -146,7 +146,7 @@ export function createTd(ctx, game) {
     const team = teamOf(room, userId);
     const stats = teamStats(room, team);
     const stages = TD.stages.map((s) => ({
-      id: s.id, title: s.title, node: stageNode(room, s).id, nodeTitle: stageNode(room, s).title, unlocked: stageUnlocked(room, team, s),
+      id: s.id, title: s.title, node: s.node, nodeTitle: nodeTitle(s.node), unlocked: stageUnlocked(room, team, s),
       reward: s.reward, waves: s.waves.length, enemies: buildSchedule(s).length, hpScale: s.hpScale, ...bestOf(room, team, s.id),
     }));
     const unlockedIdx = stages.map((s, i) => (s.unlocked ? i : -1)).filter((i) => i >= 0);
@@ -183,25 +183,12 @@ export function createTd(ctx, game) {
   }
 
   // ------------------------------------------------------------------ симуляция раунда
-  /** Шутки соперника, попавшие в команду в этот перерыв (реальное время, мс). */
-  function teamDebuffs(room, team, cycleId) {
-    if (room.mode !== 'teams') return [];
-    return db.all(
-      `SELECT a.type, a.created_at AS fromMs, a.effect_ends_at AS untilMs FROM social_actions a
-       JOIN room_members m ON m.room_id = a.room_id AND m.user_id = a.target_id
-       WHERE a.room_id = ? AND a.cycle_id IS ? AND a.kind = 'prank' AND a.status = 'applied' AND m.team_key = ? ORDER BY a.id`,
-      room.id, cycleId, team,
-    ).map((d) => ({ ...d, ...(config.social.prank.types[d.type]?.debuff ?? {}) }));
-  }
-
   function simContext(row, room) {
     const stage = stageDef(row.stage_id);
-    const toGame = (ms) => Math.max(0, ((ms - row.started_at) / 1000) * row.speed); // реальное время → игровое
     return {
       stage, schedule: buildSchedule(stage),
       towers: towersOf(room, row.team_key).map((t) => ({ slot: t.slot, type: t.type, level: t.level })),
       damageMult: teamStats(room, row.team_key).damageMult,
-      debuffs: teamDebuffs(room, row.team_key, row.cycle_id).map((d) => ({ ...d, from: toGame(d.fromMs), until: toGame(d.untilMs) })),
     };
   }
 

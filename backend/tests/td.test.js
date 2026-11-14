@@ -295,12 +295,12 @@ describe('Tower Defense: раунд, результат и награды', () =
       assert.equal((await td(L)).round.status, 'running');
       await w.advance(70_000, L.users); // перерыв закончился
       const room = (await L.host.get(L.path())).body.room;
-      assert.equal(room.phase, 'focus', 'учёба продолжается: следующий фокус плана стартовал сам');
-      assert.equal(room.cycleNo, 2);
+      assert.equal(room.phase, 'waiting');
       const v = await td(L);
       assert.equal(v.enabled, false);
       assert.equal(v.round.status, 'expired');
       assert.equal((await kinds(L.host, 'td_round')).length, 0);
+      assert.equal((await L.host.post(L.path('/start'))).status, 200, 'следующий Focus запускается без помех');
       assert.equal(v.towers.length, 1, 'башни сохранились');
     } finally { await w.close(); }
   });
