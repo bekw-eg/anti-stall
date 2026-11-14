@@ -20,9 +20,9 @@ describe('длительности и план циклов — ввод пол�
       const ok = await u.post('/api/rooms', { focusSeconds: 37 * 60 + 15, breakSeconds: 10, cycles: 3 });
       assert.equal(ok.status, 201);
       assert.deepEqual(ok.body.room.settings, { focusSec: 2235, breakSec: 10, cycles: 3 });
-      const max = await u.post('/api/rooms', { focusSeconds: 24 * 3600, breakSeconds: 2 * 3600 });
+      const max = await u.post('/api/rooms', { focusSeconds: 24 * 3600, breakSeconds: 24 * 3600 });
       assert.equal(max.body.room.settings.focusSec, 86_400);
-      for (const bad of [{ focusSeconds: 59 }, { focusSeconds: 86_401 }, { breakSeconds: 9 }, { breakSeconds: 7201 }, { cycles: 0 }, { focusSeconds: 'много' }]) {
+      for (const bad of [{ focusSeconds: 0 }, { focusSeconds: 86_401 }, { breakSeconds: 0 }, { breakSeconds: 86_401 }, { cycles: 0 }, { focusSeconds: 'много' }]) {
         assert.equal((await u.post('/api/rooms', bad)).body.error.code, 'INVALID_FIELD', JSON.stringify(bad));
       }
       // старые клиенты в минутах тоже работают

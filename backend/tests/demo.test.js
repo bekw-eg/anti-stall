@@ -8,8 +8,9 @@ describe('демо-режим для жюри', () => {
     try {
       const u = await w.user('Юзер');
       assert.equal((await u.post('/api/rooms', { demo: true, focusSeconds: 25 })).body.error.code, 'DEMO_DISABLED');
-      // Вне демо длительность тоже вводится в секундах, но действуют обычные границы (фокус от 1 минуты)
-      assert.equal((await u.post('/api/rooms', { focusSeconds: 25 })).body.error.code, 'INVALID_FIELD');
+      // Вне демо длительность тоже вводится в секундах: любая от 1 секунды до 24 часов
+      assert.equal((await u.post('/api/rooms', { focusSeconds: 0 })).body.error.code, 'INVALID_FIELD');
+      assert.equal((await u.post('/api/rooms', { focusSeconds: 25 })).body.room.settings.focusSec, 25);
       assert.equal((await u.post('/api/rooms', { focusSeconds: 90 })).body.room.settings.focusSec, 90);
       assert.equal((await w.call('GET', '/api/health')).body.demoMode, false);
     } finally { await w.close(); }
@@ -28,10 +29,10 @@ describe('демо-режим для жюри', () => {
       assert.equal((await L.host.progress()).xp, 125); // 100 за фокус + 25 за остановку карты (1 из 2 качественно — шаг засчитан)
       assert.equal((await L.rest[0].progress()).xp, 0);
       // та же защита от прерванных/покинутых сессий и те же границы
-      assert.equal((await L.host.post('/api/rooms', { demo: true, focusSeconds: 1 })).body.error.code, 'INVALID_FIELD');
-      // обычная комната в демо-режиме остаётся обычной: фокус от 1 минуты до 24 часов (и только для обычных аккаунтов)
+      assert.equal((await L.host.post('/api/rooms', { demo: true, focusSeconds: 0 })).body.error.code, 'INVALID_FIELD');
+      // обычная комната в демо-режиме остаётся обычной: фокус от 1 секунды до 24 часов (и только для обычных аккаунтов)
       const regular = await w.user('Обычный');
-      assert.equal((await regular.post('/api/rooms', { focusSeconds: 30 })).body.error.code, 'INVALID_FIELD');
+      assert.equal((await regular.post('/api/rooms', { focusSeconds: 0 })).body.error.code, 'INVALID_FIELD');
       assert.equal((await regular.post('/api/rooms', { focusSeconds: 24 * 3600 + 1 })).body.error.code, 'INVALID_FIELD');
       assert.equal((await L.host.post('/api/rooms', { focusMinutes: 25 })).body.error.code, 'SANDBOX_DEMO_ONLY');
       assert.equal((await regular.post('/api/rooms', { demo: true, focusSeconds: 25 })).body.error.code, 'DEMO_SANDBOX_ONLY');
