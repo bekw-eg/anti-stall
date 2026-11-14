@@ -57,7 +57,7 @@ export default function TomatoApp() {
   const inRoom = Boolean(room);
   const voice = useVoice(client, t.socket, room?.id ?? null, t.snapshot?.me?.userId);
 
-  useEffect(() => { document.title = "Tomato"; }, []);
+  useEffect(() => { document.title = "AntiStall"; }, []);
 
   // Первичный показ после загрузки: восстановленная комната → фокус-комната; ссылка-приглашение → настройки
   const booted = useRef(false);

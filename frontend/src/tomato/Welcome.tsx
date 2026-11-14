@@ -3,7 +3,7 @@ import { DemoBadge } from "./Chrome";
 import { EASE } from "./motion";
 
 export function Welcome({ onStart, ready, serverOk, demo = false }: { onStart: () => void; ready: boolean; serverOk: boolean | null; demo?: boolean }) {
-  const letters = "TOMATO".split("");
+  const letters = "ANTISTALL".split("");
   return (
     <motion.section
       key="welcome"
@@ -17,7 +17,7 @@ export function Welcome({ onStart, ready, serverOk, demo = false }: { onStart: (
         </motion.div>
       )}
 
-      <h1 className="flex text-[clamp(2.75rem,12vw,7rem)] font-light leading-none tracking-[0.18em] text-zinc-900" aria-label="Tomato">
+      <h1 className="flex text-[clamp(2rem,8vw,6rem)] font-light leading-none tracking-[0.18em] text-zinc-900" aria-label="AntiStall">
         {letters.map((l, i) => (
           <motion.span
             key={i}

@@ -47,7 +47,7 @@ export function createGame(ctx) {
     if (!Number.isInteger(coins) || coins <= 0) throw E.badRequest('INVALID_AMOUNT', 'Сумма должна быть положительной');
     const upd = db.run('UPDATE users SET coins = coins - ? WHERE id = ? AND coins >= ?', coins, userId, coins);
     if (upd.changes === 0) {
-      throw E.conflict('INSUFFICIENT_FUNDS', 'Недостаточно Tomato Coins', { required: coins, balance: userRow(userId).coins });
+      throw E.conflict('INSUFFICIENT_FUNDS', 'Недостаточно монет', { required: coins, balance: userRow(userId).coins });
     }
     const ins = db.run(
       'INSERT OR IGNORE INTO reward_transactions(user_id, key, kind, xp, coins, meta, created_at) VALUES (?,?,?,0,?,?,?)',
