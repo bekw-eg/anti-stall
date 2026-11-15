@@ -19,24 +19,69 @@ const TIMER_SHADOW: React.CSSProperties = { WebkitTextStroke: "0.06em #2A1817", 
 
 const STATUS_TONE: Record<string, string> = { focusing: "text-[#D3DB8E]", aborted: "text-peach", abandoned: "text-peach", finished: "text-blush" };
 
-/** «Завершить досрочно»: двойное подтверждение, награды за цикл не будет. */
-function EndEarly({ t }: { t: Tomato }) {
-  const [confirm, setConfirm] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => () => clearTimeout(timer.current), []);
+/**
+ * «Отвлёкся?» — тихая ссылка под таймером вместо «Завершить досрочно». По клику — маленькое окно:
+ *  · «Я отвлёкся» — честная отметка отлучки: таймер идёт дальше, цикл засчитается, а время отлучки
+ *    сервер вычтет из качества и награды. Ссылка превращается в «Вернулся».
+ *  · «Выйти из фокуса» — с предупреждением, что цикл не засчитается, → abortSession.
+ */
+function Distracted({ t }: { t: Tomato }) {
+  const [step, setStep] = useState<0 | 1 | 2>(0); // 0 — закрыто, 1 — выбор, 2 — подтверждение выхода
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!step) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setStep(0); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step]);
   if (!t.snapshot?.me?.allowedActions.includes("abort_session")) return null;
+
+  const run = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); } finally { setBusy(false); setStep(0); } };
+  const link = "relative z-10 rounded-full px-3 py-1 text-sm font-semibold text-[#D8BDB6] underline decoration-dotted underline-offset-4 transition-colors hover:text-cream disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-peach";
+
+  if (t.manualAway) {
+    return (
+      <div className="relative z-10 flex flex-col items-center gap-1 text-center">
+        <p className="text-sm text-peach">Отмечено: вы отвлеклись — таймер идёт, это время не войдёт в качество</p>
+        <button type="button" data-testid="distracted-back" disabled={busy} onClick={() => run(() => t.reportAttention("back"))}
+          className="as-btn as-btn-sm as-btn-light">Вернулся</button>
+      </div>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (!confirm) { setConfirm(true); timer.current = setTimeout(() => setConfirm(false), 4000); return; }
-        clearTimeout(timer.current); setConfirm(false); t.abortSession();
-      }}
-      className={`flex flex-col items-start rounded-[12px] border-2 px-2.5 py-1 text-left transition-colors sm:rounded-[16px] sm:px-4 sm:py-2 ${confirm ? "border-peach bg-cocoa" : "border-[#8A625C] hover:bg-cocoa"}`}
-    >
-      <span className="whitespace-nowrap font-display text-sm leading-tight text-cream sm:text-lg"><span className="relative top-0.5"><span className="sm:hidden">{confirm ? "Точно?" : "Завершить"}</span><span className="hidden sm:inline">{confirm ? "Точно завершить?" : "Завершить досрочно"}</span></span></span>
-      <span className="hidden text-[13px] text-[#D8BDB6] sm:block">{confirm ? "нажмите ещё раз, награды не будет" : "монеты за этот цикл не начислятся"}</span>
-    </button>
+    <>
+      <button type="button" data-testid="distracted-open" onClick={() => setStep(1)} className={link}>Отвлёкся?</button>
+      {step > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 p-4" onClick={(e) => { if (e.target === e.currentTarget) setStep(0); }}>
+          <div role="dialog" aria-modal="true" aria-labelledby="distracted-title" data-testid="distracted-dialog"
+            className="as-card as-shadow flex w-full max-w-[380px] flex-col gap-3 p-5 text-ink">
+            {step === 1 ? (
+              <>
+                <h2 id="distracted-title" className="font-display text-xl leading-tight"><span className="relative top-0.5">Отвлёкся?</span></h2>
+                <p className="text-sm text-mute">Ничего страшного. Отметьте честно — цикл засчитается, а время отлучки не войдёт в качество и награду.</p>
+                <button type="button" autoFocus data-testid="distracted-away" disabled={busy} onClick={() => run(() => t.reportAttention("away"))}
+                  className="as-btn as-btn-sm as-btn-light w-full">Я отвлёкся</button>
+                <button type="button" data-testid="distracted-exit" onClick={() => setStep(2)}
+                  className="as-btn as-btn-sm as-btn-secondary w-full">Выйти из фокуса</button>
+                <button type="button" onClick={() => setStep(0)} className="self-center text-sm font-semibold text-mute underline underline-offset-4 hover:text-ink">Отмена</button>
+              </>
+            ) : (
+              <>
+                <h2 id="distracted-title" className="font-display text-xl leading-tight"><span className="relative top-0.5">Выйти из фокуса?</span></h2>
+                <p className="text-sm text-mute">Цикл не засчитается, награды не будет.</p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" autoFocus data-testid="distracted-stay" onClick={() => setStep(0)}
+                    className="as-btn as-btn-sm as-btn-light flex-1">Остаться</button>
+                  <button type="button" data-testid="distracted-exit-confirm" disabled={busy} onClick={() => run(() => t.abortSession())}
+                    className="as-btn as-btn-sm as-btn-secondary flex-1">Выйти</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -137,6 +182,7 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
           <PenLine size={20} className="shrink-0 text-peach" aria-hidden />
           <span className="break-words text-left">{watching ? "Вы наблюдаете: присоединитесь в следующем цикле" : me?.task || "Задача не указана"}</span>
         </p>
+        <Distracted t={t} />
         <HostSkip t={t} remaining={remaining} />
       </section>
 
@@ -153,4 +199,4 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
   );
 }
 
-export { EndEarly };
+export { Distracted };

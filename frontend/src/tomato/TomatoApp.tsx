@@ -6,7 +6,7 @@ import { cycleLabel, formatTime } from "./format";
 import { PrankOverlay } from "./PrankOverlay";
 import { RoomInvites } from "./FriendsTab";
 import { BreakRoom } from "./screens/BreakRoom";
-import { EndEarly, FocusRoom } from "./screens/FocusRoom";
+import { FocusRoom } from "./screens/FocusRoom";
 import { Home } from "./screens/Home";
 import { JoinScreen, type JoinMode } from "./screens/JoinScreen";
 import { Landing } from "./screens/Landing";
@@ -135,7 +135,7 @@ function voiceNote(t: Tomato) {
 
 /**
  * Верхняя строка комнаты. Три группы: слева логотип и комната (не сжимается уже 18rem), справа навигация,
- * посередине то, что относится к фазе (таймер перерыва / «Завершить досрочно»). Когда места мало,
+ * посередине то, что относится к фазе (таймер перерыва; «Отвлёкся?» — под таймером фокуса). Когда места мало,
  * средняя группа уходит на вторую строку — ничего не наезжает друг на друга.
  */
 function RoomHeader({ t, onOpen, onHome, headerRef, active, stickers }: { t: Tomato; onOpen: (s: Exclude<Sheet, null>) => void; onHome: () => void; headerRef: React.Ref<HTMLElement>; active: Sheet; stickers: Stickers }) {
@@ -170,15 +170,13 @@ function RoomHeader({ t, onOpen, onHome, headerRef, active, stickers }: { t: Tom
         <ProfileChip t={t} dark={dark} onOpen={() => onOpen("profile")} className="ml-auto sm:hidden" />
       </div>
 
-      {(room.phase === "break" || room.phase === "focus") && (
+      {room.phase === "break" && (
         // телефон: справа во втором ряду рядом с иконками; планшет: слева во втором ряду; широкий — в одну линию
         <div className="order-3 ml-auto flex sm:order-2 sm:ml-0 xl:order-none">
-          {room.phase === "break" ? (
-            <div role="timer" aria-label={`Перерыв: ${formatTime(remaining)}`} className="flex items-center gap-2 rounded-full border-2 border-ink bg-petal py-1 pl-3 pr-1 as-shadow-sm sm:gap-3 sm:py-1.5 sm:pl-5 sm:pr-1.5 sm:as-shadow">
-              <span className="font-display text-sm sm:text-xl"><span className="relative top-0.5">перерыв</span></span>
-              <span className="rounded-full bg-white px-2.5 py-0.5 font-display text-xl tabular-nums sm:px-4 sm:py-1 sm:text-[36px]"><span className="relative top-0.5 sm:top-1">{formatTime(remaining)}</span></span>
-            </div>
-          ) : <EndEarly t={t} />}
+          <div role="timer" aria-label={`Перерыв: ${formatTime(remaining)}`} className="flex items-center gap-2 rounded-full border-2 border-ink bg-petal py-1 pl-3 pr-1 as-shadow-sm sm:gap-3 sm:py-1.5 sm:pl-5 sm:pr-1.5 sm:as-shadow">
+            <span className="font-display text-sm sm:text-xl"><span className="relative top-0.5">перерыв</span></span>
+            <span className="rounded-full bg-white px-2.5 py-0.5 font-display text-xl tabular-nums sm:px-4 sm:py-1 sm:text-[36px]"><span className="relative top-0.5 sm:top-1">{formatTime(remaining)}</span></span>
+          </div>
         </div>
       )}
 

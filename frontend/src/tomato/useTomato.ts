@@ -778,9 +778,21 @@ export function useTomato(initialCode?: string) {
   // Качество фокуса: пока идёт своя сессия, сообщаем серверу об уходе со вкладки и возврате.
   // Это может только снизить качество (обрывы связи сервер видит сам), поэтому подмена клиента ничего не даёт.
   const focusing = snapshot?.me?.status === "focusing";
+  // Ручная отметка «Я отвлёкся»: пока она стоит, автоматический учёт вкладки молчит —
+  // иначе возврат во вкладку прислал бы «back» и закрыл честно отмеченную отлучку.
+  const [manualAway, setManualAway] = useState(false);
+  const manualAwayRef = useRef(false);
+  const setManual = useCallback((on: boolean) => { manualAwayRef.current = on; setManualAway(on); }, []);
+  useEffect(() => { if (!focusing) setManual(false); }, [focusing, setManual]);
+  const reportAttention = useCallback(async (state: "away" | "back") => {
+    setManual(state === "away");
+    const r = await call(() => client.reportAttention(rid, state));
+    if (!r) setManual(state !== "away"); // не дошло до сервера — возвращаем как было
+    return Boolean(r);
+  }, [call, rid, setManual]);
   useEffect(() => {
     if (!focusing || !rid || typeof document === "undefined") return;
-    const send = (state: "away" | "back") => { client.reportAttention(rid, state).catch(() => undefined); };
+    const send = (state: "away" | "back") => { if (!manualAwayRef.current) client.reportAttention(rid, state).catch(() => undefined); };
     const onVis = () => send(document.visibilityState === "hidden" ? "away" : "back");
     if (document.visibilityState === "hidden") send("away");
     document.addEventListener("visibilitychange", onVis);
@@ -791,7 +803,7 @@ export function useTomato(initialCode?: string) {
     boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
     loginAccount, registerAccount, changePassword, dismissToast,
     friends, relations, roomInvites, loadFriends, friendAdd, friendAccept, friendRemove, friendInvite, dismissInvite, redeemTransfer, newTransferCode,
-    call, push, td, tdFx, loadTd, harvest, harvestFrame, harvestFeed, loadHarvest, harvestCatch, harvestPrank, harvestMove, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, rateSession, setPranksEnabled, saveAvatar, avatarCatalog, chat, sendChat,
+    call, push, td, tdFx, loadTd, harvest, harvestFrame, harvestFeed, loadHarvest, harvestCatch, harvestPrank, harvestMove, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, reportAttention, manualAway, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, rateSession, setPranksEnabled, saveAvatar, avatarCatalog, chat, sendChat,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;
