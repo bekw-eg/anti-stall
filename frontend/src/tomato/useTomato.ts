@@ -31,7 +31,7 @@ export interface TimerLimits {
   demoFocusSeconds: [number, number];
   demoBreakSeconds: [number, number];
 }
-export const DEFAULT_LIMITS: TimerLimits = { focusSeconds: [60, 86_400], breakSeconds: [10, 7_200], cycles: [1, 12], demoFocusSeconds: [5, 600], demoBreakSeconds: [10, 300] };
+export const DEFAULT_LIMITS: TimerLimits = { focusSeconds: [30, 86_400], breakSeconds: [30, 86_400], cycles: [1, 12], demoFocusSeconds: [5, 600], demoBreakSeconds: [10, 300] };
 
 export type Conn = "idle" | "connecting" | "online" | "reconnecting" | "offline";
 export interface Toast { id: number; text: string; tone: "info" | "reward" | "warning" | "error" }

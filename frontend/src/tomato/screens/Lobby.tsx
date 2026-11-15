@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Clock, Minus, Plus } from "lucide-react";
 import { CHAT_CARD_SIZE, ChatPanel } from "../ChatPanel";
-import { formatTime, readiness } from "../format";
+import { formatSpan, formatTime, parseDuration, readiness } from "../format";
 import type { Tomato } from "../useTomato";
 import { DEFAULT_LIMITS } from "../useTomato";
 import { Invite } from "./RoomChrome";
@@ -26,6 +26,55 @@ function Stepper({ label, value, onChange, step, min, max, format, disabled }: {
         <output className="min-w-0 flex-1 truncate text-center text-base font-extrabold sm:text-xl" aria-live="polite">{format(value)}</output>
         <button type="button" className={btn} disabled={disabled || value + step > max} onClick={() => onChange(Math.min(max, value + step))} aria-label={`${label}: больше`}><Plus size={20} aria-hidden /></button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Время фокуса или перерыва: можно напечатать (25 → 25 мин, 0:30, 1:30:00, «1 ч 30 мин», «45 с») или
+ * подправить кнопками ±. Значение вне границ не сохраняется — под полем подсказка с допустимым диапазоном.
+ */
+function TimeField({ label, value, onChange, step, min, max, disabled }: {
+  label: string; value: number; onChange: (v: number) => void; step: number; min: number; max: number; disabled: boolean;
+}) {
+  const [text, setText] = useState<string | null>(null); // null — не редактируется, показываем значение
+  const [error, setError] = useState<string | null>(null);
+  const range = `от ${formatSpan(min)} до ${formatSpan(max)}`;
+  const commit = () => {
+    if (text === null) return;
+    const v = parseDuration(text);
+    setText(null);
+    if (v === null) { setError(`Не понял время. Например: 25, 0:30, 1 ч 30 мин`); return; }
+    if (v < min || v > max) { setError(`Можно ${range}`); return; }
+    setError(null);
+    if (v !== value) onChange(v);
+  };
+  const btn = "flex h-full w-8 shrink-0 items-center justify-center text-ink transition-colors hover:bg-paper disabled:cursor-not-allowed disabled:opacity-30 sm:w-12";
+  const id = `time-${label}`;
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5 sm:gap-2.5">
+      <label htmlFor={id} className="as-label text-sm">{label}</label>
+      <div className={`flex h-12 items-center overflow-hidden rounded-[16px] border-2 bg-white sm:h-[52px] sm:rounded-[18px] 2xl:h-[60px] ${error ? "border-rose" : "border-ink"} focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-peach`}>
+        <button type="button" className={btn} disabled={disabled || value - step < min} onClick={() => { setError(null); onChange(Math.max(min, value - step)); }} aria-label={`${label}: меньше`}><Minus size={20} aria-hidden /></button>
+        <input
+          id={id}
+          type="text"
+          inputMode="text"
+          disabled={disabled}
+          value={text ?? formatSpan(value)}
+          onFocus={(e) => { setText(formatSpan(value)); requestAnimationFrame(() => e.target.select()); }}
+          onChange={(e) => { setText(e.target.value); setError(null); }}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); if (e.key === "Escape") { setText(null); setError(null); e.currentTarget.blur(); } }}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${id}-err` : undefined}
+          title={`Введите время ${range}: 25, 0:30, 1 ч 30 мин`}
+          data-testid={`time-${label === "Фокус" ? "focus" : "break"}`}
+          className="min-w-0 flex-1 bg-transparent text-center text-base font-extrabold outline-none disabled:cursor-not-allowed sm:text-xl"
+        />
+        <button type="button" className={btn} disabled={disabled || value + step > max} onClick={() => { setError(null); onChange(Math.min(max, value + step)); }} aria-label={`${label}: больше`}><Plus size={20} aria-hidden /></button>
+      </div>
+      {error && <p id={`${id}-err`} role="alert" className="text-xs font-bold text-rose sm:text-sm">{error}</p>}
     </div>
   );
 }
@@ -138,7 +187,6 @@ export function Lobby({ t }: { t: Tomato }) {
 
   const fLim = demo ? lim.demoFocusSeconds : lim.focusSeconds;
   const bLim = demo ? lim.demoBreakSeconds : lim.breakSeconds;
-  const unit = (s: number) => (demo ? `${s} с` : `${Math.round(s / 60)} мин`);
 
   return (
     <div className="grid flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] xl:grid-cols-[minmax(0,1fr)_minmax(360px,540px)]">
@@ -152,8 +200,8 @@ export function Lobby({ t }: { t: Tomato }) {
         {!closed && (
           <>
             <div className="grid w-full max-w-[700px] grid-cols-3 gap-2 sm:gap-4">
-              <Stepper label="Фокус" value={focusSec} onChange={edit(setFocusSec)} step={demo ? 5 : 300} min={fLim[0]} max={fLim[1]} format={unit} disabled={!canEdit} />
-              <Stepper label="Перерыв" value={breakSec} onChange={edit(setBreakSec)} step={demo ? 5 : 60} min={bLim[0]} max={bLim[1]} format={unit} disabled={!canEdit} />
+              <TimeField label="Фокус" value={focusSec} onChange={edit(setFocusSec)} step={demo ? 5 : 60} min={fLim[0]} max={fLim[1]} disabled={!canEdit} />
+              <TimeField label="Перерыв" value={breakSec} onChange={edit(setBreakSec)} step={demo ? 5 : 60} min={bLim[0]} max={bLim[1]} disabled={!canEdit} />
               {/* до первого фокуса — сколько циклов всего; потом — сколько ещё впереди (пройденные не отменяются) */}
               {room.cycleNo > 0 ? (
                 <Stepper label="Ещё циклов" value={Math.max(0, cycles - room.cycleNo)} onChange={edit((v: number) => setCycles(room.cycleNo + v))} step={1} min={0} max={lim.cycles[1]} format={(v) => String(v)} disabled={!canEdit} />

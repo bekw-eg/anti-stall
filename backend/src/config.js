@@ -57,9 +57,9 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
       maxMembers: 12,
       maxRoomsPerUser: 5,
       // Длительности вводит пользователь (секунды); сервер проверяет только границы.
-      // Условные рамки концепта: фокус от 1 мин до 24 ч, перерыв от 10 с до 2 ч.
-      focusSeconds: [60, 24 * 3600],
-      breakSeconds: [10, 2 * 3600],
+      // Свободный ввод: и фокус, и перерыв — от 30 с до 24 ч.
+      focusSeconds: [30, 24 * 3600],
+      breakSeconds: [30, 24 * 3600],
       cycles: [1, 12], // сколько циклов «фокус → перерыв» запланировано: столько остановок на карте
       demoFocusSeconds: [5, 600],
       demoBreakSeconds: [10, 300],

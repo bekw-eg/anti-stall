@@ -29,9 +29,9 @@ describe('демо-режим для жюри', () => {
       assert.equal((await L.rest[0].progress()).xp, 0);
       // та же защита от прерванных/покинутых сессий и те же границы
       assert.equal((await L.host.post('/api/rooms', { demo: true, focusSeconds: 1 })).body.error.code, 'INVALID_FIELD');
-      // обычная комната в демо-режиме остаётся обычной: фокус от 1 минуты до 24 часов (и только для обычных аккаунтов)
+      // обычная комната в демо-режиме остаётся обычной: фокус от 30 секунд до 24 часов (и только для обычных аккаунтов)
       const regular = await w.user('Обычный');
-      assert.equal((await regular.post('/api/rooms', { focusSeconds: 30 })).body.error.code, 'INVALID_FIELD');
+      assert.equal((await regular.post('/api/rooms', { focusSeconds: 29 })).body.error.code, 'INVALID_FIELD');
       assert.equal((await regular.post('/api/rooms', { focusSeconds: 24 * 3600 + 1 })).body.error.code, 'INVALID_FIELD');
       assert.equal((await L.host.post('/api/rooms', { focusMinutes: 25 })).body.error.code, 'SANDBOX_DEMO_ONLY');
       assert.equal((await regular.post('/api/rooms', { demo: true, focusSeconds: 25 })).body.error.code, 'DEMO_SANDBOX_ONLY');

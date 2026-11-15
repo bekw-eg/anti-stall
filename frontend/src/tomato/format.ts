@@ -102,3 +102,30 @@ export function cycleLabel(cycleNo: number, planned: number) {
   const n = Math.max(1, cycleNo);
   return n <= planned ? `цикл ${n} из ${planned}` : `цикл ${n}, сверх плана`;
 }
+
+/**
+ * Свободный ввод длительности → секунды (null — не разобрали). Понимает:
+ * «25» (минуты), «2,5» / «2.5» (минуты), «25:30» (мин:сек), «1:30:00» (ч:мин:сек),
+ * «30 с», «45 сек», «15 мин», «1 ч 30 мин», «1ч», «90s», «2h».
+ */
+export function parseDuration(input: string): number | null {
+  const s = input.trim().toLowerCase().replace(",", ".");
+  if (!s) return null;
+  if (/^\d+(:\d{1,2}){1,2}$/.test(s)) {
+    const parts = s.split(":").map(Number);
+    if (parts.slice(1).some((p) => p >= 60)) return null;
+    return parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0] * 3600 + parts[1] * 60 + parts[2];
+  }
+  if (/^\d+(\.\d+)?$/.test(s)) return Math.round(Number(s) * 60);
+  const re = /(\d+(?:\.\d+)?)\s*(ч|час[а-я]*|h|мин[а-я]*|м|m|сек[а-я]*|с|s)/g;
+  let total = 0;
+  let consumed = "";
+  for (const m of s.matchAll(re)) {
+    const n = Number(m[1]);
+    const u = m[2];
+    total += u.startsWith("ч") || u === "h" ? n * 3600 : u.startsWith("м") || u === "m" ? n * 60 : n;
+    consumed += m[0];
+  }
+  return consumed && consumed.replace(/\s/g, "") === s.replace(/\s/g, "") ? Math.round(total) : null;
+}
+

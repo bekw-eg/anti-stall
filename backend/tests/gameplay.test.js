@@ -11,16 +11,18 @@ const roomOf = async (L) => (await L.host.get(L.path())).body;
 const focusTx = async (u) => (await u.get('/api/users/me/transactions')).body.transactions.filter((t) => t.kind === 'focus_session');
 
 describe('длительности и план циклов — ввод пользователя', () => {
-  test('любые значения в границах (фокус 1 мин – 24 ч, перерыв 10 с – 2 ч), вне границ — 400', async () => {
+  test('любые значения в границах (фокус и перерыв — от 30 с до 24 ч), вне границ — 400', async () => {
     const w = await boot();
     try {
       const u = await w.user('Ввод');
-      const ok = await u.post('/api/rooms', { focusSeconds: 37 * 60 + 15, breakSeconds: 10, cycles: 3 });
+      const ok = await u.post('/api/rooms', { focusSeconds: 37 * 60 + 15, breakSeconds: 30, cycles: 3 });
       assert.equal(ok.status, 201);
-      assert.deepEqual(ok.body.room.settings, { focusSec: 2235, breakSec: 10, cycles: 3 });
-      const max = await u.post('/api/rooms', { focusSeconds: 24 * 3600, breakSeconds: 2 * 3600 });
-      assert.equal(max.body.room.settings.focusSec, 86_400);
-      for (const bad of [{ focusSeconds: 59 }, { focusSeconds: 86_401 }, { breakSeconds: 9 }, { breakSeconds: 7201 }, { cycles: 0 }, { focusSeconds: 'много' }]) {
+      assert.deepEqual(ok.body.room.settings, { focusSec: 2235, breakSec: 30, cycles: 3 });
+      const min = await u.post('/api/rooms', { focusSeconds: 30, breakSeconds: 30 });
+      assert.deepEqual([min.body.room.settings.focusSec, min.body.room.settings.breakSec], [30, 30]);
+      const max = await u.post('/api/rooms', { focusSeconds: 24 * 3600, breakSeconds: 24 * 3600 });
+      assert.deepEqual([max.body.room.settings.focusSec, max.body.room.settings.breakSec], [86_400, 86_400]);
+      for (const bad of [{ focusSeconds: 29 }, { focusSeconds: 86_401 }, { breakSeconds: 29 }, { breakSeconds: 86_401 }, { cycles: 0 }, { focusSeconds: 'много' }]) {
         assert.equal((await u.post('/api/rooms', bad)).body.error.code, 'INVALID_FIELD', JSON.stringify(bad));
       }
       // старые клиенты в минутах тоже работают

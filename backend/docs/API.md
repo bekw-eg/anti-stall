@@ -60,12 +60,12 @@
 ### Комнаты
 | Метод | Путь | Кто | Описание |
 |---|---|---|---|
-| POST | `/api/rooms` | любой | `{name?, focusMinutes?, breakMinutes?, teamMode?}` (`teamMode:true` — Team A против Team B) (демо: `demo:true, focusSeconds, breakSeconds` — только песочный аккаунт) → 201 снимок. Песочный аккаунт без `demo:true` → `403 SANDBOX_DEMO_ONLY`, обычный с `demo:true` → `403 DEMO_SANDBOX_ONLY` |
+| POST | `/api/rooms` | любой | `{name?, focusSeconds? | focusMinutes?, breakSeconds? | breakMinutes?, cycles?, teamMode?}` — фокус и перерыв от 30 с до 24 ч (`teamMode:true` — Team A против Team B) (демо: `demo:true, focusSeconds, breakSeconds` — только песочный аккаунт) → 201 снимок. Песочный аккаунт без `demo:true` → `403 SANDBOX_DEMO_ONLY`, обычный с `demo:true` → `403 DEMO_SANDBOX_ONLY` |
 | POST | `/api/rooms/join` | любой | `{code}`; тип аккаунта должен совпадать с типом комнаты (`SANDBOX_DEMO_ONLY` / `DEMO_SANDBOX_ONLY`) |
 | GET | `/api/rooms/:id` | участник | Снимок состояния (:id — id или код) |
 | POST | `/api/rooms/:id/join` | любой | Идемпотентно; та же проверка песочницы |
 | POST | `/api/rooms/:id/leave` | участник | Досрочно завершает вашу сессию; хост передаётся |
-| PATCH | `/api/rooms/:id/settings` | host, `waiting` | `{focusMinutes?, breakMinutes?, name?}` (демо-комната: `focusSeconds?, breakSeconds?`). Тип комнаты не меняется: `demo` ≠ типу аккаунта → `403 DEMO_SANDBOX_ONLY`/`SANDBOX_DEMO_ONLY` |
+| PATCH | `/api/rooms/:id/settings` | host, `waiting` | `{focusSeconds? | focusMinutes?, breakSeconds? | breakMinutes?, cycles?, name?}` (30 с – 24 ч) (демо-комната: `focusSeconds?, breakSeconds?`). Тип комнаты не меняется: `demo` ≠ типу аккаунта → `403 DEMO_SANDBOX_ONLY`/`SANDBOX_DEMO_ONLY` |
 | POST | `/api/rooms/:id/team` | участник, `waiting`, режим Team A/B | `{team:"A"|"B"}` — сменить команду до старта цикла |
 | POST | `/api/rooms/:id/ready` | участник, `waiting|break` | `{ready: boolean}` (иначе `400 INVALID_FIELD`) — статус готовности; в снимке `members[].isReady` и `me.isReady`, комнате — `player_ready_changed {userId, isReady}`. Сбрасывается при старте фокуса, входе и выходе из комнаты |
 | POST | `/api/rooms/:id/task` | участник, не в сессии | `{title}` — личная учебная задача |

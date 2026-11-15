@@ -58,7 +58,7 @@ describe('пользователи и комнаты', () => {
     assert.equal((await w.call('GET', '/api/users/me', undefined, 'x'.repeat(40))).status, 401);
     assert.equal((await w.call('POST', '/api/users', { name: '' })).body.error.code, 'INVALID_FIELD');
     const u = await w.user('Тест');
-    assert.equal((await u.post('/api/rooms', { focusSeconds: 30 })).body.error.code, 'INVALID_FIELD'); // фокус от 1 минуты
+    assert.equal((await u.post('/api/rooms', { focusSeconds: 29 })).body.error.code, 'INVALID_FIELD'); // фокус от 30 секунд
     assert.equal((await u.post('/api/rooms', { focusMinutes: '25' })).status, 400);
     assert.equal((await u.post('/api/rooms', { demo: true })).body.error.code, 'DEMO_DISABLED');
   });
