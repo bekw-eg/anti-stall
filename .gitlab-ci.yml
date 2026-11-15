@@ -163,6 +163,8 @@ deploy:vm:
         sudo dp auth service-acc --key-file $(basename $SPIRIT_DOCKER_SA_KEY) &&
         sudo dp auth configure-docker &&
         SAGE_LOGS_URL='${SAGE_LOGS_URL:-}' SAGE_TOKEN='${SAGE_TOKEN:-}' APP_PORT=$APP_PORT DEMO_PORT=$DEMO_PORT bash deploy.sh '$IMAGE_NAME' '$DEPLOY_HOST' '${ENABLE_HTTPS:-1}'"
+    # метрики стенда в Sage: регистрация идемпотентна, ошибка не валит деплой
+    - 'if [ -n "${SAGE_TOKEN:-}" ]; then bash deploy/sage-setup.sh || echo "⚠️ Sage: регистрация метрик не удалась"; else echo "Sage: SAGE_TOKEN не задан — пропускаем"; fi'
   environment:
     name: production
     url: https://$DEPLOY_HOST
@@ -198,5 +200,9 @@ sage:setup:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
       when: manual
   allow_failure: true
+  # то же окружение, что у деплоя: переменные Spirit, привязанные к production, доходят только до таких джоб
+  environment:
+    name: production
   script:
+    - 'if [ -n "${SAGE_TOKEN:-}" ]; then echo "SAGE_TOKEN виден джобе (длина ${#SAGE_TOKEN})"; else echo "SAGE_TOKEN не виден джобе — проверьте имя переменной и её окружение (scope) в Spirit"; fi'
     - bash deploy/sage-setup.sh
