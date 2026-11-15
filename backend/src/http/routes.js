@@ -4,11 +4,16 @@ import { reqInt, reqObject } from '../validate.js';
 import { Router } from './router.js';
 
 /** Привязка REST-маршрутов к сервисам. Здесь нет бизнес-логики: только разбор запроса. */
-export function buildRoutes({ config, users, rooms, game, social, td, voice, chat, clock, harvest, friends }) {
+export function buildRoutes({ config, users, rooms, game, social, td, voice, chat, clock, harvest, friends, db }) {
   const r = new Router();
   const ok = (body, status = 200) => ({ status, body });
 
-  r.add('GET', '/api/health', () => ok({ status: 'ok', serverTime: clock.now(), demoMode: config.demoMode }), { auth: false });
+  // health: процесс жив и БД отвечает; schemaVersion — какая миграция применена (видно после деплоя)
+  const startedAt = Date.now();
+  r.add('GET', '/api/health', () => {
+    db.get('SELECT 1 x');
+    return ok({ status: 'ok', serverTime: clock.now(), demoMode: config.demoMode, schemaVersion: db.schemaVersion, uptimeSec: Math.round((Date.now() - startedAt) / 1000) });
+  }, { auth: false });
 
   r.add('GET', '/api/config', () => ok({
     serverTime: clock.now(),

@@ -37,7 +37,9 @@
 ### Служебные
 | Метод | Путь | Описание |
 |---|---|---|
-| GET 🔓 | `/api/health` | `{status, serverTime, demoMode}` |
+| GET 🔓 | `/api/health` | `{status, serverTime, demoMode, schemaVersion, uptimeSec}` |
+| GET 🔓 | `/api/metrics` | метрики Prometheus (text); с `TOMATO_METRICS_TOKEN` — нужен Bearer. См. `docs/OBSERVABILITY.md` |
+| POST 🔓 | `/api/client-errors` | `{kind, message, stack?, url?}` → 204; ошибки браузера в лог и метрику, 20/мин с адреса |
 | GET 🔓 | `/api/config` | Экономика (вкл. `demoDailyRewardedSessions`, `td.demoDailyRewardedRounds` — только для демо-комнат), лимиты, `social.prankRules{cooldownMs, demoCooldownMs, maxPerBreak}`, каталог улучшений/достижений, Road Map, правила присутствия |
 | POST | `/api/heartbeat` | Подтверждает присутствие, возвращает `serverTime` |
 

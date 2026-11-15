@@ -16,6 +16,12 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
     corsOrigin: env.TOMATO_CORS_ORIGIN || '*',
     /** Папка собранного фронтенда (единый образ): сервер отдаёт её на путях вне /api и /ws. Без переменной — только API. */
     staticDir: env.TOMATO_STATIC_DIR || null,
+    /** JSON-лог каждого запроса и WS-подключения (stdout). Включает server.js; в тестах выключен — без шума. */
+    requestLog: false,
+    /** Токен для GET /api/metrics (Bearer). Без него метрики открыты — для стенда хакатона допустимо. */
+    metricsToken: env.TOMATO_METRICS_TOKEN || null,
+    /** Приём ошибок из браузера (POST /api/client-errors): не больше N в минуту с одного адреса. */
+    clientErrorsPerMinute: 20,
 
     /**
      * Демо-режим для жюри: только по явному флагу сервера, см. docs/DEMO_MODE.md.

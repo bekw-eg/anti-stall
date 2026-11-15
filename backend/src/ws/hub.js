@@ -13,7 +13,8 @@ const MAX_MSGS_PER_SEC = 30;
  * Исключение для Harvest — harvest_move: позиция корзины (только показ и проверка скорости; очки — через REST).
  */
 export class Hub {
-  constructor({ server, users, rooms, voice, harvest = null, config, clock }) {
+  constructor({ server, users, rooms, voice, harvest = null, config, clock, log = () => {} }) {
+    this.log = log;
     this.users = users;
     this.harvest = harvest;
     this.rooms = rooms;
@@ -37,11 +38,13 @@ export class Hub {
       msgs: 0, signals: 0, windowStart: Date.now(),
     };
     this.conns.add(conn);
+    this.log('info', 'ws_open', { conn: conn.id, conns: this.conns.size });
     const authTimer = setTimeout(() => { if (!conn.userId) ws.close(4401, 'auth timeout'); }, 5000);
     ws.on('pong', () => { conn.alive = true; if (conn.userId) this.users.touch(conn.userId); });
     ws.on('close', () => {
       clearTimeout(authTimer);
       this.conns.delete(conn);
+      this.log('info', 'ws_close', { conn: conn.id, userId: conn.userId, conns: this.conns.size });
       this.voice?.dropConn(conn); // обрыв = выход из голоса, у остальных соединение закрывается
     });
     ws.on('error', () => {});

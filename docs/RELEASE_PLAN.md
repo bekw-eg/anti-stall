@@ -47,7 +47,7 @@
 
 ## Кто что (предложение)
 - **A — backend и DevOps:** этапы 0.1, 0.3, 0.4, 1, 3.3, 3.4
-- **Вся команда вручную:** этап 2 (Grafana, дашборд, алерты через Spirit) и 3.1 (Swagger)
+- **Вся команда вручную:** 2.4–2.5 (Grafana, дашборд, алерты через Spirit; метрики и запросы готовы — `docs/OBSERVABILITY.md`) и 3.1 (Swagger)
 - **B — фронт и игры (автор TD/Harvest):** этапы 0.2, 5, 3.2
 - **C — продакт и защита:** этап 4, ручной прогон и приёмка каждого MR на стенде
 
@@ -71,12 +71,12 @@
 | 1.4 | Обработка сбоев: `unhandledRejection` / `uncaughtException` → лог + метрика + аккуратный выход (compose перезапустит); описать сценарии: падение процесса, рестарт ВМ, обрыв WS, не выдался сертификат (уже откат на HTTP), диск заполнен | low–medium | ra1d9r | [x] |
 | 1.5 | `docs/ARCHITECTURE.md`: схема (браузер ↔ Caddy ↔ Node: REST + WS, SQLite WAL, WebRTC p2p), путь релиза (MR → CI test → Kaniko → Spirit registry → SSH-деплой → health), интеграции (Let's Encrypt, Spirit, GitLab CI, STUN/TURN), риски и как их снижаем | medium | ra1d9r | [x] |
 
-## Этап 2 — наблюдаемость (сейчас 0 из 2) — делает команда вручную
+## Этап 2 — наблюдаемость: код (2.1–2.3) готов, Grafana и алерты (2.4–2.5) — команда вручную по `docs/OBSERVABILITY.md`
 | # | Задача | Effort | Кто | Готово |
 |---|---|---|---|---|
-| 2.1 | Логи: JSON-строка на каждый запрос (время, метод, шаблон пути, код, мс, requestId, userId), WS connect/disconnect, уровни info/warn/error; `X-Request-Id` в ответе | medium | | [ ] |
-| 2.2 | `/api/metrics` в формате Prometheus: запросы и длительность по маршрутам/кодам, ошибки, WS-подключения, комнаты по фазам, фокус-сессии по статусам, начисления наград, клиентские ошибки | medium | | [ ] |
-| 2.3 | Отслеживание ошибок: сервер — каждая 5xx с requestId в лог и счётчик; фронт — `window.onerror` / `unhandledrejection` / ErrorBoundary → `POST /api/client-errors` (с ограничением частоты). Sentry требует внешний аккаунт — если команда заведёт, подключить DSN через env | medium | | [ ] |
+| 2.1 | Логи: JSON-строка на каждый запрос (время, метод, шаблон пути, код, мс, requestId, userId), WS connect/disconnect, уровни info/warn/error; `X-Request-Id` в ответе | medium | ra1d9r | [x] |
+| 2.2 | `/api/metrics` в формате Prometheus: запросы и длительность по маршрутам/кодам, ошибки, WS-подключения, комнаты по фазам, фокус-сессии по статусам, начисления наград, клиентские ошибки | medium | ra1d9r | [x] |
+| 2.3 | Отслеживание ошибок: сервер — каждая 5xx с requestId в лог и счётчик; фронт — `window.onerror` / `unhandledrejection` / ErrorBoundary → `POST /api/client-errors` (с ограничением частоты). Sentry требует внешний аккаунт — если команда заведёт, подключить DSN через env | medium | ra1d9r | [x] |
 | 2.4 | Prometheus + Grafana + Loki/Promtail (сбор логов контейнеров) в `deploy/docker-compose.yml`, provisioning: datasource и **дашборд JSON в репо** (RPS, ошибки, p95, WS, комнаты, фокусы, награды, логи). Grafana за Caddy на `:8082` (порт открыт на ВМ), пароль админа — переменная в Spirit | high | | [ ] |
 | 2.5 | Алерты в Grafana: стенд не отвечает, доля 5xx > 5% за 5 мин, всплеск клиентских ошибок, db-check упал, сертификат < 14 дней. Канал — Telegram-бот (токен и chat id — переменные в Spirit) | medium | | [ ] |
 
@@ -114,6 +114,8 @@
 - 0.2 — MR !24: победа ботов-Красных/Синих двигает их по карте; «Огородники» общей комнаты на карте не участвуют.
 - 0.4 — MR !25: токен гостя в `sessionStorage`; друзья и перенос — только с логином. Строки гостей в БД остаются, но без токена недоступны (уборка старых гостей — по желанию).
 - 1.x, 3.4 — ветка `release/1-release-ready`: `checkEnv`, обработка сбоев, `SCHEMA_VERSION` = 8 и лог миграций, бэкап перед деплоем (`db-backup.js`), `db-check` после деплоя и в CI, джоба `rollback:vm` + `deploy/rollback.sh`, `docs/ARCHITECTURE.md`, переменные и восстановление данных в `docs/DEPLOY.md`.
+
+- 2.1–2.3 — ветка `release/2-observability`: JSON-логи запросов и WS с `X-Request-Id`, `GET /api/metrics` (Prometheus), ошибки браузера → `POST /api/client-errors` + ErrorBoundary, health с версией схемы; `docs/OBSERVABILITY.md` — метрики, PromQL для дашборда, предложения алертов.
 
 ## Решения
 1. Правило «фокус → цель» (этап 0.1): скорее вариант А, окончательно решает команда.

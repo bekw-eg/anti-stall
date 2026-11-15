@@ -87,6 +87,8 @@ sudo docker compose exec -T app node src/tools/db-check.js
 | `TOMATO_STUN_URLS` | публичный STUN | STUN для голоса |
 | `TOMATO_TURN_URLS` + `TOMATO_TURN_SECRET` или `TOMATO_TURN_USERNAME` + `TOMATO_TURN_CREDENTIAL` | нет | TURN для голоса через строгий NAT |
 | `TOMATO_VOICE_MAX_PEERS` | 8 | участников в голосе |
+| `TOMATO_REQUEST_LOG` | `1` | `0` — не писать JSON-лог запросов (ошибки пишутся всегда) |
+| `TOMATO_METRICS_TOKEN` | нет | закрыть `/api/metrics` токеном (Bearer) |
 
 ## 5. Диагностика
 

@@ -10,7 +10,8 @@ if (envProblems.length) {
 }
 
 // `node src/server.js --demo` = TOMATO_DEMO=1 (работает и в Windows cmd, и в PowerShell)
-const config = loadConfig(process.env, {}, process.argv.slice(2));
+// Логи запросов в production включены; выключить — TOMATO_REQUEST_LOG=0
+const config = loadConfig(process.env, { requestLog: process.env.TOMATO_REQUEST_LOG !== '0' }, process.argv.slice(2));
 const app = createApp({ config });
 app.startScheduler();
 const addr = await app.listen();
