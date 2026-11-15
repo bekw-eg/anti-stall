@@ -6,6 +6,7 @@ import { Db } from './db.js';
 import { AppError } from './errors.js';
 import { buildRoutes } from './http/routes.js';
 import { readJson } from './http/router.js';
+import { SWAGGER_HTML, buildOpenApi } from './http/openapi.js';
 import { createStaticHandler } from './http/static.js';
 import { createGame } from './services/game.js';
 import { createRoomsService } from './services/rooms.js';
@@ -53,6 +54,11 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
   const friends = createFriends(ctx, rooms);
   const voice = new VoiceRooms({ config, clock, nameOf: (id) => db.get('SELECT name FROM users WHERE id = ?', id)?.name });
   const router = buildRoutes({ config, users, rooms, game, social, td, harvest, friends, voice, chat, db, clock });
+  let openApiCache = null;
+  const openApi = () => (openApiCache ??= buildOpenApi(router.routes, {
+    demoMode: config.demoMode,
+    extra: [{ method: 'GET', pattern: '/api/metrics', auth: false }, { method: 'POST', pattern: '/api/client-errors', auth: false }],
+  }));
 
   const cors = {
     'Access-Control-Allow-Origin': config.corsOrigin,
@@ -92,6 +98,13 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
       if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
       if (url.pathname === '/api/metrics' && req.method === 'GET') { matched = { pattern: '/api/metrics' }; return sendMetrics(req, res); }
       if (url.pathname === '/api/client-errors' && req.method === 'POST') { matched = { pattern: '/api/client-errors' }; return await acceptClientError(req, res); }
+      // Swagger: спецификация из живых маршрутов + интерфейс (публично — это документация, не данные)
+      if (url.pathname === '/api/openapi.json' && req.method === 'GET') { matched = { pattern: '/api/openapi.json' }; return sendJson(res, 200, openApi()); }
+      if ((url.pathname === '/api/docs' || url.pathname === '/api/docs/') && req.method === 'GET') {
+        matched = { pattern: '/api/docs' };
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end(SWAGGER_HTML);
+      }
       if (serveStatic && (req.method === 'GET' || req.method === 'HEAD') && !isApiPath(url.pathname)) {
         return await serveStatic(req, res, url.pathname);
       }

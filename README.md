@@ -16,7 +16,7 @@
 |---|---|
 | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) | Сценарий показа жюри из 10 шагов, подготовка стенда, тайминги, запасные варианты |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | Деплой на ВМ через Spirit CI: переменные, откат, диагностика |
-| [backend/docs/API.md](backend/docs/API.md) | REST и WebSocket API |
+| [backend/docs/API.md](backend/docs/API.md) | REST и WebSocket API; на стенде — Swagger: `/api/docs` (спецификация `/api/openapi.json`) |
 | [backend/docs/DEMO_MODE.md](backend/docs/DEMO_MODE.md) | Демо-режим и песочница |
 | [backend/docs/VOICE.md](backend/docs/VOICE.md) | Голосовой канал (WebRTC, STUN/TURN) |
 | [backend/README.md](backend/README.md) | Архитектура backend и игровые правила |

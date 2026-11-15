@@ -75,6 +75,9 @@
 | POST | `/api/rooms/:id/session/result` | участник | `{result:"done"|"partial"|"not_done", note?, sessionId?}` — только история (клиент больше не спрашивает, заменено оценкой ★) |
 | POST | `/api/rooms/:id/skip-focus` | host, `focus` | Пропустить фокус для всех → сразу `break`. Награда × доля отработанного времени, шаг по карте не засчитывается |
 | POST | `/api/rooms/:id/skip-break` | host, `break` | Досрочно к `waiting` |
+| POST | `/api/rooms/:id/session/attention` | участник в фокусе | `{state:"away"|"back"}` — ушёл со вкладки / вернулся; может только снизить качество фокуса (и награду) → `{tracked, state, awayMs}` |
+| GET | `/api/rooms/:id/chat` | участник | Последние сообщения чата комнаты → `{roomId, readOnly, messages[]}` |
+| POST | `/api/rooms/:id/chat` | участник | `{text}` — сообщение в чат: до 300 символов, не чаще раза в секунду и 20 в минуту (иначе `429`) |
 | POST | `/api/rooms/:id/close` | host, `waiting|break` | Закрыть комнату |
 | POST | `/api/rooms/:id/heartbeat` | участник | Присутствие |
 | GET | `/api/rooms/:id/roadmap` | участник | Road Map и прогресс |
@@ -84,6 +87,8 @@
 | POST | `/api/rooms/:id/td/start` | участник, `break` | `{stageId?}` — начать раунд команды (один за перерыв) |
 | POST | `/api/rooms/:id/td/build` | участник, `break` | `{slotId, type, requestId}` — построить башню за свои Tomato Coins |
 | POST | `/api/rooms/:id/td/upgrade` | участник, `break` | `{slotId, requestId, expectedLevel?}` — улучшить башню (до 3 уровня) |
+| POST | `/api/rooms/:id/td/send-unit` | участник, `break`, Tower Wars | `{type, requestId}` — отправить наёмника в раунд соперника за монеты казны → 201 |
+| POST | `/api/rooms/:id/td/spell` | участник, `break` | `{spell, requestId}` — заклинание в своём раунде за монеты казны → 201 |
 | GET | `/api/rooms/:id/stats` | участник | Командный прогресс: `teams[]{key, name, points, goal, completedSessions, focusSeconds, members[]{userId, name, team, completedSessions, interruptedSessions, focusSeconds, points}}`, `totals`, `winner`, `cycles` |
 | GET | `/api/rooms/:id/voice` | участник | Кто сейчас в голосовом канале: `{peers[]{userId, name, muted, deafened, speaking, joinedAt}, maxPeers}` |
 | GET | `/api/voice/ice-servers` | любой авторизованный | `{iceServers[], ttlSec, relay}` — STUN и (если настроен) TURN с временными логинами, см. [VOICE.md](VOICE.md) |

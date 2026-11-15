@@ -28,6 +28,8 @@ WORKDIR /app/backend
 COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 COPY backend/src ./src
+# описания маршрутов для Swagger (/api/docs) берутся из backend/docs/API.md
+COPY backend/docs ./docs
 COPY --from=web /src/frontend/dist /app/public
 RUN mkdir -p /data && chown -R node:node /data
 USER node

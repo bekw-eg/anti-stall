@@ -83,7 +83,7 @@
 ## Этап 3 — качество инженерной реализации
 | # | Задача | Effort | Кто | Готово |
 |---|---|---|---|---|
-| 3.1 | (команда вручную) OpenAPI: `backend/docs/openapi.yaml` по `API.md` (55 эндпоинтов + WS-события), Swagger UI на `/api/docs` | high | | [ ] |
+| 3.1 | (команда вручную) OpenAPI: `backend/docs/openapi.yaml` по `API.md` (55 эндпоинтов + WS-события), Swagger UI на `/api/docs` | high | ra1d9r | [x] |
 | 3.2 | e2e в CI: отдельная джоба с Chrome (сейчас e2e social / voice запускаются вручную) | high | ra1d9r | [x] |
 | 3.3 | Тестовые данные: команда/скрипт сида демо (комната, 3 игрока, история) — описать в README | low | ra1d9r | [x] |
 | 3.4 | `db-check` в CI (на БД после тестов) и шагом после деплоя | low | ra1d9r | [x] |
