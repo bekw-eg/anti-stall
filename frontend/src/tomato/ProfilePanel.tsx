@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BarChart3, Check, Clock, Flame, History, KeyRound, Lock, LogOut, Palette, RotateCcw, Settings, Shirt, Smartphone, Sparkles, Target, Trophy } from "lucide-react";
+import { BarChart3, Check, ChevronDown, Clock, Flame, History, KeyRound, Lock, LogOut, Palette, RotateCcw, Settings, Shirt, Smartphone, Sparkles, Target, Trophy } from "lucide-react";
 import { client } from "./useTomato";
 import type { Tomato } from "./useTomato";
 import type { AvatarLook, Progress, StudySession } from "@/api/tomato";
 import { formatDuration } from "./format";
+import { cycleOutcome, formatClock, formatDay, groupSessions, plural, workedSec } from "./historyGroups";
 import { Axolotl, ItemIcon, SKIN_BG, lookOf } from "./Axolotl";
 import { DemoBadge } from "./Chrome";
 import { SeedIcon } from "./screens/ui";
@@ -16,7 +17,6 @@ const TABS: [Tab, string, ReactNode][] = [
   ["history", "История", <History key="i" size={17} aria-hidden />],
   ["settings", "Настройки", <Settings key="i" size={17} aria-hidden />],
 ];
-const SESSION_LABEL: Record<string, string> = { completed: "завершена", aborted: "досрочно", abandoned: "нет связи", active: "идёт" };
 const RESULT_LABEL: Record<string, string> = { done: "сделал", partial: "частично", not_done: "не успел" };
 const xpForLevel = (n: number) => 50 * n * (n - 1); // как на сервере (catalog.js)
 
@@ -42,7 +42,7 @@ export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }
   const load = async () => {
     const p = await t.call(() => client.progress());
     if (p) setProgress(p);
-    const h = await t.call(() => client.sessions(30));
+    const h = await t.call(() => client.sessions(100)); // хватит на несколько заходов по задачам
     if (h) setSessions(h.sessions);
     const m = await t.call(() => client.me());
     if (m?.avatarUnlocked) setUnlocked(m.avatarUnlocked);
@@ -101,20 +101,7 @@ export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }
         </ul>
       )}
 
-      {tab === "history" && (
-        <ul className="flex flex-col gap-2.5">
-          {sessions.length === 0 && <li className={`text-sm ${MUTED}`}>Занятий пока нет.</li>}
-          {sessions.map((s) => (
-            <li key={s.id} className={`${CARD} px-4 py-3`}>
-              <p className="font-extrabold">{s.task ?? "Без задачи"}{s.result && <span className={`ml-2 font-semibold ${MUTED}`}>· {RESULT_LABEL[s.result]}</span>}</p>
-              <p className={`text-sm ${MUTED}`}>
-                {new Date(s.startedAt).toLocaleString()} · {SESSION_LABEL[s.status]}
-                {s.rewarded ? ` · +${s.xp} XP, +${s.coins} монет` : " · без награды"}
-              </p>
-            </li>
-          ))}
-        </ul>
-      )}
+      {tab === "history" && <HistoryList sessions={sessions} />}
 
       {tab === "settings" && (
         <div className="flex flex-col gap-4">
@@ -373,6 +360,61 @@ function LookTab({ t, progress, onLeave, unlocked }: { t: Tomato; progress: Prog
         )}
         {onLeave && <LeaveButton onLeave={onLeave} />}
       </div>
+    </div>
+  );
+}
+
+/**
+ * История по задачам: карточка — один заход (задача в комнате), внутри — его циклы фокуса.
+ * Раньше каждый цикл был отдельной карточкой с той же задачей — выглядело как четыре разные задачи.
+ */
+function HistoryList({ sessions }: { sessions: StudySession[] }) {
+  const groups = useMemo(() => groupSessions(sessions), [sessions]);
+  if (groups.length === 0) return <p className={`text-sm ${MUTED}`}>Занятий пока нет.</p>;
+  return (
+    <div className="flex flex-col gap-3" data-testid="history">
+      <p className={`text-sm ${MUTED}`}>Карточка — одна задача за один заход в комнату. Нажмите, чтобы увидеть её циклы фокуса.</p>
+      <ul className="flex flex-col gap-2.5">
+        {groups.map((g, i) => {
+          const day = formatDay(g.startedAt);
+          const span = `${formatClock(g.startedAt)}–${formatClock(g.endedAt)}`;
+          return (
+            <li key={g.key} className={CARD} data-history-group={g.key}>
+              <details className="group" open={i === 0}>
+                <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                  <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                    <span className="break-words text-[17px] font-extrabold leading-tight">{g.task?.trim() || "Без задачи"}</span>
+                    <span className={`text-sm ${MUTED}`}>{g.roomName} · {day}, {span}</span>
+                    <span className="flex flex-wrap gap-1.5 text-[13px] font-bold">
+                      <span className="rounded-full bg-[#5A3E3A] px-2.5 py-0.5">{plural(g.cycles.length, "цикл", "цикла", "циклов")}</span>
+                      <span className="rounded-full bg-[#5A3E3A] px-2.5 py-0.5">засчитано {g.counted}</span>
+                      {g.early > 0 && <span className="rounded-full bg-[#5A3E3A] px-2.5 py-0.5 text-peach">без награды {g.early}</span>}
+                      <span className="rounded-full bg-[#5A3E3A] px-2.5 py-0.5">{formatDuration(g.focusSec)} фокуса</span>
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="whitespace-nowrap font-display text-lg leading-none text-peach"><span className="relative top-0.5">+{g.xp} XP</span></span>
+                    <span className={`whitespace-nowrap text-sm ${MUTED}`}>+{g.coins} монет</span>
+                    <ChevronDown size={18} className="mt-1 transition-transform group-open:rotate-180" aria-hidden />
+                  </span>
+                </summary>
+                <ol className="flex flex-col border-t-2 border-[#6A4A45] px-4 py-1.5" aria-label="Циклы фокуса">
+                  {g.cycles.map((c) => (
+                    <li key={c.id} className="flex items-start justify-between gap-3 py-1.5 text-sm">
+                      <span className="min-w-0">
+                        <span className="font-bold">Цикл {c.cycleNo}</span>
+                        <span className={MUTED}> · {formatClock(c.startedAt)} · {formatDuration(c.status === "active" ? c.durationSec : workedSec(c))} · {cycleOutcome(c)}</span>
+                        {c.result && <span className={MUTED}> · {RESULT_LABEL[c.result]}</span>}
+                      </span>
+                      <span className={`shrink-0 whitespace-nowrap font-bold ${c.rewarded ? "text-cream" : MUTED}`}>{c.rewarded ? `+${c.xp} XP · +${c.coins}` : "—"}</span>
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

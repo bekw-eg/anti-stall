@@ -4,7 +4,7 @@
  * из CSS-переменных — здесь они заданы в палитре макета.
  */
 import { useEffect, useRef, useState } from "react";
-import { BarChart3, Check, Copy, Eye, EyeOff, Map as MapIcon, StickyNote, Users, X } from "lucide-react";
+import { BarChart3, Check, Copy, Eye, EyeOff, Map as MapIcon, QrCode, StickyNote, Users, X } from "lucide-react";
 import { roomLink } from "../format";
 import { ProfilePanel } from "../ProfilePanel";
 import { RoadMap } from "../RoadMap";
@@ -104,9 +104,10 @@ export function SheetPanel({ t, sheet, onClose, top = 0 }: { t: Tomato; sheet: S
   );
 }
 
-/** Приглашение: код комнаты и кнопка «скопировать ссылку». */
+/** Приглашение: код комнаты, «скопировать ссылку» и QR-код ссылки — камерой телефона сразу в комнату. */
 export function Invite({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const copy = () => {
     navigator.clipboard?.writeText(roomLink(code)).catch(() => undefined);
     setCopied(true);
@@ -115,14 +116,51 @@ export function Invite({ code }: { code: string }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="as-label">Позвать друзей</p>
-      <div className="flex flex-col gap-3 xs:flex-row">
-        <span className="flex h-14 flex-1 items-center justify-center rounded-[16px] border-2 border-dashed border-rose bg-white px-4 font-display text-2xl tracking-[0.12em] text-rose" aria-label={`Код комнаты ${code.split("").join(" ")}`}>
+      {/* код и кнопки — одной строкой, если хватает места, иначе кнопки переносятся под код */}
+      <div className="flex flex-wrap gap-3">
+        <span className="flex h-14 min-w-0 grow basis-[9rem] items-center justify-center rounded-[16px] border-2 border-dashed border-rose bg-white px-4 font-display text-2xl tracking-[0.12em] text-rose" aria-label={`Код комнаты ${code.split("").join(" ")}`}>
           <span className="relative top-0.5">{code}</span>
         </span>
-        <button type="button" onClick={copy} className="as-btn as-btn-secondary as-btn-sm xs:min-h-[3.5rem]" aria-live="polite">
-          {copied ? <><Check size={18} aria-hidden /> Скопировано</> : <><Copy size={18} aria-hidden /> Ссылка</>}
-        </button>
+        <div className="flex grow basis-[13rem] gap-2">
+          <button type="button" onClick={copy} className="as-btn as-btn-secondary as-btn-sm min-h-[3.5rem] flex-1" aria-live="polite">
+            {copied ? <><Check size={18} aria-hidden /> Скопировано</> : <><Copy size={18} aria-hidden /> Ссылка</>}
+          </button>
+          <button type="button" onClick={() => setQrOpen((v) => !v)} aria-expanded={qrOpen} aria-controls="room-qr" data-testid="invite-qr"
+            className={`as-btn as-btn-sm min-h-[3.5rem] flex-1 ${qrOpen ? "as-btn-primary" : "as-btn-secondary"}`} aria-label="QR-код комнаты">
+            <QrCode size={18} aria-hidden /> QR
+          </button>
+        </div>
       </div>
+      {qrOpen && <RoomQr code={code} />}
+    </div>
+  );
+}
+
+/** QR со ссылкой на комнату. Генератор грузится только при открытии (не утяжеляет основной бандл). */
+function RoomQr({ code }: { code: string }) {
+  const link = roomLink(code);
+  const [svg, setSvg] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    import("qrcode")
+      .then((QR) => QR.toString(link, { type: "svg", margin: 1, errorCorrectionLevel: "M", color: { dark: "#3B2422", light: "#FFFFFF" } }))
+      .then((out) => { if (alive) setSvg(out); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [link]);
+  return (
+    <div id="room-qr" className="flex items-center gap-4 rounded-[18px] border-2 border-ink bg-white p-3 as-shadow-sm" data-testid="room-qr">
+      {svg ? (
+        // SVG собирает библиотека из нашей же ссылки — внешнего ввода здесь нет
+        <div className="h-32 w-32 shrink-0 [&>svg]:h-full [&>svg]:w-full" role="img" aria-label={`QR-код ссылки на комнату ${code}`} dangerouslySetInnerHTML={{ __html: svg }} />
+      ) : (
+        <div className="flex h-32 w-32 shrink-0 items-center justify-center text-center text-xs font-bold text-mute">{failed ? "Не удалось построить QR" : "Строим QR…"}</div>
+      )}
+      <p className="text-sm font-semibold text-mute">
+        Наведите камеру телефона — откроется эта комната. Гостю останется ввести имя.
+        <span className="mt-1 block break-all text-xs font-bold text-ink">{link}</span>
+      </p>
     </div>
   );
 }
