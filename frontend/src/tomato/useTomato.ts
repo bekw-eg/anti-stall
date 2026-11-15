@@ -725,6 +725,13 @@ export function useTomato(initialCode?: string) {
     if (u) push("Пароль изменён", "reward");
     return Boolean(u);
   }, [call, push]);
+  /** Выход из аккаунта: этот браузер забывает токен, комнату и имя, страница перезапускается на первом экране. Сервер данные не трогает. */
+  const logout = useCallback(() => {
+    client.setToken(null);
+    store.set(ROOM_KEY, null);
+    store.set(NAME_KEY, null);
+    window.location.assign("/");
+  }, []);
   const dismissToast = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 
   const loadTd = useCallback(async () => { if (!rid) return null; const v = await call(() => client.td(rid)); if (v) setTd(v); return v; }, [call, rid]);
@@ -801,7 +808,7 @@ export function useTomato(initialCode?: string) {
 
   return {
     boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
-    loginAccount, registerAccount, changePassword, dismissToast,
+    loginAccount, registerAccount, changePassword, logout, dismissToast,
     friends, relations, roomInvites, loadFriends, friendAdd, friendAccept, friendRemove, friendInvite, dismissInvite, redeemTransfer, newTransferCode,
     call, push, td, tdFx, loadTd, harvest, harvestFrame, harvestFeed, loadHarvest, harvestCatch, harvestPrank, harvestMove, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, reportAttention, manualAway, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, rateSession, setPranksEnabled, saveAvatar, avatarCatalog, chat, sendChat,
   };

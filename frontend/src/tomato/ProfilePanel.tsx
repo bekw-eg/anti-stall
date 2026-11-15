@@ -60,7 +60,7 @@ function Bar({ pct, label, color = "#EAA695", small = false }: { pct: number; la
  * Профиль = страница образа аксолотля: превью, инвентарь вещей и выбор цвета, сохранение на сервер.
  * Остальное — во вкладках: улучшения, достижения, история, настройки. Данные целиком с сервера.
  */
-export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }) {
+export function ProfilePanel({ t, onLeave, canLogout = false }: { t: Tomato; onLeave?: () => void; /** выход из аккаунта — только на странице профиля вне комнаты */ canLogout?: boolean }) {
   const [tab, setTab] = useState<Tab>("look");
   const [progress, setProgress] = useState<Progress | null>(null);
   const [sessions, setSessions] = useState<StudySession[]>([]);
@@ -167,6 +167,7 @@ export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }
           <AccountCard t={t} name={progress.name} />
           {t.user?.login && <TransferCard t={t} />}
           {onLeave && <LeaveButton onLeave={onLeave} />}
+          {canLogout && <LogoutCard t={t} />}
         </div>
       )}
     </div>
@@ -225,6 +226,34 @@ function TransferCard({ t }: { t: Tomato }) {
           className="as-btn as-btn-secondary as-btn-sm self-start"><KeyRound size={18} aria-hidden />Получить код</button>
       )}
     </Card>
+  );
+}
+
+/**
+ * Выход из аккаунта (только страница профиля вне комнаты). Два шага без window.confirm.
+ * Гость без логина после выхода теряется: в предупреждении об этом сказано прямо.
+ */
+export function LogoutCard({ t }: { t: Tomato }) {
+  const [ask, setAsk] = useState(false);
+  const guest = !t.user?.login;
+  return (
+    <section className={`${CARD} flex flex-col gap-3 p-4`} aria-label="Выход из аккаунта" data-testid="logout-card">
+      <span className="font-extrabold">Выйти из аккаунта</span>
+      {!ask ? (
+        <>
+          <p className="text-sm text-mute">{guest ? "Вы играете гостем: без логина и пароля прогресс после выхода не вернуть." : "Вернуться можно по логину и паролю на любом устройстве. Прогресс сохранится."}</p>
+          <button type="button" onClick={() => setAsk(true)} data-testid="logout-open" className="as-btn as-btn-secondary as-btn-sm self-start"><LogOut size={18} aria-hidden /> Выйти из аккаунта</button>
+        </>
+      ) : (
+        <>
+          <p role="alert" className="text-sm font-bold">{guest ? "Выйти и потерять гостя вместе с прогрессом?" : "Точно выйти из аккаунта на этом устройстве?"}</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={t.logout} data-testid="logout-confirm" className="as-btn as-btn-sm">Да, выйти</button>
+            <button type="button" onClick={() => setAsk(false)} className="as-btn as-btn-secondary as-btn-sm">Остаться</button>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 

@@ -113,7 +113,7 @@ export function Home({ t, onReturn, onJoinScreen, onLogo }: { t: Tomato; onRetur
           </div>
           {section === "profile" && (
             <div className="overflow-hidden rounded-[28px] border-2 border-soft">
-              <ProfilePanel t={t} />
+              <ProfilePanel t={t} canLogout={!t.snapshot} />
             </div>
           )}
           {section === "stats" && (
