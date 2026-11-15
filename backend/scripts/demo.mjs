@@ -55,10 +55,17 @@ const view = (await anya.get(R())).body;
 log(`  код комнаты ${room.code}; участники: ${view.members.map((m) => `${m.name} (${m.task})`).join(', ')}`);
 expect(view.members.length === 3, 'все трое видят друг друга');
 
-async function cycle(n, { abortAnya }) {
+async function cycle(n, { abortAnya, rate = false }) {
   h(`${n}. Общая фокус-сессия (${FOCUS} с вместо 25 минут)`);
-  const s = await lotti.post(R('/start'));
-  expect(s.body.room.phase === 'focus', 'таймер запущен сервером, фаза Focus у всех');
+  // Фокус стартует, когда готовы все участники в сети. Следующие циклы плана сервер запускает сам после перерыва.
+  const now = (await lotti.get(R())).body.room.phase;
+  if (now === 'waiting') {
+    for (const p of all) await p.post(R('/ready'), { ready: true });
+    const s = await lotti.post(R('/start'));
+    expect(s.status === 200 && s.body.room.phase === 'focus', `хост запустил фокус, таймер ведёт сервер, фаза Focus у всех (${s.status} ${s.body?.error?.code ?? ''})`);
+  } else {
+    expect(now === 'focus', 'следующий фокус плана запущен сервером сам, фаза Focus у всех');
+  }
   const views = await Promise.all(all.map((p) => p.get(R())));
   const ends = new Set(views.map((v) => v.body.room.phaseEndsAt));
   expect(ends.size === 1, `у всех один phaseEndsAt, осталось ${Math.round(views[0].body.room.remainingMs / 1000)} с`);
@@ -73,6 +80,14 @@ async function cycle(n, { abortAnya }) {
   all.forEach((p, i) => log(`  ${p.name}: +${xp1[i].xp - xp0[i].xp} XP, монет ${xp1[i].coins}, уровень ${xp1[i].level}`));
   if (abortAnya) expect(xp1[1].xp === xp0[1].xp, 'досрочно вышедшая Аня награды за сессию не получила');
   expect(xp1[0].xp - xp0[0].xp >= 100, 'завершившие получили XP');
+  if (rate) {
+    const rs = await Promise.all([lotti, boris].map((p) => p.post(R('/session/rating'), { stars: 5 })));
+    expect(rs[0].status === 200 && rs[1].status === 200, 'Лотти и Боря оценили свою работу на 5★ (Аня не отвечает — для расчёта это 3★)');
+    const stranger = await boris.post(R('/session/rating'), { stars: 1, sessionId: (await anya.get(R())).body.me.session.id });
+    expect(stranger.status === 403, `чужую сессию оценить нельзя: ${stranger.body.error?.code}`);
+    const again = await lotti.post(R('/session/rating'), { stars: 1 });
+    expect(again.body.error?.code === 'ALREADY_RATED', 'повторная оценка отклонена: ALREADY_RATED');
+  }
 }
 
 await cycle(2, { abortAnya: true });
@@ -107,18 +122,28 @@ const early = await lotti.post(R('/start'));
 expect(early.body.error?.code === 'WRONG_PHASE', 'запуск Focus во время перерыва отклонён');
 
 while ((await lotti.get(R())).body.room.phase === 'break') await sleep(500);
-await cycle(5, { abortAnya: false });
+await cycle(5, { abortAnya: false, rate: true });
 while ((await lotti.get(R())).body.room.phase === 'break') await sleep(500);
+// в конце перерыва — командный бонус по средней оценке: Аня не отвечала (3★), остальные 5★ → (5+5+3)/3 ≈ 4,3★ → 100 × 0,43 = 43 XP
+const bonus = async (p) => (await p.get('/api/users/me/transactions?limit=200')).body.transactions.filter((t) => t.kind === 'rating_bonus');
+const [bl, bb, ba] = await Promise.all([bonus(lotti), bonus(boris), bonus(anya)]);
+// бонус — по одному на каждый цикл с наградой: у Лотти и Бори их два (первый цикл — без оценок, 3★ → 30 XP; второй — 43 XP),
+// у Ани один (в первом цикле она вышла досрочно — награды, а значит и бонуса, нет); ключ журнала не даёт начислить дважды
+const uniq = (l) => new Set(l.map((t) => t.key)).size === l.length;
+expect(bl.length === 2 && bb.length === 2 && ba.length === 1 && [bl, bb, ba].every(uniq), `бонус за оценку: по одному на цикл с наградой (Лотти ${bl.length}, Боря ${bb.length}, Аня ${ba.length}), повторов нет`);
+expect(bl[0]?.xp === 43 && bb[0]?.xp === 43 && ba[0]?.xp === 54, `средняя ≈ 4,3★: Лотти +${bl[0]?.xp} XP, Боря +${bb[0]?.xp} XP, Аня +${ba[0]?.xp} XP (база × 0,43)`);
+expect(bl[1]?.xp === 30, `первый цикл без оценок — все считаются как 3★: +${bl[1]?.xp} XP (база 100 × 0,3)`);
 await cycle(6, { abortAnya: false });
 
 h('7. Командное испытание и достижения');
 const road = (await lotti.get(R('/roadmap'))).body;
 log(`  ${road.title}: ${road.points}/${road.goal}; позиция: ${road.positionNodeId}; вклад: ${road.contributions.map((c) => `${c.name}=${c.points}`).join(', ')}`);
-expect(road.completed, 'команда достигла цели и получила награду');
+// узел карты открывает победа в игре или 2 × участники завершённых фокусов; цель — 4 узла, за три коротких цикла её не взять
+expect(road.points >= 1 && !road.completed, `завершённые фокусы открыли узел без игры (${road.points}/${road.goal}), цель — впереди`);
 const lp = await lotti.progress();
 log('  достижения Лотти:', lp.achievements.filter((a) => a.unlocked).map((a) => a.title).join(', '));
 const tx = (await lotti.get('/api/users/me/transactions?limit=200')).body.transactions;
-expect(tx.filter((t) => t.kind === 'team_challenge').length === 1, 'командная награда выдана ровно один раз');
+expect(tx.filter((t) => t.kind === 'team_challenge').length === (road.completed ? 1 : 0), 'командная награда за цель не выдана раньше времени');
 const ev = lotti.events.map((e) => e.type);
 log('  WS-события Лотти:', [...new Set(ev)].join(', '));
 
