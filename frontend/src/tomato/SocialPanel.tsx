@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { FriendsTab } from "./FriendsTab";
+import { PrankSwitch } from "./PrankSwitch";
 import { Clock, CloudFog, Shield, Sparkles, Sticker, UserCheck, UserPlus } from "lucide-react";
 import type { Member } from "@/api/tomato";
 import { memberStatusLabel } from "./format";
@@ -71,7 +72,10 @@ function RoomPeople({ t }: { t: Tomato }) {
   return (
     <>
       <div className="flex flex-col gap-3">
-        <h2 className="font-display text-2xl leading-none">В комнате · {snap.members.length}</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-2xl leading-none">В комнате · {snap.members.length}</h2>
+          <PrankSwitch t={t} />
+        </div>
         <p className={`flex items-start gap-2 rounded-[16px] border-2 px-3 py-2 text-sm font-bold ${onBreak ? "border-ink bg-lime text-ink" : "border-dashed border-rose bg-white text-mute"}`} data-testid="social-phase-note">
           <Sparkles size={16} className="mt-0.5 shrink-0" aria-hidden />
           {onBreak

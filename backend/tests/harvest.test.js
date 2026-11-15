@@ -112,8 +112,12 @@ describe('Harvest: чередование с Tower Defense и проверки �
     at(w, round, g3.crossT);
     assert.equal((await catchIt(lotti, g3)).body.error.code, 'TOO_FAST');
 
-    // шутки: только по сопернику, тратят заряд
+    // шутки: только по сопернику, тратят заряд; кто выключил шутки — не цель (кейс §5.5)
     assert.equal((await lotti.post(L.path('/harvest/prank'), { targetId: lotti.id, kind: 'freeze' })).body.error.code, 'INVALID_TARGET');
+    await anya.patch('/api/users/me', { prankEnabled: false });
+    assert.equal((await lotti.post(L.path('/harvest/prank'), { targetId: anya.id, kind: 'freeze' })).body.error.code, 'PRANKS_DISABLED');
+    assert.equal((await anya.post(L.path('/harvest/prank'), { targetId: lotti.id, kind: 'freeze' })).body.error.code, 'PRANKS_DISABLED_SELF');
+    await anya.patch('/api/users/me', { prankEnabled: true });
     const pr = await lotti.post(L.path('/harvest/prank'), { targetId: anya.id, kind: 'freeze' });
     assert.equal(pr.status, 201);
     assert.equal(pr.body.charges, 0);

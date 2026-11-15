@@ -53,6 +53,9 @@ export function buildRoutes({ config, users, rooms, game, social, td, voice, cha
   // ---- перенос аккаунта на другое устройство (код живёт 10 минут, одноразовый)
   r.add('POST', '/api/users/me/transfer-code', ({ user }) => ok(users.transferCode(user.id), 201));
   r.add('POST', '/api/users/transfer', ({ body }) => ok(users.redeemTransfer(body)), { auth: false });
+  // ---- полноценный аккаунт: закрепить логином и паролем, вход с любого устройства
+  r.add('POST', '/api/users/me/credentials', ({ user, body }) => ok(users.setCredentials(user.id, body)));
+  r.add('POST', '/api/auth/login', ({ body }) => ok(users.login(body)), { auth: false });
 
   // ---- друзья: заявки (по id из общей комнаты или по коду друга), принять, удалить, позвать в комнату
   r.add('GET', '/api/friends', ({ user }) => ok(friends.list(user.id)));

@@ -226,7 +226,8 @@ export function useTomato(initialCode?: string) {
   const push = useCallback((text: string, tone: Toast["tone"] = "info") => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t.slice(-2), { id, text, tone }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === "error" ? 6000 : 5000);
+    // награды — коротко (они ещё и закрываются нажатием), ошибки — подольше
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === "error" ? 6000 : tone === "reward" ? 3500 : 5000);
   }, []);
 
   const applySnapshot = useCallback((s: RoomSnapshot) => {
@@ -698,6 +699,28 @@ export function useTomato(initialCode?: string) {
     return true;
   }, [call]);
   const newTransferCode = useCallback(() => call(() => client.transferCode()), [call]);
+  // ---------------------------------------------------------------- аккаунт с логином и паролем
+  /** Вход: этот браузер получает свой токен аккаунта; страница перезапускается уже под ним. */
+  const loginAccount = useCallback(async (login: string, password: string) => {
+    const u = await call(() => client.loginWithPassword(login, password));
+    if (!u) return false;
+    store.set(ROOM_KEY, null);
+    window.location.assign("/");
+    return true;
+  }, [call]);
+  /** Регистрация: гость с этим именем + логин и пароль (или закрепить уже существующего гостя). */
+  const registerAccount = useCallback(async (displayName: string, login: string, password: string) => {
+    if (!(await ensureUser(displayName))) return false;
+    const u = await call(() => client.setCredentials({ login, password }));
+    if (u) { setUser(u); push(`Аккаунт создан: входите как «${u.login}» с любого устройства`, "reward"); }
+    return Boolean(u);
+  }, [call, ensureUser, push]);
+  const changePassword = useCallback(async (currentPassword: string, password: string) => {
+    const u = await call(() => client.setCredentials({ currentPassword, password }));
+    if (u) push("Пароль изменён", "reward");
+    return Boolean(u);
+  }, [call, push]);
+  const dismissToast = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
 
   const loadTd = useCallback(async () => { if (!rid) return null; const v = await call(() => client.td(rid)); if (v) setTd(v); return v; }, [call, rid]);
   const tdJoin = useCallback(async () => { const v = await call(() => client.tdJoin(rid)); if (v) setTd(v); return v; }, [call, rid]);
@@ -760,6 +783,7 @@ export function useTomato(initialCode?: string) {
 
   return {
     boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
+    loginAccount, registerAccount, changePassword, dismissToast,
     friends, relations, roomInvites, loadFriends, friendAdd, friendAccept, friendRemove, friendInvite, dismissInvite, redeemTransfer, newTransferCode,
     call, push, td, tdFx, loadTd, harvest, harvestFrame, harvestFeed, loadHarvest, harvestCatch, harvestPrank, harvestMove, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, saveAvatar, avatarCatalog, chat, sendChat,
   };

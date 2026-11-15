@@ -74,7 +74,6 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
   const myTeam = road.teams.find((t) => t.key === road.teamKey) ?? road.teams[0];
   const hereId = myTeam?.positionNodeId;
   const nextId = road.next?.nodeId;
-  const cleared = road.nodes.filter((n) => n.status === "completed" || n.status === "current").length;
   const levelNo = Math.max(1, road.nodes.findIndex((n) => n.id === hereId) + 1);
 
   return (
@@ -82,7 +81,7 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
       {/* ---------- Доска ---------- */}
       <div className="relative sm:pt-4">
         <ul className="relative z-20 mb-3 flex flex-wrap gap-2 sm:absolute sm:inset-x-10 sm:top-0 sm:mb-0 sm:justify-between" aria-label="Обозначения">
-          <li className="as-pill border-2 border-ink bg-white text-ink"><span className="h-2.5 w-2.5 rounded-full bg-peach" aria-hidden />пройдено {cleared}</li>
+          <li className="as-pill border-2 border-ink bg-white text-ink"><span className="h-2.5 w-2.5 rounded-full bg-peach" aria-hidden />пройдено {road.points} из {road.goal}</li>
           <li className="as-pill border-2 border-ink bg-white text-ink"><Flag size={13} className="fill-ink" aria-hidden />вы здесь · уровень {levelNo} из {road.nodes.length}</li>
           <li className="as-pill hidden border-2 border-ink bg-white text-ink sm:inline-flex"><Castle size={13} aria-hidden />цель сезона</li>
         </ul>
@@ -134,21 +133,24 @@ export function RoadMap({ road, meId }: { road: Roadmap; meId?: string }) {
             {road.teams.map((team) => {
               const at = nodeById(road, team.positionNodeId);
               if (!at) return null;
+              // две команды на одном узле — фишки одна над другой (бок о бок они налезали друг на друга);
+              // у краёв карты фишка выравнивается внутрь, чтобы не обрезаться
               const same = road.teams.filter((x) => x.positionNodeId === team.positionNodeId);
-              const offset = (same.indexOf(team) - (same.length - 1) / 2) * 60;
+              const lift = (same.length - 1 - same.indexOf(team)) * 28;
+              const edge = at.x < 0.2 ? "-translate-x-[18%]" : at.x > 0.8 ? "-translate-x-[82%]" : "-translate-x-1/2";
               const mine = team.key === road.teamKey || road.mode !== "teams";
               const label = road.mode === "teams" ? `${teamTitle(team.key)}${mine ? " · мы" : ""}` : "Мы";
               return (
                 <motion.div
                   key={team.key}
                   data-testid={`marker-${team.key}`}
-                  className="pointer-events-none absolute z-10 -translate-x-1/2"
+                  className={`pointer-events-none absolute z-10 ${edge}`}
                   initial={false}
                   animate={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }}
                   transition={reduce ? instant : MARKER_SPRING}
                   aria-hidden
                 >
-                  <span className={`relative flex flex-col items-center ${team.positionNodeId === hereId ? "-top-[5.75rem] sm:-top-[6.75rem]" : "-top-[3.75rem] sm:-top-[4.25rem]"}`} style={{ marginLeft: offset }}>
+                  <span className={`relative flex flex-col items-center ${team.positionNodeId === hereId ? "-top-[5.75rem] sm:-top-[6.75rem]" : "-top-[3.75rem] sm:-top-[4.25rem]"}`} style={{ marginTop: -lift }}>
                     <span className={`whitespace-nowrap rounded-full border-2 border-ink px-2 py-0.5 text-[11px] font-extrabold sm:text-xs ${road.mode === "teams" ? "text-white" : mine ? "bg-ink text-cream" : "bg-white text-ink"}`} style={road.mode === "teams" ? { background: TEAM_COLOR[team.key] } : undefined}>{label}</span>
                   </span>
                 </motion.div>

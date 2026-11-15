@@ -112,6 +112,14 @@ export class TomatoClient {
   friendRemove = (id: string) => this.request<FriendsView>("POST", `/api/friends/${id}/remove`);
   friendInvite = (id: string, roomId: string) => this.request<{ ok: boolean }>("POST", `/api/friends/${id}/invite`, { roomId });
 
+  // --- полноценный аккаунт: логин и пароль
+  setCredentials = (body: { login?: string; password: string; currentPassword?: string }) => this.request<Me>("POST", "/api/users/me/credentials", body);
+  async loginWithPassword(login: string, password: string): Promise<Me> {
+    const { user, token } = await this.request<{ user: Me; token: string }>("POST", "/api/auth/login", { login, password });
+    this.setToken(token);
+    return user;
+  }
+
   // --- перенос аккаунта на другое устройство (одноразовый код, 10 минут)
   transferCode = () => this.request<{ code: string; expiresAt: number }>("POST", "/api/users/me/transfer-code");
   async redeemTransfer(code: string): Promise<Me> {

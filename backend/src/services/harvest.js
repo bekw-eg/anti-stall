@@ -34,7 +34,7 @@ export function createHarvest(ctx, game) {
 
   // ------------------------------------------------------------------ команды
   const humansOf = (roomId, team) => db.all(
-    `SELECT m.user_id id, u.name FROM room_members m JOIN users u ON u.id = m.user_id
+    `SELECT m.user_id id, u.name, u.prank_enabled FROM room_members m JOIN users u ON u.id = m.user_id
      WHERE m.room_id = ? AND m.team_key = ? AND m.left_at IS NULL ORDER BY m.joined_at, m.rowid`, roomId, team,
   );
   const teamOfUser = (room, userId) => db.get('SELECT team_key FROM room_members WHERE room_id = ? AND user_id = ? AND left_at IS NULL', room.id, userId)?.team_key ?? null;
@@ -102,7 +102,8 @@ export function createHarvest(ctx, game) {
     stepBots(L.sim, L.rain, t, round.state.effects, (p) => {
       if (round.state.effects.some((e) => e.from === p.from && e.at === p.at)) return; // уже применена до рестарта
       const humanTeam = round.state.teams.find((k) => k !== round.state.botTeam);
-      const humans = humansOf(room.id, humanTeam);
+      // кейс §5.5: кто выключил получение шуток, тот не цель и для ботов
+      const humans = humansOf(room.id, humanTeam).filter((h) => h.prank_enabled);
       if (!humans.length) return;
       const scores = scoreTeam(L.rain, caughtMap(round, humanTeam), Infinity).players;
       const leader = [...humans].sort((a, b) => (scores[b.id]?.pts ?? 0) - (scores[a.id]?.pts ?? 0))[0];
@@ -191,7 +192,7 @@ export function createHarvest(ctx, game) {
       const bots = k === round.state.botTeam;
       const players = bots
         ? (L.sim?.bots ?? []).map((b) => ({ id: b.id, name: b.name, bot: true, x: Math.round(b.x), ...(s.players[b.id] ?? { pts: 0, caught: 0, golden: 0, rotten: 0 }) }))
-        : humansOf(round.room_id, k).map((h) => ({ id: h.id, name: h.name, bot: false, x: L.pos.get(h.id)?.x ?? null, ...(s.players[h.id] ?? { pts: 0, caught: 0, golden: 0, rotten: 0 }) }));
+        : humansOf(round.room_id, k).map((h) => ({ id: h.id, name: h.name, bot: false, prankEnabled: Boolean(h.prank_enabled), x: L.pos.get(h.id)?.x ?? null, ...(s.players[h.id] ?? { pts: 0, caught: 0, golden: 0, rotten: 0 }) }));
       return { key: k, name: teamName(k), bots, score: s.score, combo: s.combo, mult: s.mult, bestCombo: s.bestCombo, missed: s.missed, caught: [...caught.keys()], players };
     });
     const effects = round.state.effects.filter((e) => t < e.until).map((e) => ({ ...e, untilMs: round.started_at + e.until * 1000 }));
@@ -287,6 +288,9 @@ export function createHarvest(ctx, game) {
       if (bots) stepBotsTo(round, room, clock.now());
       const target = bots ? L.sim.bots.find((x) => x.id === b.targetId) : humansOf(room.id, rival).find((h) => h.id === b.targetId);
       if (!target) throw E.badRequest('INVALID_TARGET', 'Шутить можно только над командой соперника', { field: 'targetId' });
+      // кейс §5.5: получение шуток можно выключить (Профиль → Настройки); выключивший и сам не шутит — как в обычных шутках
+      if (!db.get('SELECT prank_enabled p FROM users WHERE id = ?', user.id).p) throw E.conflict('PRANKS_DISABLED_SELF', 'Вы отключили шутки — отправлять их тоже нельзя');
+      if (!bots && !target.prank_enabled) throw E.conflict('PRANKS_DISABLED', 'Игрок отключил шутки');
       if (chargesOf(round, user.id) <= 0) throw E.conflict('NO_CHARGES', 'Шуток не осталось — поймайте золотой помидор');
       if (activeEffect(round, target.id, b.kind, t)) throw E.conflict('ALREADY_APPLIED', 'Эта шутка на нём уже действует');
       const dur = b.kind === 'freeze' ? (bots ? HV.FREEZE_SEC.bot : HV.FREEZE_SEC.human) : (bots ? HV.SPLAT_SEC.bot : HV.SPLAT_SEC.human);

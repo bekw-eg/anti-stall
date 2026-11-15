@@ -163,6 +163,8 @@ export interface Me extends LevelInfo {
   avatar?: AvatarLook;
   /** Что открыто для образа (уровень + игра, например победа в Harvest) — решает сервер */
   avatarUnlocked?: { skins: string[]; items: string[] };
+  /** Логин полноценного аккаунта; null — гость (вход только в этом браузере) */
+  login?: string | null;
   createdAt: number;
   activeSession: { id: string; roomId: string; scheduledEndAt: number } | null;
   rooms: { id: string; code: string; name: string; phase: Phase }[];
@@ -384,7 +386,7 @@ export type FriendRelation = "friend" | "outgoing" | "incoming";
 export interface RoomInvite { from: string; fromName: string; roomId: string; roomCode: string; roomName: string; at: number }
 
 // ---------------------------------------------------------------------------- Harvest
-export interface HarvestPlayer { id: string; name: string; bot: boolean; x: number | null; pts: number; caught: number; golden: number; rotten: number }
+export interface HarvestPlayer { id: string; name: string; bot: boolean; prankEnabled?: boolean; x: number | null; pts: number; caught: number; golden: number; rotten: number }
 export interface HarvestTeamLive {
   key: string; name: string; bots: boolean;
   score: number; combo: number; mult: number; bestCombo: number; missed: number;

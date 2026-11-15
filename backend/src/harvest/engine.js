@@ -144,7 +144,9 @@ export function createBots(seed, n = HV.BOT_COUNT, skill = 0.8) {
       speed: (300 + rng() * 90) * skill, react: (0.35 + rng() * 0.25) / skill, focus: (0.7 + rng() * 0.2) * skill,
     };
   });
-  return { rng, t: 0, bots, caught: new Map(), nextPrank: 9 + rng() * 6, prankLog: [] };
+  // зона бота: своя полоса поля + запас; один бот покрывает всё поле (иначе стоял бы в центре)
+  const reach = HV.W / (2 * n) + 150;
+  return { rng, t: 0, bots, reach, caught: new Map(), nextPrank: 9 + rng() * 6, prankLog: [] };
 }
 
 const activeOn = (effects, id, kind, t) => effects.some((e) => e.target === id && e.kind === kind && e.at <= t && t < e.until);
@@ -152,7 +154,7 @@ const activeOn = (effects, id, kind, t) => effects.some((e) => e.target === id &
 function botThink(sim, b, rain, t, dt, effects) {
   if (activeOn(effects, b.id, 'freeze', t)) return;
   if (activeOn(effects, b.id, 'splat', t)) { b.target = null; return; }
-  const reach = 210;
+  const reach = sim.reach ?? 210;
   b.think -= dt;
   if (b.think <= 0) {
     b.think = b.react + sim.rng() * 0.2;

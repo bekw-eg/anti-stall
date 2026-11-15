@@ -12,6 +12,7 @@ import { DEFAULT_LIMITS } from "../useTomato";
 import { Invite } from "./RoomChrome";
 import { TEAM_COLOR, TEAM_TITLE } from "../socialRules";
 import { MemberAvatar } from "./ui";
+import { GoalProgress } from "./GoalProgress";
 
 function Stepper({ label, value, onChange, step, min, max, format, disabled }: {
   label: string; value: number; onChange: (v: number) => void; step: number; min: number; max: number; format: (v: number) => string; disabled: boolean;
@@ -208,6 +209,7 @@ export function Lobby({ t }: { t: Tomato }) {
       {/* ---------- Room panel ---------- */}
       <aside className="flex min-h-0 flex-col gap-7 border-t-2 border-soft bg-paper px-4 py-7 sm:px-8 lg:border-l-2 lg:border-t-0 lg:px-9 lg:py-8" aria-label="Комната">
         <Invite code={room.code} />
+        <GoalProgress t={t} />
         <Members t={t} />
         <div className="flex min-h-[340px] flex-1 flex-col overflow-hidden rounded-[22px] border-2 border-line bg-white">
           <ChatPanel t={t} />

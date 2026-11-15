@@ -176,6 +176,13 @@
 | POST | `/api/users/me/transfer-code` | — | `201 {code:"ABC-DEF-GHJ", expiresAt}` — одноразовый код на 10 минут (хранится хеш; новый код отменяет прежний) |
 | POST 🔓 | `/api/users/transfer` | `{code}` | `{user, token}` — новое устройство получает свой токен того же аккаунта; старое не выходит. `TRANSFER_CODE_INVALID` — неверный, использованный или просроченный |
 
+**Аккаунт с логином и паролем** (почта не нужна; пароль хранится только как scrypt с солью):
+
+| Метод | Путь | Тело | Ответ / проверки |
+|---|---|---|---|
+| POST | `/api/users/me/credentials` | `{login, password}` или `{currentPassword, password}` | профиль с `login`. Гость закрепляет аккаунт (логин 3–24 `[a-z0-9._-]`, без учёта регистра; пароль 8–72): `LOGIN_TAKEN`, `INVALID_FIELD`. Если логин уже есть — смена пароля, нужен текущий (`WRONG_PASSWORD`) |
+| POST 🔓 | `/api/auth/login` | `{login, password}` | `{user, token}` — устройство получает свой токен; `WRONG_CREDENTIALS` (403, не раскрывает, есть ли логин); после 10 ошибок логин блокируется на 15 минут (`LOGIN_LOCKED`, 429) |
+
 Личные события (scope user): `friend_request {userId, name, avatar}`, `friend_accepted {userId, name}`, `friend_removed {userId}`,
 `room_invite {from, fromName, roomId, roomCode, roomName, at}`.
 

@@ -43,14 +43,12 @@ variables:
   DEMO_PORT: "8081"
 
 # 0. Тесты в каждом MR и в master: backend (node --test), типы и тесты frontend (tsc + vitest).
-# Пока allow_failure: true — красные тесты видны в пайплайне, но не блокируют сборку и деплой.
-# Когда убедимся, что раннер стабильно запускает node-образ, флаг можно снять.
+# Красные тесты останавливают пайплайн: сборка образа и деплой идут только после зелёных тестов.
 test:
   stage: test
   image: $NODE_IMAGE
   extends:
     - .rules-merge-or-master-or-parent
-  allow_failure: true
   script:
     - node --version
     - cd backend && npm ci --no-audit --no-fund && npm test

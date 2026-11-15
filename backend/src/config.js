@@ -39,6 +39,8 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
     friends: { maxFriends: 200, requestsPerDay: 30, inviteCooldownMs: 60_000 },
     // перенос аккаунта на другое устройство: одноразовый код живёт 10 минут
     transfer: { codeTtlMs: 10 * 60_000 },
+    // вход по логину и паролю: после 10 неудачных попыток логин блокируется на 15 минут
+    auth: { maxFailures: 10, lockMs: 15 * 60_000 },
     broadcastTickMs: 1000, //  как часто в комнату уходит timer_tick (для сверки часов)
     wsPingMs: 5000,
 

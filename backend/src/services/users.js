@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 import { E } from '../errors.js';
 import { reqBool, reqObject, reqString } from '../validate.js';
 import { avatarOf, parseAvatar, unlockedOf } from '../avatar.js';
@@ -55,7 +55,7 @@ export function createUsersService(ctx, game) {
     );
     return {
       id: row.id, name: row.name, ...game.levelInfo(row.xp), coins: row.coins,
-      prankEnabled: Boolean(row.prank_enabled), sandbox: Boolean(row.sandbox), createdAt: row.created_at, avatar: avatarOf(row),
+      prankEnabled: Boolean(row.prank_enabled), sandbox: Boolean(row.sandbox), createdAt: row.created_at, avatar: avatarOf(row), login: row.login ?? null,
       avatarUnlocked: unlockedOf(game.levelInfo(row.xp).level, game.stats(row.id)),
       activeSession: activeSession ?? null, rooms,
     };
@@ -107,6 +107,68 @@ export function createUsersService(ctx, game) {
     });
   }
 
+  // ------------------------------------------------------------------ полноценный аккаунт: логин и пароль
+  // Гость может в любой момент закрепить аккаунт логином и паролем — и входить с любого устройства.
+  // Пароль хранится только как scrypt с солью — без почты и персональных данных.
+  const LOGIN_RE = /^[a-z0-9._-]{3,24}$/;
+  const hashPassword = (password, salt = randomBytes(16).toString('hex')) => ['scrypt', salt, scryptSync(password, salt, 32).toString('hex')].join(':');
+  const checkPassword = (password, stored) => {
+    const [kind, salt, hash] = String(stored ?? '').split(':');
+    if (kind !== 'scrypt' || !salt || !hash) return false;
+    const a = Buffer.from(hash, 'hex');
+    const b = scryptSync(password, salt, 32);
+    return a.length === b.length && timingSafeEqual(a, b);
+  };
+  const reqLogin = (v) => {
+    const value = reqString(v, 'login', { min: 3, max: 24 }).toLowerCase();
+    if (!LOGIN_RE.test(value)) throw E.badRequest('INVALID_FIELD', 'Логин: 3–24 символа — латиница, цифры, точка, дефис, подчёркивание', { field: 'login' });
+    return value;
+  };
+  const reqPassword = (v) => {
+    if (typeof v !== 'string' || v.length < 8 || v.length > 72) throw E.badRequest('INVALID_FIELD', 'Пароль: от 8 до 72 символов', { field: 'password' });
+    return v;
+  };
+
+  /** Закрепить аккаунт: задать логин и пароль (один раз); потом — только смена пароля с текущим паролем. */
+  function setCredentials(userId, body) {
+    const b = reqObject(body);
+    return db.tx(() => {
+      const row = db.get('SELECT * FROM users WHERE id = ?', userId);
+      if (row.login) {
+        if (typeof b.currentPassword !== 'string' || !checkPassword(b.currentPassword, row.password_hash)) throw E.forbidden('WRONG_PASSWORD', 'Текущий пароль не подходит');
+        db.run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(reqPassword(b.password)), userId);
+        return me(userId);
+      }
+      const value = reqLogin(b.login);
+      const password = reqPassword(b.password);
+      if (db.get('SELECT 1 x FROM users WHERE login = ?', value)) throw E.conflict('LOGIN_TAKEN', 'Такой логин уже занят');
+      db.run('UPDATE users SET login = ?, password_hash = ? WHERE id = ?', value, hashPassword(password), userId);
+      return me(userId);
+    });
+  }
+
+  /** Вход по логину и паролю: новое устройство получает свой токен; после 10 ошибок логин блокируется на 15 минут. */
+  const failures = new Map(); // логин → { count, until }
+  function login(body) {
+    const b = reqObject(body);
+    const name = reqString(b.login, 'login', { min: 1, max: 64 }).toLowerCase();
+    const t = clock.now();
+    const f = failures.get(name);
+    if (f && f.until > t) throw E.tooMany('LOGIN_LOCKED', 'Слишком много попыток — попробуйте через 15 минут');
+    const row = db.get('SELECT * FROM users WHERE login = ?', name);
+    const ok = Boolean(row) && typeof b.password === 'string' && checkPassword(b.password, row.password_hash);
+    if (!ok) {
+      const count = (f?.count ?? 0) + 1;
+      failures.set(name, { count, until: count >= config.auth.maxFailures ? t + config.auth.lockMs : 0 });
+      throw E.forbidden('WRONG_CREDENTIALS', 'Неверный логин или пароль');
+    }
+    failures.delete(name);
+    if (row.sandbox && !config.demoMode) throw E.forbidden('DEMO_DISABLED', 'Демо-режим выключен на сервере');
+    const token = randomBytes(32).toString('base64url');
+    db.run('INSERT INTO user_tokens(token_hash, user_id, created_at) VALUES (?,?,?)', hashToken(token), row.id, t);
+    return { user: me(row.id), token };
+  }
+
   function sessions(userId, query) {
     const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);
     const offset = Math.max(Number(query.offset) || 0, 0);
@@ -124,5 +186,5 @@ export function createUsersService(ctx, game) {
     return db.all('SELECT id, key, kind, xp, coins, created_at AS createdAt FROM reward_transactions WHERE user_id = ? ORDER BY id DESC LIMIT ?', userId, limit);
   }
 
-  return { create, authenticate, touch, me, update, sessions, transactions, publicUser, transferCode, redeemTransfer };
+  return { create, authenticate, touch, me, update, sessions, transactions, publicUser, transferCode, redeemTransfer, setCredentials, login };
 }

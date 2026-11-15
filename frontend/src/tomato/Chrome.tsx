@@ -55,10 +55,10 @@ export function DemoBadge({ compact = false, className = "" }: { compact?: boole
 }
 
 /**
- * Уведомления. Обычные — пилюлями слева внизу; награды («+7 XP · +6 монет») — крупно по центру экрана,
- * чтобы их было видно поверх игры.
+ * Уведомления. Обычные — пилюлями слева внизу; награды («+7 XP · +6 монет») — заметными пилюлями
+ * сразу под шапкой: видно, но не закрывают поле игры и карту (раньше крупные плашки висели по центру экрана).
  */
-export function Toasts({ toasts }: { toasts: Toast[] }) {
+export function Toasts({ toasts, onDismiss }: { toasts: Toast[]; onDismiss?: (id: number) => void }) {
   const plain = toasts.filter((t) => t.tone !== "reward");
   const rewards = toasts.filter((t) => t.tone === "reward");
   return (
@@ -66,34 +66,41 @@ export function Toasts({ toasts }: { toasts: Toast[] }) {
       <div className="pointer-events-none fixed bottom-28 left-4 z-40 flex max-w-[calc(100vw-2rem)] flex-col items-start gap-2 sm:left-8" aria-live="polite">
         <AnimatePresence>
           {plain.map((t) => (
-            <motion.div
+            <motion.button
+              type="button"
               key={t.id}
               layout
+              onClick={() => onDismiss?.(t.id)}
+              title="Нажмите, чтобы закрыть"
               initial={{ opacity: 0, y: -10, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -10 }}
-              className={`rounded-full border-2 border-ink px-4 py-2 text-sm font-extrabold shadow-[0_4px_0_#3B2422] ${t.tone === "error" ? "bg-rose text-white" : t.tone === "warning" ? "bg-peach text-ink" : "bg-white text-ink"}`}
+              className={`pointer-events-auto rounded-full border-2 border-ink px-4 py-2 text-left text-sm font-extrabold shadow-[0_4px_0_#3B2422] ${t.tone === "error" ? "bg-rose text-white" : t.tone === "warning" ? "bg-peach text-ink" : "bg-white text-ink"}`}
             >
               {t.text}
-            </motion.div>
+            </motion.button>
           ))}
         </AnimatePresence>
       </div>
-      <div className="pointer-events-none fixed inset-x-0 top-[26%] z-50 flex flex-col items-center gap-3 px-4" aria-live="polite">
+      <div className="pointer-events-none fixed inset-x-0 top-[7.75rem] z-50 flex flex-col items-center gap-1.5 px-4 sm:top-[6.25rem]" aria-live="polite">
         <AnimatePresence>
           {rewards.map((t) => (
-            <motion.div
+            <motion.button
+              type="button"
               key={t.id}
               data-testid="reward-pop"
-              initial={{ opacity: 0, scale: 0.5, y: 20 }}
+              onClick={() => onDismiss?.(t.id)}
+              title="Нажмите, чтобы закрыть"
+              layout
+              initial={{ opacity: 0, scale: 0.7, y: -12 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, y: -30 }}
-              transition={{ type: "spring", stiffness: 300, damping: 18 }}
-              className="flex items-center gap-3 rounded-full border-[3px] border-ink bg-white px-6 py-3 text-ink shadow-[0_6px_0_#3B2422]"
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ type: "spring", stiffness: 320, damping: 20 }}
+              className="pointer-events-auto flex max-w-full items-center gap-2 rounded-full border-2 border-ink bg-lime px-3.5 py-1.5 text-ink shadow-[0_3px_0_#3B2422] sm:px-4"
             >
-              <Sparkles size={26} className="shrink-0 text-peach" strokeWidth={2.6} aria-hidden />
-              <span className="font-display text-2xl leading-none sm:text-3xl"><span className="relative top-0.5">{t.text}</span></span>
-            </motion.div>
+              <Sparkles size={18} className="shrink-0 text-olive" strokeWidth={2.6} aria-hidden />
+              <span className="truncate font-display text-sm leading-none sm:text-lg"><span className="relative top-0.5">{t.text}</span></span>
+            </motion.button>
           ))}
         </AnimatePresence>
       </div>

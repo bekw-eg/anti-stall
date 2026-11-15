@@ -133,11 +133,45 @@ export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }
             />
             <span><span className="font-extrabold">Получать шутки</span><span className={`block text-sm ${MUTED}`}>Шутки — часть игры на перерыве. Если выключить, вас нельзя выбрать целью и отправлять их тоже нельзя.</span></span>
           </label>
+          <AccountCard t={t} name={progress.name} />
           <TransferCard t={t} />
           {onLeave && <LeaveButton onLeave={onLeave} />}
         </div>
       )}
     </div>
+  );
+}
+
+/** Аккаунт: гость закрепляет его логином и паролем; у зарегистрированного — смена пароля. */
+function AccountCard({ t, name }: { t: Tomato; name: string }) {
+  const login0 = t.user?.login ?? null;
+  const [login, setLogin] = useState("");
+  const [current, setCurrent] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const input = "h-11 min-w-0 flex-1 rounded-[14px] border-2 border-[#6A4A45] bg-[#2A1817] px-3 text-cream outline-none placeholder:text-[#B8A39E] focus:border-peach";
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    const ok = login0 ? await t.changePassword(current, password) : await t.registerAccount(name, login.trim(), password);
+    if (ok) { setPassword(""); setCurrent(""); }
+    setBusy(false);
+  };
+  return (
+    <section className={`${CARD} flex flex-col gap-3 p-4`} aria-label="Аккаунт" data-testid="account-card">
+      <p className="flex items-center gap-2 font-extrabold"><KeyRound size={18} aria-hidden />{login0 ? <>Аккаунт: <span className="text-peach">{login0}</span></> : "Сохранить аккаунт"}</p>
+      <p className={`text-sm ${MUTED}`}>{login0 ? "Входите этим логином и паролем на любом устройстве. Здесь можно сменить пароль." : "Сейчас вы гость: профиль живёт в этом браузере. Задайте логин и пароль — и входите с любого устройства. Почта не нужна."}</p>
+      <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row">
+        {login0 ? (
+          <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" placeholder="Текущий пароль" aria-label="Текущий пароль" className={input} />
+        ) : (
+          <input value={login} onChange={(e) => setLogin(e.target.value)} maxLength={24} autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="Логин" aria-label="Логин" className={input} />
+        )}
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={72} autoComplete="new-password" placeholder={login0 ? "Новый пароль" : "Пароль (от 8 символов)"} aria-label={login0 ? "Новый пароль" : "Пароль"} className={input} />
+        <button type="submit" disabled={busy || password.length < 8 || (login0 ? !current : login.trim().length < 3)} className="as-btn as-btn-light as-btn-sm shrink-0">{login0 ? "Сменить" : "Сохранить"}</button>
+      </form>
+    </section>
   );
 }
 

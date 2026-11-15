@@ -44,7 +44,61 @@ function TransferEntry({ t }: { t: Tomato }) {
   );
 }
 
+/**
+ * Полноценный аккаунт: вход по логину и паролю или регистрация (имя + логин + пароль).
+ * Почта не нужна. С аккаунтом прогресс, друзья и образ доступны с любого устройства.
+ */
+function AccountPanel({ t, onDone }: { t: Tomato; onDone: () => void }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const loginOk = /^[A-Za-z0-9._-]{3,24}$/.test(login.trim());
+  const passOk = password.length >= 8;
+  const nameOk = t.name.trim().length > 0;
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    if (mode === "login") await t.loginAccount(login.trim(), password);
+    else if (await t.registerAccount(t.name, login.trim(), password)) onDone();
+    setBusy(false);
+  };
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-5" aria-label="Аккаунт" data-testid="account-panel">
+      <div className="flex rounded-[18px] border-2 border-ink bg-paper p-1" role="radiogroup" aria-label="Вход или регистрация">
+        {([["login", "Войти"], ["register", "Регистрация"]] as const).map(([id, label]) => (
+          <button key={id} type="button" role="radio" aria-checked={mode === id} onClick={() => setMode(id)}
+            className={`flex-1 rounded-[14px] px-3 py-3 text-base font-extrabold transition-colors sm:text-lg ${mode === id ? "bg-white text-ink as-shadow-sm" : "text-mute hover:text-ink"}`}>{label}</button>
+        ))}
+      </div>
+      {mode === "register" && (
+        <label className="flex flex-col gap-2.5">
+          <span className="as-label">Как тебя зовут?</span>
+          <input value={t.name} onChange={(e) => t.setName(e.target.value)} maxLength={24} autoComplete="nickname" placeholder="Например, Лотти" className="as-input" />
+        </label>
+      )}
+      <label className="flex flex-col gap-2.5">
+        <span className="as-label">Логин</span>
+        <input value={login} onChange={(e) => setLogin(e.target.value)} maxLength={24} autoComplete="username" autoCapitalize="none" spellCheck={false} placeholder="lotti" className="as-input" data-testid="account-login" />
+        {mode === "register" && <span className="text-sm text-mute">Латиница, цифры, точка, дефис или подчёркивание — 3–24 символа</span>}
+      </label>
+      <label className="flex flex-col gap-2.5">
+        <span className="as-label">Пароль</span>
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} maxLength={72} autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder={mode === "login" ? "Ваш пароль" : "Не меньше 8 символов"} className="as-input" data-testid="account-password" />
+      </label>
+      <button type="submit" className="as-btn as-btn-primary w-full" disabled={busy || !loginOk || !passOk || (mode === "register" && !nameOk)} data-testid="account-submit">
+        {busy ? "Подождите…" : mode === "login" ? "Войти" : "Создать аккаунт"}
+      </button>
+      <p className="text-base text-mute">{mode === "login" ? "Нет аккаунта? Нажмите «Регистрация» — почта не нужна." : "Почта не нужна. Уровень, друзья и образ будут с вами на любом устройстве."}</p>
+    </form>
+  );
+}
+
 export function JoinScreen({ t, initialMode, initialCode = "", onBack }: { t: Tomato; initialMode: JoinMode; initialCode?: string; onBack: () => void }) {
+  // Гость (только имя, профиль в этом браузере) или полноценный аккаунт (логин и пароль)
+  const [who, setWho] = useState<"guest" | "account">("guest");
+  const registered = Boolean(t.user?.login);
   const [mode, setMode] = useState<JoinMode>(initialCode ? "join" : initialMode);
   const [code, setCode] = useState(initialCode);
   // как в макете лобби: по умолчанию две команды (A и B); выключить можно до создания, потом режим не меняется
@@ -75,12 +129,28 @@ export function JoinScreen({ t, initialMode, initialCode = "", onBack }: { t: To
       </header>
 
       <main className="mx-auto grid w-full max-w-[1200px] flex-1 items-center gap-10 px-4 pb-12 sm:px-8 lg:grid-cols-[minmax(0,560px)_minmax(0,400px)] lg:justify-between lg:gap-16 lg:pb-20">
-        <form onSubmit={submit} className="flex flex-col gap-6 sm:gap-7" aria-labelledby="join-h">
+        <div className="flex flex-col gap-6 sm:gap-7">
           <div className="flex flex-col gap-3">
-            <h1 id="join-h" className="font-display text-[clamp(2.25rem,7vw,3.25rem)] leading-[1.05]">Вход гостем</h1>
-            <p className="text-lg text-mute sm:text-xl">Нужно только имя. Уровень и монеты сохранятся в этом браузере.</p>
+            <h1 id="join-h" className="font-display text-[clamp(2.25rem,7vw,3.25rem)] leading-[1.05]">{registered ? "Привет!" : who === "guest" ? "Вход гостем" : "Аккаунт"}</h1>
+            <p className="text-lg text-mute sm:text-xl">
+              {registered ? <>Вы вошли как <b className="text-ink">{t.user?.login}</b> — прогресс сохранится на любом устройстве.</>
+                : who === "guest" ? "Нужно только имя. Уровень и монеты сохранятся в этом браузере." : "Логин и пароль — чтобы играть с любого устройства."}
+            </p>
             {t.demoMode && <DemoBadge className="self-start" />}
           </div>
+          {!registered && (
+            <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Как войти">
+              {([["guest", "Гость", "только имя"], ["account", "Аккаунт", "логин и пароль"]] as const).map(([id, label, sub]) => (
+                <button key={id} type="button" role="radio" aria-checked={who === id} onClick={() => setWho(id)} data-testid={`who-${id}`}
+                  className={`flex flex-col items-start rounded-[18px] border-2 px-4 py-3 text-left transition-colors ${who === id ? "border-ink bg-lime as-shadow-sm" : "border-line bg-white hover:border-ink"}`}>
+                  <span className="text-lg font-extrabold">{label}</span>
+                  <span className="text-sm font-bold text-mute">{sub}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        {who === "account" && !registered ? <AccountPanel t={t} onDone={() => setWho("guest")} /> : (
+        <form onSubmit={submit} className="flex flex-col gap-6 sm:gap-7" aria-labelledby="join-h">
 
           <label className="flex flex-col gap-2.5">
             <span className="as-label">Как тебя зовут?</span>
@@ -114,8 +184,10 @@ export function JoinScreen({ t, initialMode, initialCode = "", onBack }: { t: To
           <button type="submit" className="as-btn as-btn-primary w-full" disabled={!nameOk || t.busy || (mode === "join" && !codeOk)}>
             {t.busy ? "Подождите…" : mode === "create" ? "Создать комнату" : "Войти в комнату"}
           </button>
-          <TransferEntry t={t} />
+          {!registered && <TransferEntry t={t} />}
         </form>
+        )}
+        </div>
 
         <aside className="hidden flex-col items-center gap-5 text-center lg:flex" aria-label="Ваш жетон">
           <div className="flex aspect-square w-full max-w-[400px] items-center justify-center rounded-full border-2 border-ink bg-rose as-shadow">

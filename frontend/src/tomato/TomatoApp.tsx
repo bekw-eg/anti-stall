@@ -70,7 +70,7 @@ export default function TomatoApp() {
     <MotionConfig reducedMotion="user">
       <div data-testid="tomato-app" className={`tomato-root min-h-[100dvh] font-sans ${dark ? "bg-ink text-cream" : "bg-white text-ink"}`} style={dark ? DARK_VARS : LIGHT_VARS}>
         <ConnectionBanner conn={t.conn} disconnectedFor={t.disconnectedFor} focusing={t.snapshot?.me?.status === "focusing"} graceSec={t.graceSec} />
-        <Toasts toasts={t.toasts} />
+        <Toasts toasts={t.toasts} onDismiss={t.dismissToast} />
         <RoomInvites t={t} />
         {room && <PrankOverlay t={t} />}
 

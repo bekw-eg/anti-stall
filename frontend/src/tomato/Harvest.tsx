@@ -11,6 +11,7 @@ import { lookOf } from "./Axolotl";
 import { HV, KINDS, clampX, coversItem, itemAt, makeRain, multOf, type RainItem } from "./harvestEngine";
 import { createRenderer, makeSpots, type DrawBasket, type HarvestRenderer, type Spot } from "./harvestCanvas";
 import { TEAM_COLOR, teamTitle } from "./socialRules";
+import { PrankSwitch } from "./PrankSwitch";
 import { useNow } from "./useMedia";
 import type { Tomato } from "./useTomato";
 import { Avatar } from "./screens/ui";
@@ -225,8 +226,10 @@ export function Harvest({ t }: { t: Tomato }) {
   // ---------------- управление
   const rivalTeam = live?.teams.find((x) => x.key === rivalKey);
   const myTeamLive = live?.teams.find((x) => x.key === myTeam);
-  const leader = rivalTeam ? rank(rivalTeam.players)[0] : undefined;
-  const target = rivalTeam?.players.find((p) => p.id === targetId) ?? leader;
+  // кто выключил получение шуток (Профиль → Настройки), тот не цель — сервер всё равно откажет
+  const prankable = (p: HarvestPlayer) => p.prankEnabled !== false;
+  const leader = rivalTeam ? rank(rivalTeam.players.filter(prankable))[0] : undefined;
+  const target = rivalTeam?.players.find((p) => p.id === targetId && prankable(p)) ?? leader;
   const charges = live?.charges[meId] ?? view?.charges ?? 1;
   const sNow = t.serverNow();
   const tSec = round ? (sNow - round.startedAt) / 1000 : 0;
@@ -328,16 +331,18 @@ export function Harvest({ t }: { t: Tomato }) {
     if (f.from === meId) return `Вы ${f.kind === "freeze" ? "заморозили" : "забрызгали"} ${f.toName}`;
     return `${f.fromName} ${verb} ${f.toName}`;
   };
-  const canPrank = running && playing && charges > 0;
+  const myPranksOn = snap.me?.prankEnabled !== false;
+  const canPrank = running && playing && charges > 0 && myPranksOn;
   /** Выбор цели: «Лидер» соперников (по умолчанию) или конкретный игрок. На телефоне — одной прокручиваемой строкой. */
   const targetChips = (scroll: boolean) => (
     <div className={`flex gap-1.5 ${scroll ? "min-w-0 flex-1 overflow-x-auto py-1 pl-1 pr-1 [scrollbar-width:none]" : "flex-wrap"}`} role="radiogroup" aria-label="Цель шутки">
       <button type="button" role="radio" aria-checked={targetId === null} onClick={() => setTargetId(null)}
         className={`inline-flex shrink-0 items-center rounded-full border-2 border-ink px-3 py-1 text-sm font-extrabold transition-colors ${targetId === null ? "bg-peach" : "bg-white hover:bg-blush"}`}>Лидер</button>
       {rivalTeam?.players.map((p) => (
-        <button key={p.id} type="button" role="radio" aria-checked={targetId === p.id} onClick={() => setTargetId(p.id)}
-          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-ink py-0.5 pl-0.5 pr-3 text-sm font-extrabold transition-colors ${targetId === p.id ? "bg-peach" : "bg-white hover:bg-blush"} ${p === leader ? "outline-dashed outline-2 outline-offset-2 outline-rose" : ""}`}>
-          <Avatar name={p.name} id={p.id} look={p.bot ? null : looks.get(p.id)} size={22} ring="#3B2422" />{p.name}
+        <button key={p.id} type="button" role="radio" aria-checked={targetId === p.id} onClick={() => setTargetId(p.id)} disabled={!prankable(p)}
+          title={prankable(p) ? undefined : `${p.name} отключил(а) шутки`}
+          className={`inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-ink py-0.5 pl-0.5 pr-3 text-sm font-extrabold transition-colors disabled:cursor-not-allowed disabled:border-dashed disabled:border-line disabled:text-mute ${targetId === p.id ? "bg-peach" : "bg-white hover:bg-blush"} ${p === leader ? "outline-dashed outline-2 outline-offset-2 outline-rose" : ""}`}>
+          <Avatar name={p.name} id={p.id} look={p.bot ? null : looks.get(p.id)} size={22} ring="#3B2422" />{p.name}{!prankable(p) && <span className="font-bold">· шутки выкл.</span>}
           {effOn(p.id, "freeze") && <Snowflake size={13} aria-label="заморожен" />}{effOn(p.id, "splat") && <CloudFog size={13} aria-label="в кляксах" />}
         </button>
       ))}
@@ -356,6 +361,15 @@ export function Harvest({ t }: { t: Tomato }) {
           <canvas ref={cv} className="block h-full w-full touch-none" style={{ cursor: splatted ? "pointer" : running && playing ? "none" : "default" }}
             aria-label="Ваше поле: помидоры падают, двигайте корзину, чтобы ловить" data-testid="harvest-field"
             onPointerMove={onPointer} onPointerDown={onDown} />
+          {/* счёт прямо на поле: видно, что соперник (в т. ч. бот) тоже ловит */}
+          {round && myTeamLive && rivalTeam && (
+            <div className="pointer-events-none absolute right-2 top-2 flex items-center gap-1.5 rounded-full border-2 border-ink bg-white/90 px-2.5 py-1 font-display text-sm leading-none shadow-[0_2px_0_#3B2422] sm:right-3 sm:top-3 sm:text-lg" data-testid="field-score" aria-label={`Счёт: ${mScore} — ${rScore}`}>
+              <i className="h-2.5 w-2.5 rounded-full border border-ink" style={{ background: teamColor(myTeam) }} />
+              <span className="relative top-0.5">{mScore} : {rScore}</span>
+              <i className="h-2.5 w-2.5 rounded-full border border-ink" style={{ background: teamColor(rivalKey) }} />
+              {rivalTeam.bots && <span className="font-sans text-[10px] font-extrabold text-mute sm:text-xs">бот</span>}
+            </div>
+          )}
           <div className="pointer-events-none absolute left-1/2 top-3 flex w-max max-w-[90%] -translate-x-1/2 flex-col items-center gap-2" aria-live="polite">
             {feed.slice(-3).reverse().map((f) => (
               <div key={f.id} className={`flex items-center gap-2 rounded-full border-2 border-ink px-3 py-1.5 text-sm font-extrabold shadow-[0_3px_0_#3B2422] sm:text-[15px] ${f.to === meId ? "bg-rose text-white" : f.from === meId ? "bg-lime text-ink" : "bg-white text-ink"}`}>
@@ -386,6 +400,7 @@ export function Harvest({ t }: { t: Tomato }) {
               <Snowflake size={20} strokeWidth={2.4} aria-hidden /><span className="truncate">Заморозка</span>
             </button>
           </div>
+          <PrankSwitch t={t} className="self-start" />
         </section>
         <ul className="flex flex-wrap gap-1.5 text-sm font-extrabold" aria-label="Помидоры">
           <li className="inline-flex items-center gap-1.5 rounded-full border-2 border-ink bg-white px-2.5 py-1"><i className="h-3.5 w-3.5 rounded-full border-2 border-ink bg-[#E26D5A]" />+1</li>
@@ -422,7 +437,8 @@ export function Harvest({ t }: { t: Tomato }) {
               <PrankTile icon={<Snowflake size={26} strokeWidth={2.4} />} label="Заморозка" hotkey="E" bg="bg-[#CFE6EE] hover:bg-[#B9DCE8]" testId="harvest-freeze"
                 disabled={freezeOff} onClick={() => prank("freeze")} title={target ? `Заморозка: корзина ${target.name} стоит` : undefined} />
             </div>
-            <p className="text-[13px] font-bold text-mute">Только по соперникам. Золотой помидор — ещё одна шутка.</p>
+            <p className="text-[13px] font-bold text-mute">{myPranksOn ? "Только по соперникам. Золотой помидор — ещё одна шутка." : "Вы отключили шутки — отправлять их тоже нельзя."}</p>
+            <PrankSwitch t={t} className="self-start" />
           </Panel>
 
           {/* счёт */}

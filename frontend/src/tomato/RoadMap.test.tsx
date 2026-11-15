@@ -82,9 +82,9 @@ describe("RoadMap: командный режим A/B", () => {
     expect(host.querySelectorAll('[role="progressbar"]')).toHaveLength(2);
   });
 
-  it("маркеры двух команд на одном узле расходятся", () => {
+  it("маркеры двух команд на одном узле встают друг над другом (не налезают)", () => {
     render(teamsRoad("A", { teams: [makeTeam("A", 3), makeTeam("B", 2)] }));
-    const offsets = ["A", "B"].map((k) => (q(`[data-testid="marker-${k}"] span`) as HTMLElement).style.marginLeft);
+    const offsets = ["A", "B"].map((k) => (q(`[data-testid="marker-${k}"] span`) as HTMLElement).style.marginTop);
     expect(offsets[0]).not.toBe(offsets[1]);
   });
 

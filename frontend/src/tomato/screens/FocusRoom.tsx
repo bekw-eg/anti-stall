@@ -2,6 +2,7 @@
  * 07 Room / Focus (Figma, страница back): тёмный экран, чтобы было видно, что идёт фокус.
  * Слева участники, в центре таймер (время — с сервера), справа чат комнаты. Игра и пакости откроются на перерыве.
  */
+import { GoalProgress } from "./GoalProgress";
 import { useEffect, useRef, useState } from "react";
 import { Lock, PenLine, SkipForward } from "lucide-react";
 import { STATUS_LABEL, formatTime } from "../format";
@@ -118,6 +119,8 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
             </li>
           ))}
         </ul>
+        {/* общая цель видна и во время фокуса — спокойно, без кнопок: играть можно на перерыве */}
+        <GoalProgress t={t} dark compact />
       </section>
 
       {/* ---------- Таймер ---------- */}

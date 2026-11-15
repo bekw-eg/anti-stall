@@ -361,6 +361,10 @@ export class Db {
     // v7: код друга (users.friend_code) — выдаётся при первом обращении, уникален
     if (!columns('users').includes('friend_code')) this.sql.exec('ALTER TABLE users ADD COLUMN friend_code TEXT');
     this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_friend_code ON users(friend_code) WHERE friend_code IS NOT NULL');
+    // v8: полноценный аккаунт — логин и пароль (хеш scrypt); у гостей — NULL
+    if (!columns('users').includes('login')) this.sql.exec('ALTER TABLE users ADD COLUMN login TEXT');
+    if (!columns('users').includes('password_hash')) this.sql.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
+    this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_login ON users(login) WHERE login IS NOT NULL');
 
     // v5: казна команды; уже существующие команды получают стартовый капитал
     if (!columns('team_progress').includes('treasury_coins')) {
