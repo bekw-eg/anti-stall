@@ -154,7 +154,8 @@ export function TowerDefense({ td, actions, fx = null, looks }: { td: TdView; ac
 
   return (
     <div className="flex h-full w-full flex-col gap-3 overflow-y-auto overflow-x-hidden p-3 sm:p-4 lg:flex-row lg:overflow-hidden" aria-label="Tower Defense">
-      <TdField td={td} current={current} towers={towers} effects={effects} selected={attack ? null : selected} onSelect={attack ? undefined : setSelected} hpPct={hpPct} fx={fx} looks={looks} />
+      <TdField td={td} current={current} towers={towers} effects={effects} selected={attack ? null : selected} onSelect={attack ? undefined : setSelected} hpPct={hpPct} fx={fx} looks={looks}
+        roleBanner={td.enabled ? <RoleBanner role={role} rivalTeam={rival?.team ?? null} /> : null} />
 
       {/* HUD: справа на широком экране, снизу на телефоне */}
       <aside className="flex min-w-0 shrink-0 flex-col gap-3 pb-16 text-ink lg:w-[22rem] lg:overflow-y-auto lg:pr-1 [scrollbar-width:thin] [&>*]:shrink-0">
@@ -162,7 +163,7 @@ export function TowerDefense({ td, actions, fx = null, looks }: { td: TdView; ac
           <p role="status" className="as-card p-4 text-base font-bold text-mute">Игра доступна только на перерыве. Сейчас — время учёбы.</p>
         ) : (
           <>
-            <RoleCard role={role} rivalTeam={rival?.team ?? null} coins={treasury} team={versus ? td.team : null} />
+            <TreasuryCard coins={treasury} team={versus ? td.team : null} />
 
             {/* Раунд */}
             <Panel title={current ? `Волна ${Math.max(1, current.wave)} из ${current.waves}` : attack ? "Атака" : "Раунд"}>
@@ -243,19 +244,40 @@ const resultText = (status: TdRound["status"], attack: boolean) =>
 const resultTone = (status: TdRound["status"], attack: boolean) =>
   status === "expired" ? "bg-ink text-cream" : (status === "won") !== attack ? "bg-lime text-ink" : "bg-rose text-white";
 
-/** Роль команды крупно + казна: сразу видно, что делать на этом перерыве. */
-function RoleCard({ role, rivalTeam, coins, team }: { role: "defense" | "attack" | null; rivalTeam: string | null; coins: number; team: string | null }) {
-  const Icon = role === "attack" ? Swords : Shield;
-  const title = role === "attack" ? "Вы в атаке" : role === "defense" ? "Вы в обороне" : "Оборона вместе";
-  const sub = role === "attack" ? `Шлите томатов на базу: ${teamTitle(rivalTeam).toLowerCase()}` : role === "defense" ? "Стройте башни, не пустите томатов к базе" : "Стройте башни и держите базу";
+/** Родительный падеж команды соперника для баннера атаки: «к базе красных». */
+const RIVAL_GEN: Record<string, string> = { A: "красных", B: "синих" };
+
+/**
+ * Роль на этом перерыве — баннер над левым верхним углом поля (не поверх карты: там портал, тропа и слоты).
+ * Тексты — по реальным действиям роли: защита строит башни на «+» (и усиливает их), атака на поле защиты
+ * строить не может — только шлёт томатов-наёмников и дебаффы.
+ */
+export function RoleBanner({ role, rivalTeam }: { role: "defense" | "attack" | null; rivalTeam: string | null }) {
+  const attack = role === "attack";
+  const Icon = attack ? Swords : Shield;
+  const title = attack ? "Вы в атаке" : role === "defense" ? "Вы в обороне" : "Оборона вместе";
+  const sub = attack
+    ? `Шлите томатов и дебаффы — прорвитесь к базе ${RIVAL_GEN[rivalTeam ?? ""] ?? "соперника"}`
+    : "Стройте башни на «+» — не пустите томатов к базе";
   return (
     <section aria-label="Ваша роль" data-testid="td-role" data-role={role ?? "shared"}
-      className={`flex items-center gap-3 rounded-[24px] border-2 border-ink px-4 py-3 shadow-[0_6px_0_#3B2422] ${role === "attack" ? "bg-rose text-white" : "bg-ink text-cream"}`}>
-      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] ${role === "attack" ? "bg-white text-rose" : "bg-lime text-ink"}`}><Icon size={26} strokeWidth={2.4} aria-hidden /></span>
-      <span className="min-w-0 flex-1">
-        <span className="block font-display text-2xl uppercase leading-none"><span className="relative top-0.5">{title}</span></span>
-        <span className="mt-1 block text-[13px] font-bold leading-snug opacity-85">{sub}</span>
+      className={`as-shadow-sm flex min-w-0 max-w-full items-center gap-2.5 self-start rounded-[18px] border-[3px] border-ink py-1.5 pl-1.5 pr-3 sm:h-14 sm:pr-4 ${attack ? "bg-rose text-white" : "bg-ink text-cream"}`}>
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[12px] border-2 border-ink sm:h-10 sm:w-10 ${attack ? "bg-white text-rose" : "bg-lime text-ink"}`}>
+        <Icon size={22} strokeWidth={2.6} aria-hidden />
       </span>
+      <span className="min-w-0">
+        <span className="block font-display text-lg uppercase leading-none sm:text-xl"><span className="relative top-0.5">{title}</span></span>
+        <span className="mt-0.5 block text-xs font-bold leading-snug sm:truncate sm:text-[13px]" data-testid="td-role-goal">{sub}</span>
+      </span>
+    </section>
+  );
+}
+
+/** Казна команды — в панели, рядом с кнопками, где её тратят. */
+function TreasuryCard({ coins, team }: { coins: number; team: string | null }) {
+  return (
+    <section aria-label="Казна" className="as-card flex items-center justify-between gap-3 px-4 py-2.5">
+      <h3 className="font-display text-lg uppercase leading-none"><span className="relative top-0.5">{team ? `Казна: ${teamTitle(team).toLowerCase()}` : "Казна команды"}</span></h3>
       <Treasury coins={coins} team={team} />
     </section>
   );
@@ -474,9 +496,9 @@ function Decor({ kind }: { kind: number }) {
  * Поле: SVG-слой (луг, тропа, портал, Академия, места и башни) + canvas поверх (враги, снаряды, всплывающий урон).
  * Оба слоя лежат в одном контейнере с пропорциями карты — координаты совпадают.
  */
-function TdField({ td, current, towers, effects, selected, onSelect, hpPct, fx, looks }: {
+function TdField({ td, current, towers, effects, selected, onSelect, hpPct, fx, looks, roleBanner = null }: {
   td: TdView; current: TdRound | null; towers: TdTower[]; effects: TdEffect[]; selected: string | null; onSelect?: (id: string | null) => void; hpPct: number; fx: TdFx | null;
-  looks?: Record<string, AvatarLook | undefined>;
+  looks?: Record<string, AvatarLook | undefined>; roleBanner?: ReactNode;
 }) {
   const { map } = td;
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
@@ -538,13 +560,14 @@ function TdField({ td, current, towers, effects, selected, onSelect, hpPct, fx, 
   const banner = [fx, waveFx].filter(Boolean).sort((a, b) => b!.id - a!.id)[0] ?? null;
 
   return (
-    <div
-      className="relative flex w-full shrink-0 items-center justify-center [aspect-ratio:var(--td-ar)] lg:h-full lg:min-h-0 lg:flex-1 lg:shrink lg:[aspect-ratio:auto] lg:[container-type:size]"
-      style={{ "--td-ar": `${map.cols} / ${map.rows}` } as React.CSSProperties}
-    >
+    // Колонка «баннер роли + поле»: ширина поля считается от высоты контейнера за вычетом баннера (h-14 + gap-3)
+    <div className="relative flex w-full shrink-0 justify-center lg:h-full lg:min-h-0 lg:flex-1 lg:shrink lg:items-center lg:[container-type:size]">
+      <div className="flex min-w-0 flex-col gap-3"
+        style={{ width: `min(100%, calc((100cqh - ${roleBanner ? "4.25rem" : "0rem"}) * ${map.cols} / ${map.rows}))` }}>
+      {roleBanner}
       <div
-        className="relative overflow-hidden rounded-[24px] border-2 border-ink bg-lime shadow-[0_6px_0_#3B2422]"
-        style={{ aspectRatio: `${map.cols} / ${map.rows}`, width: `min(100%, calc(100cqh * ${map.cols} / ${map.rows}))` }}
+        className="relative w-full overflow-hidden rounded-[24px] border-2 border-ink bg-lime shadow-[0_6px_0_#3B2422]"
+        style={{ aspectRatio: `${map.cols} / ${map.rows}` }}
         data-testid="td-field"
       >
         <svg viewBox={`0 0 ${map.cols} ${map.rows}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Игровое поле">
@@ -650,6 +673,7 @@ function TdField({ td, current, towers, effects, selected, onSelect, hpPct, fx, 
         )}
         {effects.length > 0 && <EffectChips effects={effects} className="pointer-events-none absolute left-2 top-2 max-w-[70%]" />}
         <FieldBanner fx={banner} />
+      </div>
       </div>
     </div>
   );

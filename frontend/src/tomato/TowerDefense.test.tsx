@@ -219,7 +219,7 @@ describe("TowerDefense: показывает серверное состояни
       duel: { stageId: "camp", winner: "A", scores: {}, roundNo: 1 },
     }));
     expect(host.querySelector('[data-testid="td-role"]')!.textContent).toContain("Вы в атаке");
-    expect(host.querySelector('[data-testid="td-role"]')!.textContent).toContain("базу: красные");
+    expect(host.querySelector('[data-testid="td-role"]')!.textContent).toContain("к базе красных");
     expect(slot("s3").querySelector('[data-testid="tower"]')!.getAttribute("data-level")).toBe("2");
     expect(slot("s1").getAttribute("role")).toBeNull(); // на чужом поле не строят
     click(slot("s1"));
@@ -230,6 +230,35 @@ describe("TowerDefense: показывает серверное состояни
     await flush();
     expect(actions.sendUnit).toHaveBeenCalledWith("cherry");
     expect(host.textContent).toContain("Дуэль выиграли красные");
+  });
+
+  it("баннер роли — над левым верхним углом поля, а не в боковой панели; тексты по механике роли", () => {
+    const role = () => host.querySelector('[data-testid="td-role"]') as HTMLElement | null;
+    const field = () => host.querySelector('[data-testid="td-field"]')!;
+    const aside = () => host.querySelector("aside")!;
+
+    render(makeTd({ mode: "teams", team: "A", role: "defense", defender: "A", rival: { team: "B", towers: 0, treasuryCoins: 0, round: null } }));
+    expect(role()!.getAttribute("data-role")).toBe("defense");
+    expect(role()!.getAttribute("aria-label")).toBe("Ваша роль");
+    expect(role()!.textContent).toBe("Вы в оборонеСтройте башни на «+» — не пустите томатов к базе");
+    // баннер — соседний с полем элемент перед ним (сверху слева), а не карточка в панели и не поверх карты
+    expect(role()!.nextElementSibling).toBe(field());
+    expect(field().contains(role())).toBe(false);
+    expect(aside().contains(role())).toBe(false);
+    expect(aside().querySelector('[data-testid="treasury"]')).not.toBeNull(); // казна осталась в панели
+
+    render(makeTd({ mode: "teams", team: "A", role: "attack", defender: "B", rival: { team: "B", towers: 0, treasuryCoins: 0, round: null } }));
+    expect(role()!.getAttribute("data-role")).toBe("attack");
+    expect(role()!.className).toContain("bg-rose");
+    expect(role()!.textContent).toBe("Вы в атакеШлите томатов и дебаффы — прорвитесь к базе синих");
+    expect(role()!.nextElementSibling).toBe(field());
+
+    render(makeTd()); // общий режим: оборона вместе
+    expect(role()!.getAttribute("data-role")).toBe("shared");
+    expect(role()!.textContent).toContain("Оборона вместе");
+
+    render(makeTd({ enabled: false, phase: "focus" })); // вне перерыва роли нет
+    expect(role()).toBeNull();
   });
 
   it("баннер посреди поля: событие сервера и новая волна", () => {
