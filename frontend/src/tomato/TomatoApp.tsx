@@ -7,6 +7,7 @@ import { PrankOverlay } from "./PrankOverlay";
 import { RoomInvites } from "./FriendsTab";
 import { BreakRoom } from "./screens/BreakRoom";
 import { EndEarly, FocusRoom } from "./screens/FocusRoom";
+import { Home } from "./screens/Home";
 import { JoinScreen, type JoinMode } from "./screens/JoinScreen";
 import { Landing } from "./screens/Landing";
 import { Lobby } from "./screens/Lobby";
@@ -30,7 +31,11 @@ export default function TomatoApp() {
   const voice = useVoice(client, t.socket, room?.id ?? null, t.snapshot?.me?.userId);
   const stickers = useStickers(t.snapshot?.me?.userId);
 
-  const [screen, setScreen] = useState<"landing" | "join">(routeCode ? "join" : "landing");
+  const [screen, setScreen] = useState<"landing" | "join" | "home">(routeCode ? "join" : "landing");
+  // Главная поверх комнаты: логотип в шапке комнаты. Это не выход — участие, таймер и голос продолжаются.
+  const [homeView, setHomeView] = useState(false);
+  const goHome = useCallback(() => { setSheet(null); setHomeView(true); window.scrollTo(0, 0); }, []);
+  const backToRoom = useCallback(() => { setHomeView(false); window.scrollTo(0, 0); }, []);
   const [joinMode, setJoinMode] = useState<JoinMode>("create");
   const [sheet, setSheet] = useState<Sheet>(null);
   const closeSheet = useCallback(() => setSheet(null), []);
@@ -47,12 +52,13 @@ export default function TomatoApp() {
 
   useEffect(() => { document.title = "AntiStall"; }, []);
 
-  // Вышли из комнаты — возвращаемся к экрану входа, панели закрываем
+  // Вышли из комнаты — на главную (игрок уже вошёл), панели закрываем
   const hadRoom = useRef(false);
   useEffect(() => {
     if (room) hadRoom.current = true;
-    else if (hadRoom.current) { hadRoom.current = false; setScreen("join"); setSheet(null); }
+    else if (hadRoom.current) { hadRoom.current = false; setScreen("home"); setHomeView(false); setSheet(null); }
   }, [room]);
+  const openJoin = useCallback((mode: JoinMode) => { setJoinMode(mode); setScreen("join"); window.scrollTo(0, 0); }, []);
 
   // Перерыв = время игры: при входе в перерыв один раз подгружаем его игру (TD или Harvest)
   const { loadTd, loadHarvest } = t;
@@ -78,17 +84,28 @@ export default function TomatoApp() {
           screen === "landing" ? (
             <Landing
               ready={t.boot === "ready"} serverOk={t.serverOk} demo={t.demoMode}
-              onStart={() => { setJoinMode("create"); setScreen("join"); window.scrollTo(0, 0); }}
-              onJoin={() => { setJoinMode("join"); setScreen("join"); window.scrollTo(0, 0); }}
+              // уже вошли (гость в этой вкладке или аккаунт) — сразу на главную, иначе вход
+              onStart={() => { if (t.user) { setScreen("home"); window.scrollTo(0, 0); } else openJoin("create"); }}
+              onJoin={() => openJoin("join")}
             />
+          ) : screen === "home" && t.user ? (
+            <Home t={t} onReturn={() => undefined} onJoinScreen={openJoin} />
           ) : (
-            <JoinScreen t={t} initialMode={joinMode} initialCode={routeCode ?? ""} onBack={() => setScreen("landing")} />
+            <JoinScreen t={t} initialMode={joinMode} initialCode={routeCode ?? ""} onBack={() => setScreen(t.user ? "home" : "landing")} />
           )
+        ) : homeView ? (
+          <div className="flex min-h-[100dvh] flex-col">
+            <Home t={t} onReturn={backToRoom} onJoinScreen={openJoin} />
+            {/* голос не обрывается, пока игрок на главной */}
+            <div className="sticky bottom-0 z-20 px-3 pb-3 pt-1 sm:px-8 sm:pb-5 lg:px-12">
+              <VoiceBar conn={t.conn} voice={voice} meId={t.snapshot?.me?.userId} tone="dark" note={voiceNote(t)} looks={looks} />
+            </div>
+          </div>
         ) : (
           <div className="flex min-h-[100dvh] flex-col">
             {/* высота по содержимому: если стикеров или участников много, страница прокручивается, полоса голоса прилипает к низу */}
             {/* повторное нажатие кнопки шапки закрывает панель */}
-            <RoomHeader t={t} headerRef={headerRef} active={sheet} stickers={stickers} onOpen={(s) => setSheet((cur) => (cur === s ? null : s))} />
+            <RoomHeader t={t} headerRef={headerRef} active={sheet} stickers={stickers} onHome={goHome} onOpen={(s) => setSheet((cur) => (cur === s ? null : s))} />
             {phase === "focus" ? <FocusRoom t={t} stickers={stickers} /> : phase === "break" ? <BreakRoom t={t} onOpenMap={() => setSheet("map")} /> : <Lobby t={t} />}
             <div className="sticky bottom-0 z-20 px-3 pb-3 pt-1 sm:px-8 sm:pb-5 lg:px-12">
               <VoiceBar conn={t.conn} voice={voice} meId={t.snapshot?.me?.userId} tone={dark ? "light" : "dark"} note={voiceNote(t)} looks={looks} />
@@ -96,7 +113,7 @@ export default function TomatoApp() {
           </div>
         )}
 
-        <SheetPanel t={t} sheet={room ? sheet : null} onClose={closeSheet} top={headerH} />
+        <SheetPanel t={t} sheet={room && !homeView ? sheet : null} onClose={closeSheet} top={headerH} />
       </div>
     </MotionConfig>
   );
@@ -121,7 +138,7 @@ function voiceNote(t: Tomato) {
  * посередине то, что относится к фазе (таймер перерыва / «Завершить досрочно»). Когда места мало,
  * средняя группа уходит на вторую строку — ничего не наезжает друг на друга.
  */
-function RoomHeader({ t, onOpen, headerRef, active, stickers }: { t: Tomato; onOpen: (s: Exclude<Sheet, null>) => void; headerRef: React.Ref<HTMLElement>; active: Sheet; stickers: Stickers }) {
+function RoomHeader({ t, onOpen, onHome, headerRef, active, stickers }: { t: Tomato; onOpen: (s: Exclude<Sheet, null>) => void; onHome: () => void; headerRef: React.Ref<HTMLElement>; active: Sheet; stickers: Stickers }) {
   const snap = t.snapshot!;
   const room = snap.room;
   const planned = room.settings.cycles ?? 4;
@@ -134,7 +151,11 @@ function RoomHeader({ t, onOpen, headerRef, active, stickers }: { t: Tomato; onO
     <header ref={headerRef} className={`sticky top-0 z-40 flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 sm:gap-x-5 sm:gap-y-3 sm:px-8 sm:py-4 lg:px-12 ${dark ? "bg-ink" : "border-b-2 border-soft bg-white"}`}>
       {/* ряд 1 на телефоне: логотип, комната, профиль; с sm — как раньше, всё в одну линию */}
       <div className="flex w-full min-w-0 items-center gap-2.5 sm:w-auto sm:grow sm:basis-[16rem] sm:gap-4">
-        <Logo tone={dark ? "cream" : "ink"} compact />
+        <button type="button" onClick={onHome} data-testid="go-home" title="На главную — вы останетесь в комнате"
+          aria-label="На главную. Вы останетесь в комнате, вернуться можно с полосы сверху"
+          className={`shrink-0 rounded-[12px] p-1 transition-colors ${dark ? "hover:bg-cocoa" : "hover:bg-paper"}`}>
+          <Logo tone={dark ? "cream" : "ink"} compact />
+        </button>
         <span className={`hidden h-9 w-0.5 shrink-0 sm:block ${dark ? "bg-cocoa" : "bg-soft"}`} aria-hidden />
         <div className="flex min-w-0 flex-col gap-1">
           <h1 className={`truncate text-base font-extrabold leading-tight sm:text-[22px] ${dark ? "text-cream" : "text-ink"}`} title={room.name}>{room.name}</h1>

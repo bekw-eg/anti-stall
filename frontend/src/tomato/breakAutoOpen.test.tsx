@@ -156,4 +156,19 @@ describe("экраны по фазе комнаты", () => {
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
     expect($("stats-panel")).toBeNull();
   });
+
+  it("логотип в комнате — на главную без выхода: полоса «Вы в комнате» с фазой и таймером возвращает обратно", () => {
+    show("focus", { user: { id: "u1", name: "Лотти", level: 2, coins: 12, login: null }, remainingMs: 600_000 }, "/room/K7QM2X");
+    expect($("game-later")).not.toBeNull(); // экран фокуса
+    act(() => ($("go-home") as HTMLButtonElement).click());
+    expect($("home-screen")).not.toBeNull();
+    expect($("game-later")).toBeNull();
+    const bar = $("room-return-bar")!.textContent ?? "";
+    expect(bar).toContain("Комната Лотти");
+    expect(bar).toContain("идёт фокус");
+    expect(bar).toContain("10:00");
+    act(() => ($("return-to-room") as HTMLButtonElement).click());
+    expect($("home-screen")).toBeNull();
+    expect($("game-later")).not.toBeNull();
+  });
 });

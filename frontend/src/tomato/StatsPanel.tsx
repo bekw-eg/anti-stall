@@ -36,27 +36,32 @@ function Bar({ value, max, label, color = "#EAA695" }: { value: number; max: num
 
 const H2 = "font-display text-2xl leading-none text-ink";
 
-/** Статистика: личная (сессии, время, уровень, неделя, достижения) и командная. Всё — данные сервера. */
+/**
+ * Статистика: личная (сессии, время, уровень, неделя, достижения) и командная. Всё — данные сервера.
+ * Без комнаты (главная страница) — только личная часть.
+ */
 export function StatsPanel({ t }: { t: Tomato }) {
-  const snap = t.snapshot!;
-  const me = snap.me;
+  const snap = t.snapshot;
+  const me = snap?.me;
   const [stats, setStats] = useState<StudyStats | null>(null);
   const [room, setRoom] = useState<RoomStats | null>(null);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0); // «Повторить» — новый запрос
   // перечитываем, когда что-то могло измениться: награды, фаза, очки команды
-  const refreshKey = `${me?.xp}:${me?.coins}:${snap.room.phase}:${snap.room.cycleNo}:${snap.challenge.points}:${snap.members.length}`;
+  const refreshKey = `${me?.xp ?? t.user?.xp}:${me?.coins ?? t.user?.coins}:${snap?.room.phase}:${snap?.room.cycleNo}:${snap?.challenge.points}:${snap?.members.length}`;
+  const roomId = snap?.room.id ?? null;
 
   useEffect(() => {
     let alive = true;
     const fail = (e: unknown) => { if (alive) setError(e instanceof TomatoApiError ? apiErrorText(e) : "Нет связи с сервером"); };
     setError(null);
     client.stats().then((s) => alive && setStats(s)).catch(fail);
-    client.roomStats(snap.room.id).then((r) => alive && setRoom(r)).catch(fail);
+    if (roomId) client.roomStats(roomId).then((r) => alive && setRoom(r)).catch(fail);
+    else setRoom(null);
     client.achievements().then((a) => alive && setAchievements(a.achievements)).catch(fail);
     return () => { alive = false; };
-  }, [refreshKey, snap.room.id, attempt]);
+  }, [refreshKey, roomId, attempt]);
 
   const errorBox = error && (
     <div role="alert" className="flex flex-wrap items-center gap-3 rounded-[18px] border-2 border-ink bg-white px-4 py-3 text-sm font-bold lg:col-span-2" data-testid="stats-error">
@@ -70,7 +75,7 @@ export function StatsPanel({ t }: { t: Tomato }) {
   const maxDay = Math.max(...stats.daily.map((d) => d.focusSeconds), 1);
   const span = stats.nextLevelXp - stats.levelStartXp;
   const today = new Date().toDateString();
-  const look = new Map(snap.members.map((m) => [m.userId, m.avatar]));
+  const look = new Map((snap?.members ?? []).map((m) => [m.userId, m.avatar]));
 
   return (
     <div className="grid min-h-full content-start gap-8 bg-paper p-5 sm:p-6 lg:grid-cols-2" data-testid="stats-panel">
@@ -142,6 +147,7 @@ export function StatsPanel({ t }: { t: Tomato }) {
         </div>
       </section>
 
+      {roomId && (
       <section aria-labelledby="team-stats-h" className="flex min-w-0 flex-col gap-4">
         <div className="flex items-baseline justify-between gap-2">
           <h2 id="team-stats-h" className={H2}>Командный прогресс</h2>
@@ -205,6 +211,7 @@ export function StatsPanel({ t }: { t: Tomato }) {
           </>
         )}
       </section>
+      )}
     </div>
   );
 }
