@@ -141,6 +141,27 @@
 (старт / постройка / улучшение; одного «захода» в игру мало), суточный потолок 8 наград (в демо-комнатах — 500). В режиме A/B команды играют параллельно; если обе сыграли один этап,
 сервер объявляет победителя дуэли (по исходу и остатку HP) и выдаёт ему бонус — с тем же суточным потолком (8, в демо-комнатах 500; считается отдельно от раундов). Клиент не может назначить победителя, изменить HP или баланс.
 
+### Harvest на перерывах (`GET /api/rooms/:id/harvest`)
+Игры перерывов чередуются (`config.breakGames`, переменная `TOMATO_BREAK_GAMES`: `alternate` по умолчанию, `td`, `harvest`):
+после нечётного цикла — Tower Defense, после чётного — Harvest. Какая игра сейчас — `snapshot.room.breakGame`.
+На Harvest-перерыве действия TD отвечают `409 WRONG_GAME`, и наоборот. Перерыв с Harvest не короче
+`economy.harvest.minBreakSec` (30 с): помещаются отсчёт, раунд и экран итогов.
+
+Раунд создаёт сервер в начале перерыва: отсчёт 3 с, длительность до 60 с. «Дождь» помидоров задаёт `round.seed` —
+клиент строит тот же дождь (`frontend/src/tomato/harvestEngine.ts`, совпадение проверяет тест). Команды — `A`/`B`
+(Красные/Синие); в комнате без команд и для пустой команды играют боты (`round.botTeam`).
+
+| Метод | Путь | Тело | Ответ / проверки |
+|---|---|---|---|
+| GET | `/api/rooms/:id/harvest` | — | `{enabled, game, nextGame, myTeam, round:{id, seed, startedAt, endsAt, duration, status, result, botTeam, teams[]}, charges, live}`; `live` — тот же кадр, что `harvest_frame` |
+| POST | `/api/rooms/:id/harvest/catch` | `{itemId, x}` | `{ok, kind, score, combo, mult, charges}`. Принимается, только если заявка в окне `[crossT − 0,35 с; crossT + 2 с]` (`TOO_EARLY`/`TOO_LATE`), корзина в точке `x` накрывает помидор (`MISSED`), корзина не «телепортировалась» с последней известной позиции (`TOO_FAST`), игрок не заморожен (`FROZEN`), помидор ещё не засчитан команде (`ALREADY_CAUGHT`) |
+| POST | `/api/rooms/:id/harvest/prank` | `{targetId, kind:"freeze"\|"splat"}` | `201 {ok, charges, until}`. Только по команде соперника (`INVALID_TARGET`), нужен заряд (`NO_CHARGES`; старт 1, +1 за золотой, максимум 3), повторно на того же нельзя (`ALREADY_APPLIED`). Заморозка — корзина стоит 2 с (бот 3 с), клякса — помидоры на экране 5 с |
+
+Счёт, комбо (5 подряд — ×2, 10 — ×3; гнилой −2 и сброс; окончательный пропуск сбрасывает серию) и личные очки сервер
+пересчитывает по журналу поимок. Итог (`harvest_finished`): каждому участнику — опыт `10 + 2·очки (до 30) + 15 за победу`
+(суточный потолок, монет нет); победа живой команды — шаг по карте, как победа в этапе TD; статистика открывает
+достижение «Урожайный год» и вещи образа «Шляпа» (победа) и «Бусы-черри» (5 золотых помидоров).
+
 ### Снимок комнаты (`room_state`, ответ `GET /api/rooms/:id`)
 
 ```jsonc
@@ -172,6 +193,7 @@
 | `voice_leave` | `roomId` | `voice_left`; остальным — `voice_peer_left {reason:"left"}` |
 | `voice_signal` | `roomId, to, signal` | пересылается `to` как `voice_signal {from, signal}`. `signal` — `{description:{type:"offer"|"answer", sdp}}` или `{candidate:{candidate, sdpMid, sdpMLineIndex, usernameFragment}|null}`; лишние поля отбрасываются. Ошибки: `VOICE_NOT_JOINED`, `VOICE_PEER_NOT_FOUND`, `INVALID_SIGNAL` |
 | `voice_state` | `roomId, muted?, deafened?, speaking?` | рассылается комнате как `voice_state` (только при изменении; с выключенным микрофоном `speaking` всегда `false`) |
+| `harvest_move` | `roomId, x` | без ответа. Позиция корзины Harvest — только для показа другим (в `harvest_frame`) и проверки скорости; прыжок обрезается до допустимой скорости, замороженная корзина стоит. Очки так не получить |
 
 Любое другое событие (`give_me_coins`, `complete_session`, `start_timer`…) → `error UNKNOWN_EVENT`. Голосовые сообщения
 не меняют ни экономику, ни прогресс: сервер только пересылает SDP/ICE участникам того же голосового канала.
@@ -198,6 +220,10 @@
 | `node_reached` | `{team, nodeId, title, points, reward}` — сервер засчитал этап карты (`reward` — этапная награда, `null` у финального узла) |
 | `challenge_completed` | `{team, draw, roadmapId, reward, contributors[]}` — команда-победитель (при ничьей приходит по событию на каждую, `draw:true`) |
 | `help_applied` | `{actionId, type, from, to, cost, xpBonusPct?, expiresAt, at}` |
+| `harvest_started` | `{roundId, startedAt, endsAt, duration}` |
+| `harvest_frame` | ~10 раз в секунду: `{roundId, t, serverTime, status, teams:[{key, name, bots, score, combo, mult, bestCombo, missed, caught[], players:[{id, name, bot, x, pts, caught, golden, rotten}]}], effects[], charges{}}` |
+| `harvest_prank` | `{roundId, from, fromName, to, toName, kind, at, until}` |
+| `harvest_finished` | `{roundId, winner, teams{key:{score, bestCombo, missed, players}}, rewards{userId:{xp}}}` |
 | `prank_applied` | `{actionId, type, from, to, blocked, effectEndsAt, at}` |
 | `td_state` | `{team, towers[], round}` — состояние игры команды (приходит ~2 раза в секунду, пока идёт раунд) |
 | `td_round_started` | `{team, stageId, startedBy, endsAt, speed}` |

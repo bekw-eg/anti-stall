@@ -30,6 +30,12 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
     maxBodyBytes: 64 * 1024,
 
     tickMs: 500, //            как часто сервер проверяет границы фаз
+    /**
+     * Какая игра на перерыве: 'alternate' — после нечётного цикла Tower Defense, после чётного Harvest;
+     * 'td' / 'harvest' — всегда одна игра (удобно для показа и тестов). Переменная TOMATO_BREAK_GAMES.
+     */
+    breakGames: ['td', 'harvest', 'alternate'].includes(env.TOMATO_BREAK_GAMES) ? env.TOMATO_BREAK_GAMES : 'alternate',
+    harvestFrameMs: 100, //   как часто в комнату уходит кадр Harvest (корзины, счёт)
     broadcastTickMs: 1000, //  как часто в комнату уходит timer_tick (для сверки часов)
     wsPingMs: 5000,
 
@@ -70,6 +76,15 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
         counterattackCoins: 40, // «Контратака»: проигравшая дуэль раунда 1 команда получает в казну перед реваншем (один раз)
       },
       nodeReward: { xp: 25, coins: 10 }, // за каждый новый узел карты (победа в этапе TD), один раз на участника раунда
+      harvest: {
+        roundSec: 60, countdownSec: 3, minRoundSec: 8,
+        resultsSec: 6, // после раунда остаётся время посмотреть итоги до конца перерыва
+        minBreakSec: 30, // перерыв с Harvest не короче (демо-перерыв 15 с — раунд бы не поместился)
+        settleSec: 2.5, // через сколько после падения пропуск окончателен (запоздалая заявка о поимке ещё принимается)
+        lateSec: 2, earlySec: 0.35, // окно заявки «поймал» вокруг момента пересечения края корзины (задержка сети)
+        reward: { base: 10, perPoint: 2, maxPointsXp: 30, win: 15 }, // только опыт: монеты не начисляются
+        dailyRewardedRounds: 8, demoDailyRewardedRounds: 500,
+      },
     },
 
     // Голос: WebRTC mesh внутри комнаты. Сервер только передаёт сигналы и выдаёт ICE-серверы,

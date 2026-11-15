@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TomatoApiError, TomatoClient, WS_CLOSE_UNAUTHORIZED } from "@/api/tomato";
-import type { AvatarLook, AvatarSkin, ChatMessage, Connection, CreateRoomInput, Me, MercType, RoomSnapshot, ServerEvent, SocialAction, SpellId, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
+import type { AvatarLook, AvatarSkin, ChatMessage, HarvestLive, HarvestPrankEvent, HarvestView, Connection, CreateRoomInput, Me, MercType, RoomSnapshot, ServerEvent, SocialAction, SpellId, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
 import { apiErrorText, extractRoomCode } from "./format";
 import { SHIELD_COST } from "./socialRules";
 import { useNow } from "./useMedia";
@@ -40,7 +40,7 @@ export interface Toast { id: number; text: string; tone: "info" | "reward" | "wa
 export interface AvatarCatalog {
   skins: { id: AvatarSkin; title: string; minLevel: number }[];
   slots: string[];
-  items: { id: string; slot: "head" | "face" | "neck"; title: string; minLevel: number }[];
+  items: { id: string; slot: "head" | "face" | "neck"; title: string; minLevel: number; unlock?: { stat: string; count: number; label: string } }[];
 }
 export const DEFAULT_AVATAR_CATALOG: AvatarCatalog = {
   skins: [
@@ -53,6 +53,8 @@ export const DEFAULT_AVATAR_CATALOG: AvatarCatalog = {
     { id: "glasses", slot: "face", title: "Очки", minLevel: 1 }, { id: "scarf", slot: "neck", title: "Шарф", minLevel: 2 },
     { id: "headphones", slot: "head", title: "Наушники", minLevel: 2 }, { id: "party", slot: "head", title: "Колпак", minLevel: 3 },
     { id: "shades", slot: "face", title: "Тёмные очки", minLevel: 4 }, { id: "crown", slot: "head", title: "Корона", minLevel: 5 },
+    { id: "straw", slot: "head", title: "Шляпа", minLevel: 1, unlock: { stat: "harvestWins", count: 1, label: "Победа в Harvest" } },
+    { id: "cherries", slot: "neck", title: "Бусы-черри", minLevel: 1, unlock: { stat: "harvestGolden", count: 5, label: "5 золотых помидоров" } },
   ],
 };
 
@@ -76,7 +78,7 @@ export function describeEvent(ev: ServerEvent, myId?: string, td?: TdNames): { t
   };
   const info = (text: string | null, tone: Toast["tone"] = "info") => (text ? { text, tone } : null);
   switch (ev.type) {
-    case "reward_granted": return info(d.kind === "achievement" ? null : `+${d.xp} XP · +${d.coins} монет${d.levelUp ? ` · уровень ${d.level}` : ""}`, "reward");
+    case "reward_granted": return info(d.kind === "achievement" ? null : `+${d.xp} XP${d.coins ? ` · +${d.coins} монет` : ""}${d.levelUp ? ` · уровень ${d.level}` : ""}`, "reward");
     case "achievement_unlocked": return info(`Достижение: ${d.title}`, "reward");
     case "phase_changed": return info(d.skipped ? "Хост пропустил фокус — начался перерыв" : null);
     case "session_completed": return info(d.skipped ? (d.rewarded ? null : "Фокус пропущен слишком рано — награды нет") : d.rewarded ? null : d.status === "completed" ? "Сессия завершена, дневной лимит наград исчерпан" : "Сессия прервана — без награды");
@@ -195,6 +197,11 @@ export function useTomato(initialCode?: string) {
   const tdRef = useRef<TdView | null>(null);
   tdRef.current = td;
   const [socket, setSocket] = useState<TomatoSocket | null>(null); // общий сокет комнаты (голос использует его же)
+  // Harvest: вид раунда (React) и последний кадр (ref — холст читает его каждый кадр, без перерисовки всего приложения)
+  const [harvest, setHarvest] = useState<HarvestView | null>(null);
+  const harvestFrame = useRef<HarvestLive | null>(null);
+  const harvestUiAt = useRef(0);
+  const [harvestFeed, setHarvestFeed] = useState<(HarvestPrankEvent & { id: number })[]>([]);
   const [feed, setFeed] = useState<SocialAction[]>([]); // лента помощи и шуток комнаты
   const [chat, setChat] = useState<ChatMessage[]>([]); // текстовый чат комнаты (последние сообщения)
 
@@ -227,6 +234,8 @@ export function useTomato(initialCode?: string) {
     setRoomId(null);
     setSnapshot(null);
     setTd(null);
+    setHarvest(null);
+    harvestFrame.current = null;
     setConn("idle");
     store.set(ROOM_KEY, null);
     window.history.replaceState(null, "", "/");
@@ -455,6 +464,26 @@ export function useTomato(initialCode?: string) {
         // эффекты и монеты живут в снимке: получателю и отправителю нужен свежий
         if (d.to === myIdRef.current || d.from === myIdRef.current) refresh();
       }
+      // Harvest: кадры — в ref (холст), в React — не чаще ~3 раз в секунду (счёт, таблица)
+      if (ev.type === "harvest_frame") {
+        const d = ev.data as HarvestLive;
+        harvestFrame.current = d;
+        const now = Date.now();
+        if (now - harvestUiAt.current > 300) {
+          harvestUiAt.current = now;
+          setHarvest((prev) => (prev?.round && prev.round.id === d.roundId ? { ...prev, live: d, charges: d.charges[myIdRef.current ?? ""] ?? prev.charges } : prev));
+        }
+        return;
+      }
+      if (ev.type === "harvest_started" || ev.type === "harvest_finished") {
+        client.harvest(roomId).then((v) => { if (!alive) return; harvestFrame.current = v.live ?? null; setHarvest(v); }).catch(() => undefined);
+        return;
+      }
+      if (ev.type === "harvest_prank") {
+        const d = ev.data as HarvestPrankEvent;
+        setHarvestFeed((f) => [...f.slice(-4), { ...d, id: Date.now() + Math.random() }]);
+        return;
+      }
       // Tower Defense: td_state приходит часто и содержит только состояние одной команды — вливаем в локальный вид
       if (ev.type === "td_state") {
         const d = ev.data as TdStateEvent;
@@ -601,6 +630,24 @@ export function useTomato(initialCode?: string) {
   const prank = useCallback((userId: string, type: "fog" | "sticker") => call(() => client.prank(rid, userId, type)), [call, rid]);
   // --- Tower Defense: клиент только отправляет намерения; цену, баланс и результат решает сервер
   const newRequestId = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "") : `${Date.now()}${Math.random().toString(36).slice(2)}`.padEnd(12, "0"));
+  const loadHarvest = useCallback(async () => {
+    if (!rid) return null;
+    const v = await call(() => client.harvest(rid));
+    if (v) { harvestFrame.current = v.live ?? null; setHarvest(v); }
+    return v;
+  }, [call, rid]);
+  /** «Поймал» — без тостов об ошибках: отказ сервера просто не засчитывает помидор. */
+  const harvestCatch = useCallback(async (itemId: number, x: number) => {
+    try { return await client.harvestCatch(rid, itemId, x); } catch { return null; }
+  }, [rid]);
+  const harvestPrank = useCallback(async (targetId: string, kind: "freeze" | "splat") => {
+    const r = await call(() => client.harvestPrank(rid, targetId, kind));
+    if (r) setHarvest((prev) => (prev ? { ...prev, charges: r.charges } : prev));
+    return r;
+  }, [call, rid]);
+  /** Позиция корзины — по WebSocket (сервер рассылает её остальным в кадрах). */
+  const harvestMove = useCallback((x: number) => { socket?.sendRaw({ type: "harvest_move", roomId: rid, x: Math.round(x) }); }, [socket, rid]);
+
   const loadTd = useCallback(async () => { if (!rid) return null; const v = await call(() => client.td(rid)); if (v) setTd(v); return v; }, [call, rid]);
   const tdJoin = useCallback(async () => { const v = await call(() => client.tdJoin(rid)); if (v) setTd(v); return v; }, [call, rid]);
   const tdStart = useCallback(async (stageId?: string) => { const v = await call(() => client.tdStart(rid, stageId)); if (v) setTd(v); return v; }, [call, rid]);
@@ -662,7 +709,7 @@ export function useTomato(initialCode?: string) {
 
   return {
     boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
-    call, push, td, tdFx, loadTd, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, saveAvatar, avatarCatalog, chat, sendChat,
+    call, push, td, tdFx, loadTd, harvest, harvestFrame, harvestFeed, loadHarvest, harvestCatch, harvestPrank, harvestMove, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, saveAvatar, avatarCatalog, chat, sendChat,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

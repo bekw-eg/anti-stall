@@ -8,7 +8,8 @@ import { loadConfig } from '../src/config.js';
 
 /** Поднимает приложение на случайном порту с управляемыми часами и тестовой БД. */
 export async function boot({ env = {}, config = {}, clock = new FakeClock(), dbPath = ':memory:' } = {}) {
-  const cfg = loadConfig(env, { dbPath, ...config });
+  // Тесты TD написаны под «TD на каждом перерыве»; чередование с Harvest проверяет harvest.test.js (breakGames: 'alternate')
+  const cfg = loadConfig(env, { dbPath, breakGames: 'td', ...config });
   const app = createApp({ config: cfg, clock });
   const addr = await app.listen(0, '127.0.0.1');
   const url = `http://127.0.0.1:${addr.port}`;

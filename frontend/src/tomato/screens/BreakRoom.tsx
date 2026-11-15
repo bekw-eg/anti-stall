@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { Check, Flag, SkipForward } from "lucide-react";
 import { ChatBubble } from "../ChatBubble";
+import { Harvest } from "../Harvest";
 import { TowerDefense } from "../TowerDefense";
 import type { Tomato } from "../useTomato";
 import { LIGHT_VARS } from "./RoomChrome";
@@ -56,11 +57,15 @@ export function BreakRoom({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }
         {(askResult || actions.includes("skip_break")) && (
           <section aria-label="После цикла" className="flex flex-wrap items-center justify-between gap-2 rounded-[20px] bg-paper px-3 py-2 sm:rounded-[28px] sm:px-5">
             {askResult && (
-              <div className="flex flex-wrap items-center gap-2 text-[15px]">
+              // три ответа — одной строкой-переключателем (на телефоне подпись над ним), а не россыпью по разным строкам
+              <div className="flex w-full flex-col gap-1.5 text-[15px] sm:w-auto sm:flex-row sm:items-center sm:gap-3">
                 <span className="font-bold text-mute">Как прошла сессия?</span>
-                {([["done", "Сделал"], ["partial", "Частично"], ["not_done", "Не успел"]] as const).map(([v, label]) => (
-                  <button key={v} type="button" onClick={() => { t.recordResult(v); setSent(snap.room.cycleId); }} className="rounded-full border-2 border-ink bg-white px-3 py-1 font-extrabold hover:bg-petal">{label}</button>
-                ))}
+                <div role="group" aria-label="Как прошла сессия" className="grid grid-cols-3 overflow-hidden rounded-full border-2 border-ink bg-white sm:inline-grid">
+                  {([["done", "Сделал"], ["partial", "Частично"], ["not_done", "Не успел"]] as const).map(([v, label], i) => (
+                    <button key={v} type="button" onClick={() => { t.recordResult(v); setSent(snap.room.cycleId); }}
+                      className={`whitespace-nowrap px-2 py-1.5 font-extrabold transition-colors hover:bg-petal sm:px-4 ${i ? "border-l-2 border-ink" : ""}`}>{label}</button>
+                  ))}
+                </div>
               </div>
             )}
             {actions.includes("skip_break") && (
@@ -69,6 +74,12 @@ export function BreakRoom({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }
           </section>
         )}
       </div>
+      {snap.room.breakGame === "harvest" ? (
+        // чётный перерыв — Harvest (Tower Defense — на нечётных)
+        <section aria-label="Harvest" className="as-card as-shadow overflow-hidden border-[2.5px] bg-lime">
+          <Harvest t={t} />
+        </section>
+      ) : (
       <section aria-label="Tower Defense" className="as-card as-shadow overflow-hidden border-[2.5px] bg-lime" style={{ ["--card" as string]: "#FFFFFF" }}>
         <div className="h-auto lg:h-[min(78vh,760px)]">
           {td ? (
@@ -78,6 +89,7 @@ export function BreakRoom({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }
           )}
         </div>
       </section>
+      )}
       <ChatBubble t={t} />
     </div>
   );

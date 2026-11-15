@@ -153,12 +153,16 @@ export function Lobby({ t }: { t: Tomato }) {
             <div className="grid w-full max-w-[700px] grid-cols-3 gap-2 sm:gap-4">
               <Stepper label="Фокус" value={focusSec} onChange={edit(setFocusSec)} step={demo ? 5 : 300} min={fLim[0]} max={fLim[1]} format={unit} disabled={!canEdit} />
               <Stepper label="Перерыв" value={breakSec} onChange={edit(setBreakSec)} step={demo ? 5 : 60} min={bLim[0]} max={bLim[1]} format={unit} disabled={!canEdit} />
-              {/* число циклов сервер разрешает менять только до первого фокуса (CYCLES_LOCKED) */}
-              <Stepper label="Циклы" value={cycles} onChange={edit(setCycles)} step={1} min={lim.cycles[0]} max={lim.cycles[1]} format={(v) => String(v)} disabled={!canEdit || room.cycleNo > 0} />
+              {/* до первого фокуса — сколько циклов всего; потом — сколько ещё впереди (пройденные не отменяются) */}
+              {room.cycleNo > 0 ? (
+                <Stepper label="Ещё циклов" value={Math.max(0, cycles - room.cycleNo)} onChange={edit((v: number) => setCycles(room.cycleNo + v))} step={1} min={0} max={lim.cycles[1]} format={(v) => String(v)} disabled={!canEdit} />
+              ) : (
+                <Stepper label="Циклы" value={cycles} onChange={edit(setCycles)} step={1} min={lim.cycles[0]} max={lim.cycles[1]} format={(v) => String(v)} disabled={!canEdit} />
+              )}
             </div>
             {planDone && (
               <p className="w-full max-w-[640px] rounded-[18px] border-2 border-olive bg-[#EEF0D2] px-4 py-3 text-center text-base font-bold text-olive" role="note">
-                Все запланированные циклы пройдены ({room.settings.cycles ?? 4}). Можно продолжить: следующий цикл пойдёт сверх плана.
+                План выполнен: пройдено циклов — {room.cycleNo}. Добавьте «Ещё циклов», и они пойдут подряд; иначе каждый старт — один цикл сверх плана.
               </p>
             )}
             {/* на невысоких экранах (ноутбук 1366×768) подсказку прячем, чтобы «Начать фокус» не уходила под полосу голоса */}

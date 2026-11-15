@@ -10,10 +10,12 @@ const MAX_MSGS_PER_SEC = 30;
  * Любое другое событие (в т.ч. give_me_coins / complete_session) отклоняется: все изменения
  * игрового состояния идут через REST и проверяются сервером, а хаб лишь рассылает результат.
  * Голосовые сообщения не меняют ни экономику, ни прогресс — это пересылка SDP/ICE между участниками комнаты.
+ * Исключение для Harvest — harvest_move: позиция корзины (только показ и проверка скорости; очки — через REST).
  */
 export class Hub {
-  constructor({ server, users, rooms, voice, config, clock }) {
+  constructor({ server, users, rooms, voice, harvest = null, config, clock }) {
     this.users = users;
+    this.harvest = harvest;
     this.rooms = rooms;
     this.voice = voice;
     this.config = config;
@@ -99,6 +101,12 @@ export class Hub {
         conn.rooms.delete(String(msg.roomId));
         this.voice?.leave(conn, String(msg.roomId), 'left');
         return this.send(conn, 'unsubscribed', { roomId: msg.roomId }, extra);
+      case 'harvest_move': {
+        // только подписанный участник комнаты; ответа нет — позиции уходят всем в кадрах harvest_frame
+        const roomId = String(msg.roomId ?? '');
+        if (this.harvest && conn.rooms.has(roomId)) this.harvest.move(conn.userId, roomId, msg.x);
+        return undefined;
+      }
       case 'voice_join':
       case 'voice_leave':
       case 'voice_signal':

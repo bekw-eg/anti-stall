@@ -31,8 +31,16 @@ export function avatarOf(row) {
   }
 }
 
-/** Проверка нового образа: неизвестный цвет/вещь — 400, вещь не своего слота — 400, закрытая уровнем — 409. */
-export function parseAvatar(value, level) {
+/** Открыта ли вещь: по уровню и, если у вещи есть условие unlock, по статистике игрока (например, победы в Harvest). */
+const isOpen = (x, level, stats) => x.minLevel <= level && (!x.unlock || (stats?.[x.unlock.stat] ?? 0) >= x.unlock.count);
+
+/** Что игроку уже доступно — для страницы образа (клиент только показывает, проверяет сервер). */
+export function unlockedOf(level, stats) {
+  return { skins: AVATAR.skins.filter((s) => isOpen(s, level, stats)).map((s) => s.id), items: AVATAR.items.filter((i) => isOpen(i, level, stats)).map((i) => i.id) };
+}
+
+/** Проверка нового образа: неизвестный цвет/вещь — 400, вещь не своего слота — 400, закрытая уровнем или игрой — 409. */
+export function parseAvatar(value, level, stats = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw E.badRequest('INVALID_FIELD', 'avatar: объект {skin, head, face, neck}', { field: 'avatar' });
   const skin = SKIN.get(value.skin);
   if (!skin) throw E.badRequest('INVALID_FIELD', `avatar.skin: ${AVATAR.skins.map((s) => s.id).join(' | ')}`, { field: 'avatar.skin' });
@@ -44,6 +52,7 @@ export function parseAvatar(value, level) {
     const item = ITEM.get(id);
     if (!item || item.slot !== slot) throw E.badRequest('INVALID_FIELD', `avatar.${slot}: неизвестная вещь`, { field: `avatar.${slot}` });
     if (item.minLevel > level) throw E.conflict('AVATAR_LOCKED', `«${item.title}» откроется на ${item.minLevel} уровне`, { item: item.id, minLevel: item.minLevel });
+    if (!isOpen(item, level, stats)) throw E.conflict('AVATAR_LOCKED', `«${item.title}»: ${item.unlock.label}`, { item: item.id, unlock: item.unlock });
     out[slot] = item.id;
   }
   return out;

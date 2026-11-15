@@ -11,6 +11,7 @@ import { createRoomsService } from './services/rooms.js';
 import { createChatService } from './services/chat.js';
 import { createSocialService } from './services/social.js';
 import { createTd } from './services/td.js';
+import { createHarvest } from './services/harvest.js';
 import { createUsersService } from './services/users.js';
 import { Hub } from './ws/hub.js';
 import { VoiceRooms } from './ws/voice.js';
@@ -27,12 +28,14 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
   const game = createGame(ctx);
   const users = createUsersService(ctx, game);
   const td = createTd(ctx, game);
-  const rooms = createRoomsService(ctx, game, users, td);
+  const harvest = createHarvest(ctx, game);
+  const rooms = createRoomsService(ctx, game, users, td, harvest);
   td.setRooms(rooms);
+  harvest.setRooms(rooms);
   const social = createSocialService(ctx, game, rooms);
   const chat = createChatService(ctx, rooms);
   const voice = new VoiceRooms({ config, clock, nameOf: (id) => db.get('SELECT name FROM users WHERE id = ?', id)?.name });
-  const router = buildRoutes({ config, users, rooms, game, social, td, voice, chat, db, clock });
+  const router = buildRoutes({ config, users, rooms, game, social, td, harvest, voice, chat, db, clock });
 
   const cors = {
     'Access-Control-Allow-Origin': config.corsOrigin,
@@ -76,7 +79,7 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
     }
   });
 
-  const hub = new Hub({ server, users, rooms, voice, config, clock });
+  const hub = new Hub({ server, users, rooms, voice, harvest, config, clock });
   db.sink = (events) => hub.dispatch(events);
 
   rooms.recoverAfterRestart();
@@ -109,18 +112,29 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
     if (t - lastBroadcast >= config.broadcastTickMs) lastBroadcast = t;
   }
 
+  /** Кадры Harvest (корзины, счёт) — чаще, чем тик фаз: игра в реальном времени. */
+  function harvestFrames() {
+    try {
+      for (const f of harvest.frames()) hub.broadcast(f.roomId, 'harvest_frame', f.data);
+    } catch (e) { console.error('[tomato] harvest frame error', e); }
+  }
+
   let timer = null;
+  let frameTimer = null;
   return {
-    config, clock, db, server, hub, services: { game, users, rooms, social, td, voice }, tick,
+    config, clock, db, server, hub, services: { game, users, rooms, social, td, harvest, voice }, tick, harvestFrames,
     startScheduler() {
       timer = setInterval(tick, config.tickMs);
       timer.unref?.();
+      frameTimer = setInterval(harvestFrames, config.harvestFrameMs);
+      frameTimer.unref?.();
     },
     listen(port = config.port, host = config.host) {
       return new Promise((resolve) => server.listen(port, host, () => resolve(server.address())));
     },
     async close() {
       clearInterval(timer);
+      clearInterval(frameTimer);
       hub.close();
       await new Promise((resolve) => server.close(resolve));
       server.closeAllConnections?.();

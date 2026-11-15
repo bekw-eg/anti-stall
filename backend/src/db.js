@@ -233,6 +233,33 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 CREATE INDEX IF NOT EXISTS chat_by_room ON chat_messages(room_id, id);
 CREATE INDEX IF NOT EXISTS chat_by_user ON chat_messages(room_id, user_id, created_at);
+
+-- Harvest (мини-игра «Урожай» на чётных перерывах). Один раунд на цикл комнаты.
+-- state: журнал поимок по командам, шутки (effects), заряды шуток; дождь не хранится — его задаёт seed.
+CREATE TABLE IF NOT EXISTS harvest_rounds (
+  id TEXT PRIMARY KEY,
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  cycle_id TEXT NOT NULL,
+  seed INTEGER NOT NULL,
+  started_at INTEGER NOT NULL,
+  ends_at INTEGER NOT NULL,
+  duration REAL NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running','finished')),
+  state TEXT NOT NULL,
+  result TEXT,
+  finished_at INTEGER,
+  UNIQUE (room_id, cycle_id)
+);
+-- Итог раунда для каждого живого участника: статистика игрока и условия разблокировки вещей образа.
+CREATE TABLE IF NOT EXISTS harvest_players (
+  round_id TEXT NOT NULL REFERENCES harvest_rounds(id),
+  user_id TEXT NOT NULL REFERENCES users(id),
+  team_key TEXT NOT NULL,
+  pts INTEGER NOT NULL, caught INTEGER NOT NULL, golden INTEGER NOT NULL,
+  won INTEGER NOT NULL,
+  PRIMARY KEY (round_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS harvest_players_by_user ON harvest_players(user_id);
 `;
 
 /**

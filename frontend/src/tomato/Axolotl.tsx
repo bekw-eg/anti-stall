@@ -129,6 +129,29 @@ export const ITEM_ART: Record<string, Art> = {
       ".........KKKK.",
     ],
   },
+  /** За Harvest: победа в раунде. */
+  straw: {
+    x: 8, y: 1, colors: { K, Y: "#E9C46A", L: "#F6DE96", R: "#E5534B" },
+    rows: [
+      "......KKKK......",
+      ".....KLLYYK.....",
+      "....KLYYYYYK....",
+      "....KRRRRRRK....",
+      "KKKKYYYYYYYYKKKK",
+      "KLYYYYYYYYYYYYYK",
+      ".KKKKKKKKKKKKKK.",
+    ],
+  },
+  /** За Harvest: 5 золотых помидоров. */
+  cherries: {
+    x: 9, y: 17, colors: { K, R: "#E5534B", L: "#FF9A8F", G: "#5E6B1F" },
+    rows: [
+      ".G..G..G..G.G.",
+      "KRRKRRKRRKRRK.",
+      "KRLKRLKRLKRLK.",
+      ".KK.KK.KK.KK..",
+    ],
+  },
   /** Только для башен: шлем 2-го уровня. */
   helmet: {
     x: 10, y: 2, colors: { K, C: "#5E6B1F", S: "#B8C2CC", W: "#F4F7FB" },

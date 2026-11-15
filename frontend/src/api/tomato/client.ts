@@ -1,5 +1,5 @@
 import type {
-  AvatarLook,
+  AvatarLook, HarvestView,
   ChatMessage,
   Achievement, TdBuildResult, TdSendUnitResult, TdSpellResult, TdView, CreateRoomInput, MercType, SpellId, HealthInfo, IceConfig, Me, Progress, RegisterOptions, Roadmap, RoomSnapshot, RoomStats, ServerEvent, SocialAction, StudySession, StudyStats, Upgrade, VoicePeer,
 } from "./types";
@@ -102,6 +102,13 @@ export class TomatoClient {
   // --- голос (сигналинг — по WebSocket, см. TomatoSocket.sendRaw)
   voicePeers = (id: string) => this.request<{ roomId: string; peers: VoicePeer[]; maxPeers: number }>("GET", `/api/rooms/${id}/voice`);
   iceServers = () => this.request<IceConfig>("GET", "/api/voice/ice-servers");
+
+  // --- Harvest (перерывы после чётных циклов): поимки и шутки проверяет сервер; позиция корзины — по WebSocket
+  harvest = (id: string) => this.request<HarvestView>("GET", `/api/rooms/${id}/harvest`);
+  harvestCatch = (id: string, itemId: number, x: number) =>
+    this.request<{ ok: boolean; kind: string; score: number; combo: number; mult: number; charges: number }>("POST", `/api/rooms/${id}/harvest/catch`, { itemId, x });
+  harvestPrank = (id: string, targetId: string, kind: "freeze" | "splat") =>
+    this.request<{ ok: boolean; charges: number; until: number }>("POST", `/api/rooms/${id}/harvest/prank`, { targetId, kind });
 
   // --- Tower Defense (только на перерыве; всё решает сервер)
   td = (id: string) => this.request<TdView>("GET", `/api/rooms/${id}/td`);

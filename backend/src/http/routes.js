@@ -4,7 +4,7 @@ import { reqInt, reqObject } from '../validate.js';
 import { Router } from './router.js';
 
 /** Привязка REST-маршрутов к сервисам. Здесь нет бизнес-логики: только разбор запроса. */
-export function buildRoutes({ config, users, rooms, game, social, td, voice, chat, clock }) {
+export function buildRoutes({ config, users, rooms, game, social, td, voice, chat, clock, harvest }) {
   const r = new Router();
   const ok = (body, status = 200) => ({ status, body });
 
@@ -92,6 +92,10 @@ export function buildRoutes({ config, users, rooms, game, social, td, voice, cha
     return ok(game.gameView(room.id));
   });
   // ---- Tower Defense (только на перерыве; всё решает сервер)
+  // ---- Harvest (перерывы после чётных циклов): позиции корзин — по WebSocket, поимки и шутки — здесь
+  r.add('GET', '/api/rooms/:id/harvest', ({ user, params }) => ok(harvest.get(user, params.id)));
+  r.add('POST', '/api/rooms/:id/harvest/catch', ({ user, params, body }) => ok(harvest.catchItem(user, params.id, body)));
+  r.add('POST', '/api/rooms/:id/harvest/prank', ({ user, params, body }) => ok(harvest.prank(user, params.id, body), 201));
   r.add('GET', '/api/rooms/:id/td', ({ user, params }) => ok(td.get(user, params.id)));
   r.add('POST', '/api/rooms/:id/td/join', ({ user, params }) => ok(td.join(user, params.id)));
   r.add('POST', '/api/rooms/:id/td/start', ({ user, params, body }) => ok(td.start(user, params.id, body)));

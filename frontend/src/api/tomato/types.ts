@@ -108,6 +108,8 @@ export interface RoomInfo {
   demo: boolean;
   mode: "shared" | "teams";
   settings: { focusSec: number; breakSec: number; cycles?: number };
+  /** Игра перерыва этого цикла: TD после нечётного, Harvest после чётного (старый сервер не присылает — TD) */
+  breakGame?: "td" | "harvest";
   phaseStartedAt: number;
   phaseEndsAt: number | null;
   serverTime: number;
@@ -159,6 +161,8 @@ export interface Me extends LevelInfo {
   /** Песочный аккаунт демо-сервера: играет только в демо-комнатах (старый backend поле не присылает) */
   sandbox?: boolean;
   avatar?: AvatarLook;
+  /** Что открыто для образа (уровень + игра, например победа в Harvest) — решает сервер */
+  avatarUnlocked?: { skins: string[]; items: string[] };
   createdAt: number;
   activeSession: { id: string; roomId: string; scheduledEndAt: number } | null;
   rooms: { id: string; code: string; name: string; phase: Phase }[];
@@ -360,8 +364,39 @@ export type ServerEventType =
   | "session_completed" | "reward_granted" | "balance_changed" | "achievement_unlocked"
   | "td_state" | "td_round_started" | "td_round_finished" | "td_tower_built" | "td_tower_upgraded" | "td_duel_result"
   | "td_unit_sent" | "td_spell_cast" | "td_rematch_started" | "roadmap_updated" | "node_reached" | "challenge_completed" | "help_applied" | "prank_applied"
+  | "harvest_frame" | "harvest_started" | "harvest_finished" | "harvest_prank"
   | "voice_roster" | "voice_joined" | "voice_left" | "voice_peer_joined" | "voice_peer_left" | "voice_state" | "voice_signal" | "voice_kicked"
   | "heartbeat_ack" | "unsubscribed" | "error";
+
+// ---------------------------------------------------------------------------- Harvest
+export interface HarvestPlayer { id: string; name: string; bot: boolean; x: number | null; pts: number; caught: number; golden: number; rotten: number }
+export interface HarvestTeamLive {
+  key: string; name: string; bots: boolean;
+  score: number; combo: number; mult: number; bestCombo: number; missed: number;
+  /** id помидоров, пойманных командой (остальные клиенты прячут их с поля) */
+  caught: number[];
+  players: HarvestPlayer[];
+}
+export interface HarvestEffect { target: string; kind: "freeze" | "splat"; from: string; at: number; until: number; untilMs: number }
+/** Кадр раунда: приходит в GET и по WebSocket (harvest_frame) раз в ~100 мс */
+export interface HarvestLive {
+  roundId: string; t: number; serverTime: number; status: "running" | "finished";
+  teams: HarvestTeamLive[]; effects: HarvestEffect[]; charges: Record<string, number>;
+}
+export interface HarvestResult {
+  winner: string;
+  teams: Record<string, { score: number; bestCombo: number; missed: number; players: Record<string, { pts: number; caught: number; golden: number; rotten: number }> }>;
+  rewards: Record<string, { xp: number }>;
+}
+export interface HarvestRound {
+  id: string; seed: number; startedAt: number; endsAt: number; duration: number; status: "running" | "finished";
+  result: HarvestResult | null; botTeam: string | null; teams: string[];
+}
+export interface HarvestView {
+  enabled: boolean; game: "td" | "harvest"; nextGame: "td" | "harvest"; myTeam: string | null; serverTime: number;
+  round: HarvestRound | null; charges?: number; live?: HarvestLive;
+}
+export interface HarvestPrankEvent { roundId: string; from: string; fromName: string; to: string; toName: string; kind: "freeze" | "splat"; at: number; until: number }
 
 // ---------------------------------------------------------------------------- Tower Defense
 export type TowerType = "arrow" | "cannon" | "frost";

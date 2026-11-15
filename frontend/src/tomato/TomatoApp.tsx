@@ -53,14 +53,15 @@ export default function TomatoApp() {
     else if (hadRoom.current) { hadRoom.current = false; setScreen("join"); setSheet(null); }
   }, [room]);
 
-  // Перерыв = время игры: при входе в перерыв один раз подгружаем состояние Tower Defense
-  const { loadTd } = t;
+  // Перерыв = время игры: при входе в перерыв один раз подгружаем его игру (TD или Harvest)
+  const { loadTd, loadHarvest } = t;
+  const breakGame = t.snapshot?.room.breakGame ?? "td";
   const prevPhase = useRef<string | undefined>(undefined);
   useEffect(() => {
     const was = prevPhase.current;
     prevPhase.current = phase;
-    if (phase === "break" && was !== "break") loadTd();
-  }, [phase, loadTd]);
+    if (phase === "break" && was !== "break") { if (breakGame === "harvest") loadHarvest(); else loadTd(); }
+  }, [phase, breakGame, loadTd, loadHarvest]);
 
   const dark = phase === "focus";
   const looks = Object.fromEntries((t.snapshot?.members ?? []).map((m) => [m.userId, m.avatar]));

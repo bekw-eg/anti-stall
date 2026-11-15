@@ -33,6 +33,7 @@ export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }
   const [tab, setTab] = useState<Tab>("look");
   const [progress, setProgress] = useState<Progress | null>(null);
   const [sessions, setSessions] = useState<StudySession[]>([]);
+  const [unlocked, setUnlocked] = useState<{ skins: string[]; items: string[] } | null>(null); // что открыто — решает сервер
   const me = t.snapshot?.me;
   const focusing = me?.status === "focusing";
   // перечитываем после наград/покупок: меняются xp и монеты в снимке комнаты
@@ -43,6 +44,8 @@ export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }
     if (p) setProgress(p);
     const h = await t.call(() => client.sessions(30));
     if (h) setSessions(h.sessions);
+    const m = await t.call(() => client.me());
+    if (m?.avatarUnlocked) setUnlocked(m.avatarUnlocked);
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [refreshKey]);
@@ -60,7 +63,7 @@ export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }
         ))}
       </div>
 
-      {tab === "look" && <LookTab t={t} progress={progress} onLeave={onLeave} />}
+      {tab === "look" && <LookTab t={t} progress={progress} onLeave={onLeave} unlocked={unlocked} />}
 
       {tab === "upgrades" && (
         <ul className="grid gap-3 md:grid-cols-2">
@@ -156,7 +159,7 @@ function Stat({ icon, value, label }: { icon: ReactNode; value: string; label: s
 }
 
 /** Вкладка «Образ»: превью + статистика слева, инвентарь и цвета справа. */
-function LookTab({ t, progress, onLeave }: { t: Tomato; progress: Progress; onLeave?: () => void }) {
+function LookTab({ t, progress, onLeave, unlocked }: { t: Tomato; progress: Progress; onLeave?: () => void; unlocked: { skins: string[]; items: string[] } | null }) {
   const me = t.snapshot?.me;
   const level = me?.level ?? progress.level;
   const saved = useMemo(() => lookOf(me?.userId ?? progress.userId, me?.avatar ?? t.user?.avatar), [me?.userId, me?.avatar, t.user?.avatar, progress.userId]);
@@ -170,9 +173,12 @@ function LookTab({ t, progress, onLeave }: { t: Tomato; progress: Progress; onLe
   const span = progress.nextLevelXp - progress.levelStartXp;
   const pct = Math.min(100, ((progress.xp - progress.levelStartXp) / span) * 100);
   // ближайшая закрытая вещь или цвет — «текущая цель»
-  const next = [...cat.items, ...cat.skins].filter((x) => x.minLevel > level).sort((a, b) => a.minLevel - b.minLevel)[0];
+  // открыто ли: список от сервера (уровень и игра), без него — по уровню; вещи «за игру» без списка — закрыты
+  const itemLocked = (it: (typeof cat.items)[number]) => (unlocked ? !unlocked.items.includes(it.id) : it.minLevel > level || !!it.unlock);
+  const skinLocked = (sk: (typeof cat.skins)[number]) => (unlocked ? !unlocked.skins.includes(sk.id) : sk.minLevel > level);
+  const next = [...cat.items.filter((x) => !x.unlock), ...cat.skins].filter((x) => x.minLevel > level).sort((a, b) => a.minLevel - b.minLevel)[0];
   const goalXp = next ? xpForLevel(next.minLevel) : 0;
-  const unlocked = progress.achievements.filter((a) => a.unlocked).length;
+  const achCount = progress.achievements.filter((a) => a.unlocked).length;
 
   const toggleItem = (slot: "head" | "face" | "neck", id: string) => setDraft((d) => ({ ...d, [slot]: d[slot] === id ? null : id }));
   const save = async () => {
@@ -225,7 +231,7 @@ function LookTab({ t, progress, onLeave }: { t: Tomato; progress: Progress; onLe
           <p className="flex items-center gap-2 whitespace-nowrap text-sm font-extrabold"><Palette size={16} aria-hidden />Выбери аксолотля<span className={`truncate font-bold ${MUTED}`}>· {skinTitle}</span></p>
           <div className="grid grid-cols-6 gap-2">
             {cat.skins.map((sk) => {
-              const locked = sk.minLevel > level;
+              const locked = skinLocked(sk);
               const on = draft.skin === sk.id;
               return (
                 <div key={sk.id} className="flex min-w-0 flex-col items-center gap-1">
@@ -249,16 +255,16 @@ function LookTab({ t, progress, onLeave }: { t: Tomato; progress: Progress; onLe
         <p className="flex items-center gap-2 font-display text-xl leading-none"><Shirt size={20} aria-hidden /><span className="relative top-0.5">Инвентарь</span></p>
         <ul className="grid grid-cols-3 gap-2.5 xs:grid-cols-4" aria-label="Вещи">
           {cat.items.map((it) => {
-            const locked = it.minLevel > level;
+            const locked = itemLocked(it);
             const on = draft[it.slot] === it.id;
             return (
               <li key={it.id}>
                 <button type="button" disabled={locked} aria-pressed={on} onClick={() => toggleItem(it.slot, it.id)} data-item-tile={it.id}
-                  title={locked ? `«${it.title}» откроется на ${it.minLevel} уровне` : on ? `Снять: ${it.title}` : `Надеть: ${it.title}`}
+                  title={locked ? `«${it.title}»: ${it.unlock ? it.unlock.label : `откроется на ${it.minLevel} уровне`}` : on ? `Снять: ${it.title}` : `Надеть: ${it.title}`}
                   className={`relative flex aspect-square w-full flex-col items-center justify-center gap-1 rounded-[16px] border-2 p-1 transition-colors ${on ? "border-cream bg-[#5A3833]" : "border-[#6A4A45] bg-[#3B2422] hover:border-peach"} disabled:cursor-not-allowed`}>
                   <span className={locked ? "opacity-50" : ""}><ItemIcon id={it.id} size={54} /></span>
                   <span className={`max-w-full whitespace-nowrap px-0.5 text-[11px] font-extrabold leading-tight tracking-tight ${locked ? "text-[#B8A39E]" : "text-cream"}`}>{it.title}</span>
-                  {locked && <span className="rounded-full bg-[#2A1817] px-1.5 text-[10px] font-extrabold leading-4 text-[#D8BDB6]">ур. {it.minLevel}</span>}
+                  {locked && <span className="max-w-full truncate rounded-full bg-[#2A1817] px-1.5 text-[10px] font-extrabold leading-4 text-[#D8BDB6]">{it.unlock ? "Harvest" : `ур. ${it.minLevel}`}</span>}
                   {on && <span className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-ink bg-cream text-ink" aria-hidden><Check size={14} strokeWidth={3} /></span>}
                   {locked && <span className="absolute right-1.5 top-1.5 text-[#B8A39E]" aria-hidden><Lock size={13} /></span>}
                 </button>
@@ -286,7 +292,7 @@ function LookTab({ t, progress, onLeave }: { t: Tomato; progress: Progress; onLe
             <Stat icon={<Target size={18} />} value={String(progress.stats.completedSessions)} label="сессий" />
             <Stat icon={<Clock size={18} />} value={formatDuration(progress.stats.focusSeconds ?? 0)} label="в фокусе" />
             <Stat icon={<Flame size={18} />} value={String(progress.stats.bestStreakDays)} label="дней" />
-            <Stat icon={<Trophy size={18} />} value={`${unlocked}`} label="наград" />
+            <Stat icon={<Trophy size={18} />} value={`${achCount}`} label="наград" />
           </div>
         </div>
 

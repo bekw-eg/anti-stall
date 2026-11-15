@@ -37,6 +37,7 @@ export const ACHIEVEMENTS = {
   first_upgrade: { id: 'first_upgrade', title: 'Прокачка', description: 'Купите первое улучшение', reward: { coins: 15 }, condition: (s) => s.upgradesBought >= 1 },
   td_builder: { id: 'td_builder', title: 'Строитель', description: 'Постройте 5 башен в мини-игре', reward: { coins: 15 }, condition: (s) => s.towersBuilt >= 5 },
   td_first_win: { id: 'td_first_win', title: 'Оборона держится', description: 'Выиграйте первый раунд Tower Defense', reward: { coins: 20 }, condition: (s) => s.tdWins >= 1 },
+  harvest_win: { id: 'harvest_win', title: 'Урожайный год', description: 'Выиграйте раунд Harvest', reward: { coins: 15 }, condition: (s) => s.harvestWins >= 1 },
   level_5: { id: 'level_5', title: 'Опытный ботан', description: 'Достигните 5 уровня', reward: { coins: 50 }, condition: (s) => s.level >= 5 },
 };
 
@@ -77,6 +78,9 @@ export const AVATAR = {
     { id: 'party', slot: 'head', title: 'Колпак', minLevel: 3 },
     { id: 'shades', slot: 'face', title: 'Тёмные очки', minLevel: 4 },
     { id: 'crown', slot: 'head', title: 'Корона', minLevel: 5 },
+    // Вещи за Harvest: открываются не уровнем, а игрой (unlock — статистика игрока на сервере)
+    { id: 'straw', slot: 'head', title: 'Шляпа', minLevel: 1, unlock: { stat: 'harvestWins', count: 1, label: 'Победа в Harvest' } },
+    { id: 'cherries', slot: 'neck', title: 'Бусы-черри', minLevel: 1, unlock: { stat: 'harvestGolden', count: 5, label: '5 золотых помидоров' } },
   ],
 };
 

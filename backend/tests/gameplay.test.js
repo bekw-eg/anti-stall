@@ -28,7 +28,7 @@ describe('длительности и план циклов — ввод пол�
     } finally { await w.close(); }
   });
 
-  test('план циклов меняется только до первого фокуса', async () => {
+  test('план циклов меняется в лобби: не меньше пройденных, после выполненного плана — продлевается', async () => {
     const w = await boot();
     try {
       const L = await lobby(w, ['Хост'], { cycles: 2 });
@@ -44,8 +44,16 @@ describe('длительности и план циклов — ввод пол�
       await runFocus(w, L);
       await runBreak(w, L);
       assert.equal((await roomOf(L)).room.phase, 'waiting');
-      assert.equal((await L.host.patch(L.path('/settings'), { cycles: 6 })).body.error.code, 'CYCLES_LOCKED');
+      // план (5) выполнен; меньше пройденного нельзя, продлить — можно, и продлённые циклы снова идут сами
+      assert.equal((await L.host.patch(L.path('/settings'), { cycles: 4 })).body.error.code, 'INVALID_FIELD');
+      assert.equal((await L.host.patch(L.path('/settings'), { cycles: 7 })).body.room.settings.cycles, 7);
       assert.equal((await L.host.patch(L.path('/settings'), { focusSeconds: 600 })).status, 200, 'длительность — можно');
+      await runFocus(w, L, L.users, 10); // цикл 6
+      await runBreak(w, L);
+      assert.equal((await roomOf(L)).room.phase, 'focus', 'по продлённому плану следующий фокус стартует сам');
+      await runFocus(w, L, L.users, 10); // цикл 7
+      await runBreak(w, L);
+      assert.equal((await roomOf(L)).room.phase, 'waiting', 'продлённый план выполнен — ждём хоста');
     } finally { await w.close(); }
   });
 });

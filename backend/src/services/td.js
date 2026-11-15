@@ -46,7 +46,9 @@ export function createTd(ctx, game) {
    */
   function defenderOf(room) {
     if (room.mode !== 'teams') return null;
-    const preferred = (room.cycle_no ?? 1) % 2 === 1 ? 'A' : 'B';
+    // роли меняются на каждом перерыве с TD (при чередовании с Harvest — это каждый второй цикл)
+    const tdNo = config.breakGames === 'alternate' ? Math.ceil((room.cycle_no ?? 1) / 2) : (room.cycle_no ?? 1);
+    const preferred = tdNo % 2 === 1 ? 'A' : 'B';
     const other = preferred === 'A' ? 'B' : 'A';
     return !teamSize(room, preferred) && teamSize(room, other) ? other : preferred;
   }
@@ -149,7 +151,7 @@ export function createTd(ctx, game) {
     const duel = latestDuel(room);
     const u = db.get('SELECT coins FROM users WHERE id = ?', userId);
     return {
-      enabled: room.phase === 'break', // вне перерыва игра закрыта
+      enabled: room.phase === 'break' && isTdBreak(room), // вне перерыва (и на перерыве Harvest) игра закрыта
       phase: room.phase, mode: room.mode, team, role, defender: defenderOf(room), breakEndsAt: room.phase === 'break' ? room.phase_ends_at : null, serverTime: clock.now(),
       map: { ...TD.map, pathLength: PATH_LENGTH },
       towerTypes: Object.values(TD.towers).map((d) => ({ ...d, upgradeCosts: [TD.upgradeCost(d, 2), TD.upgradeCost(d, 3)] })),
@@ -297,8 +299,11 @@ export function createTd(ctx, game) {
     rooms.requireMember(room, user);
     return { room, team: teamOf(room, user.id) };
   }
+  /** На этом перерыве играют в Tower Defense? (при чередовании с Harvest — только после нечётных циклов) */
+  const isTdBreak = (room) => config.breakGames === 'td' || (config.breakGames === 'alternate' && (room.cycle_no ?? 1) % 2 === 1);
   function requireBreak(room, user) {
     rooms.requirePhase(room, 'break');
+    if (!isTdBreak(room)) throw E.conflict('WRONG_GAME', 'На этом перерыве — Harvest');
     if (db.get("SELECT 1 x FROM focus_sessions WHERE user_id = ? AND status = 'active'", user.id)) throw E.conflict('FOCUS_ACTIVE', 'Игра недоступна во время вашей фокус-сессии');
   }
   const requestIdOf = (v) => {

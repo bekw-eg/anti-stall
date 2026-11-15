@@ -11,7 +11,7 @@ const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
  *
  * Фазы: waiting → focus → break → waiting …; host может закрыть комнату (completed).
  */
-export function createRoomsService(ctx, game, users, td) {
+export function createRoomsService(ctx, game, users, td, harvest = null) {
   const { db, clock, config } = ctx;
   const L = config.limits;
 
@@ -69,11 +69,13 @@ export function createRoomsService(ctx, game, users, td) {
     if (demo && !config.demoMode) throw E.forbidden('DEMO_DISABLED', 'Демо-режим выключен на сервере');
     const focusLim = demo ? L.demoFocusSeconds : L.focusSeconds;
     const breakLim = demo ? L.demoBreakSeconds : L.breakSeconds;
-    const cycles = body.cycles === undefined ? existing?.cycles ?? 4 : reqInt(body.cycles, 'cycles', { min: L.cycles[0], max: L.cycles[1] });
-    // План циклов задаёт карту: после старта первого цикла его менять нельзя, иначе «поедут» остановки
-    if (existing && existing.cycle_no > 0 && cycles !== existing.cycles) {
-      throw E.conflict('CYCLES_LOCKED', 'Число циклов меняется только до первого фокуса', { field: 'cycles' });
-    }
+    // План циклов можно менять в лобби в любой момент: пройденные циклы не отменяются (не меньше уже сделанных),
+    // а впереди — от 1 до L.cycles[1] новых. Так после выполненного плана можно запланировать ещё несколько циклов подряд.
+    // (Раньше план фиксировался после первого фокуса — от него зависели остановки карты; теперь карту двигают только победы в играх.)
+    const done = existing?.cycle_no ?? 0;
+    const cycles = body.cycles === undefined
+      ? existing?.cycles ?? 4
+      : reqInt(body.cycles, 'cycles', { min: done > 0 ? done : L.cycles[0], max: done + L.cycles[1] });
     return {
       demo: demo ? 1 : 0,
       focusSec: secondsField(body, 'focusSeconds', 'focusMinutes', existing?.focus_sec ?? (demo ? 25 : 25 * 60), focusLim),
@@ -165,6 +167,7 @@ export function createRoomsService(ctx, game, users, td) {
       requireHost(room, user);
       requirePhase(room, 'waiting', 'break');
       td.closeRounds(room, clock.now());
+      harvest?.closeRounds(room, clock.now());
       db.run("UPDATE rooms SET phase = 'completed', phase_ends_at = NULL, closed_at = ? WHERE id = ?", clock.now(), room.id);
       db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: room.phase, to: 'completed' } });
       db.emit(stateEvent(room.id));
@@ -408,6 +411,7 @@ export function createRoomsService(ctx, game, users, td) {
   // ------------------------------------------------------------------ серверный таймер
   function toWaiting(room, at) {
     td.closeRounds(room, at); // перерыв закончился: незавершённые игровые раунды корректно закрываются, учёба продолжается
+    harvest?.closeRounds(room, at);
     db.run("UPDATE rooms SET phase = 'waiting', phase_started_at = ?, phase_ends_at = NULL WHERE id = ?", at, room.id);
     db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'break', to: 'waiting', cycleId: room.cycle_id, phaseStartedAt: at, phaseEndsAt: null } });
     db.emit(stateEvent(room.id));
@@ -426,6 +430,7 @@ export function createRoomsService(ctx, game, users, td) {
     const auto = fresh && room.cycle_no < room.cycles && Boolean(someoneHere) && !(room.demo && !config.demoMode);
     if (!auto) return toWaiting(room, at);
     td.closeRounds(room, at);
+    harvest?.closeRounds(room, at);
     beginCycle(room, at, null);
   }
 
@@ -505,7 +510,9 @@ export function createRoomsService(ctx, game, users, td) {
       if (res.rewarded) rewardedUsers.push(s.user_id);
     }
     const breakNo = room.cycle_no;
-    const breakEnds = endAt + room.break_sec * 1000;
+    // перерыв с Harvest — не короче minBreakSec: отсчёт, раунд и экран итогов должны поместиться (TD не меняется)
+    const breakSec = harvest?.gameOfCycle(room.cycle_no) === 'harvest' ? Math.max(room.break_sec, config.economy.harvest.minBreakSec) : room.break_sec;
+    const breakEnds = endAt + breakSec * 1000;
     db.run("UPDATE rooms SET phase = 'break', phase_started_at = ?, phase_ends_at = ? WHERE id = ?", endAt, breakEnds, room.id);
     db.emit({ scope: 'room', roomId: room.id, type: 'phase_changed', data: { from: 'focus', to: 'break', cycleId: room.cycle_id, phaseStartedAt: endAt, phaseEndsAt: breakEnds, completed: active.length, rewarded: rewardedUsers.length, breakNo, cycles: room.cycles, ...(skipped ? { skipped: true } : {}) } });
     if (!skipped) game.addTeamPoints(room, rewardedUsers); // завершённые фокусы — вклад в командное испытание (кейс §5.4)
@@ -525,7 +532,7 @@ export function createRoomsService(ctx, game, users, td) {
       } else if (room.phase === 'break' && t >= room.phase_ends_at) {
         endBreak(room, room.phase_ends_at);
       } else {
-        if (room.phase === 'break') td.tick(room, t); // игровые раунды живут только внутри перерыва
+        if (room.phase === 'break') { td.tick(room, t); harvest?.tick(room, t); } // игровые раунды живут только внутри перерыва
         break;
       }
       room = loadRoom(roomId);
@@ -583,6 +590,8 @@ export function createRoomsService(ctx, game, users, td) {
         id: room.id, code: room.code, name: room.name, hostId: room.host_id, phase: room.phase,
         cycleId: room.cycle_id, cycleNo: room.cycle_no, demo: Boolean(room.demo), mode: room.mode,
         settings: { focusSec: room.focus_sec, breakSec: room.break_sec, cycles: room.cycles },
+        // игра перерыва этого цикла: 'td' | 'harvest' (при чередовании — TD после нечётного цикла, Harvest после чётного)
+        breakGame: harvest ? harvest.gameOfCycle(room.cycle_no) : 'td',
         phaseStartedAt: room.phase_started_at, phaseEndsAt: room.phase_ends_at,
         serverTime: t, remainingMs: room.phase_ends_at ? Math.max(0, room.phase_ends_at - t) : null,
       },

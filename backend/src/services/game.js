@@ -453,6 +453,9 @@ export function createGame(ctx) {
       towersBuilt: db.get("SELECT COUNT(*) c FROM td_actions WHERE user_id = ? AND kind = 'build'", userId).c,
       tdWins: db.get("SELECT COUNT(*) c FROM reward_transactions WHERE user_id = ? AND kind = 'td_round'", userId).c,
       upgradesBought: db.get('SELECT COUNT(*) c FROM user_upgrades WHERE user_id = ? AND level > 0', userId).c,
+      // Harvest: победы и золотые помидоры (достижение и вещи образа)
+      harvestWins: db.get('SELECT COALESCE(SUM(won), 0) c FROM harvest_players WHERE user_id = ?', userId).c,
+      harvestGolden: db.get('SELECT COALESCE(SUM(golden), 0) c FROM harvest_players WHERE user_id = ?', userId).c,
     };
   }
 
@@ -599,8 +602,11 @@ export function createGame(ctx) {
     };
   }
 
+  /** Этап карты, на котором сейчас стоит команда (победа в Harvest засчитывается как победа в этом этапе). */
+  const currentStageOf = (roomId, teamKey) => stageIdOfNode(ROADMAP.nodes[positionIdx(roomId, teamKey)].id);
+
   return {
-    levelInfo, grant, spend, completeSession, addTeamPoints, roadmapView, gameView,
+    levelInfo, grant, spend, completeSession, addTeamPoints, roadmapView, gameView, currentStageOf,
     ensureTeamProgress, ensureTeams, treasuryOf, spendTreasury, creditTreasury, recordStageVictory, teamOfMember,
     listUpgrades, purchaseUpgrade, upgradeLevel, checkAchievements, listAchievements, progress, effects, stats,
     studyStats, roomStats,
