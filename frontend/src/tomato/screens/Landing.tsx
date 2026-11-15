@@ -5,6 +5,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { DemoBadge } from "../Chrome";
 import { TowerPreview } from "../tdSprites";
+import type { AvatarLook } from "@/api/tomato";
 import { Avatar, Logo, RoadmapArt, Tag } from "./ui";
 
 const wrap = "mx-auto w-full max-w-[1488px] px-4 sm:px-8 lg:px-12";
@@ -24,7 +25,14 @@ function Bullet({ children, dark = false }: { children: string; dark?: boolean }
   );
 }
 
-export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: () => void; onJoin: () => void; ready: boolean; serverOk: boolean | null; demo: boolean }) {
+/** Кто вошёл (аккаунт или гость с профилем): аватарка справа вверху ведёт в профиль. */
+export type LandingMe = { name: string; id?: string; look?: AvatarLook | null; level: number; coins: number };
+
+/**
+ * banner — полоса над меню (например, «Вы в комнате … · Вернуться в комнату»), me — вошедший игрок:
+ * вместо «По коду» у него в правом верхнем углу аватарка, клик открывает профиль. Без входа лендинг как раньше.
+ */
+export function Landing({ onStart, onJoin, ready, serverOk, demo, banner, me = null, onProfile }: { onStart: () => void; onJoin: () => void; ready: boolean; serverOk: boolean | null; demo: boolean; banner?: React.ReactNode; me?: LandingMe | null; onProfile?: () => void }) {
   const reduce = useReducedMotion();
   // анимация появления при прокрутке — только если браузер умеет IntersectionObserver и не просили меньше движения
   const appear = reduce || typeof IntersectionObserver === "undefined" ? {} : { initial: { opacity: 0, y: 16 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: "-60px" }, transition: { duration: 0.45 } };
@@ -34,6 +42,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
     <div className="min-h-[100dvh] bg-white text-ink" data-testid="landing">
       {/* ---------- Nav ---------- */}
       <header className="sticky top-0 z-30 border-b-2 border-soft bg-white/95 backdrop-blur">
+        {banner}
         <nav className={`${wrap} flex h-16 items-center justify-between gap-3 sm:h-[88px]`} aria-label="Главное меню">
           <a href="#top" aria-label="AntiStall, наверх"><Logo /></a>
           <ul className="hidden items-center gap-8 text-[19px] font-bold lg:flex">
@@ -41,8 +50,17 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
             <li><a className="hover:text-rose" href="#game">Игра</a></li>
           </ul>
           <div className="flex items-center gap-2 sm:gap-3">
-            <button type="button" onClick={onJoin} className="as-btn as-btn-secondary as-btn-sm hidden sm:inline-flex">По коду</button>
+            {!me && <button type="button" onClick={onJoin} className="as-btn as-btn-secondary as-btn-sm hidden sm:inline-flex">По коду</button>}
             <button type="button" onClick={onStart} disabled={!ready} className="as-btn as-btn-primary as-btn-sm">Начать</button>
+            {me && (
+              // как жетон на главной: на телефоне — только аватар, с sm — имя, с md — уровень и монеты
+              <button type="button" onClick={onProfile} data-testid="landing-profile" aria-label={`Профиль: ${me.name}, уровень ${me.level}`} title="Профиль"
+                className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full border-2 border-ink bg-white p-0.5 text-ink transition-colors hover:bg-paper sm:py-1 sm:pl-1 sm:pr-4">
+                <Avatar name={me.name || "?"} id={me.id} look={me.look} size={36} ring="#3B2422" />
+                <span className="hidden max-w-[9rem] truncate text-lg font-extrabold sm:inline">{me.name}</span>
+                <span className="hidden whitespace-nowrap text-base font-bold text-mute md:inline">ур. {me.level} · {me.coins} монет</span>
+              </button>
+            )}
           </div>
         </nav>
       </header>

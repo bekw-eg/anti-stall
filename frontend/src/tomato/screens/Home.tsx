@@ -1,7 +1,10 @@
 /**
- * Главная страница без комнаты: профиль и образ, статистика, друзья, «создать / войти по коду».
- * Сюда же ведёт логотип в шапке комнаты — это НЕ выход из комнаты: участие, таймер и награды идут дальше,
- * а полоса сверху показывает фазу и возвращает в комнату одним нажатием.
+ * Главная (страница профиля): профиль и образ, статистика, друзья, «создать / войти по коду».
+ * Сюда ведёт аватарка на лендинге, в том числе из комнаты — это НЕ выход: участие, таймер и награды идут дальше,
+ * а полоса сверху показывает фазу и возвращает в комнату одним нажатием. Логотип ведёт на лендинг.
+ *
+ * Цвета задаются здесь явно (text-ink + светлые переменные): главная может открываться поверх тёмного фокуса,
+ * и без этого заголовки, имя и код друга наследовали светлый текст тёмной темы и сливались с белым фоном.
  */
 import { useState } from "react";
 import { ArrowRight, BarChart3, DoorOpen, KeyRound, Plus, Shirt, Users } from "lucide-react";
@@ -11,7 +14,7 @@ import { ProfilePanel } from "../ProfilePanel";
 import { StatsPanel } from "../StatsPanel";
 import type { Tomato } from "../useTomato";
 import { DemoBadge } from "../Chrome";
-import { DARK_VARS, LIGHT_VARS } from "./RoomChrome";
+import { LIGHT_VARS } from "./RoomChrome";
 import type { JoinMode } from "./JoinScreen";
 import { Avatar, Logo } from "./ui";
 
@@ -45,7 +48,7 @@ export function RoomReturnBar({ t, onReturn }: { t: Tomato; onReturn: () => void
   );
 }
 
-export function Home({ t, onReturn, onJoinScreen }: { t: Tomato; onReturn: () => void; onJoinScreen: (mode: JoinMode) => void }) {
+export function Home({ t, onReturn, onJoinScreen, onLogo }: { t: Tomato; onReturn: () => void; onJoinScreen: (mode: JoinMode) => void; onLogo?: () => void }) {
   const [section, setSection] = useState<Section>("profile");
   const inRoom = Boolean(t.snapshot?.room);
   const user = t.user;
@@ -55,12 +58,16 @@ export function Home({ t, onReturn, onJoinScreen }: { t: Tomato; onReturn: () =>
   const guest = !user?.login;
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-white" data-testid="home-screen">
+    <div className="flex min-h-[100dvh] flex-col bg-white text-ink" style={LIGHT_VARS} data-testid="home-screen">
       <RoomReturnBar t={t} onReturn={onReturn} />
       <header className="mx-auto flex w-full max-w-[1200px] items-center justify-between gap-4 px-4 py-4 sm:px-8 sm:py-6">
-        <Logo />
+        {onLogo ? (
+          <button type="button" onClick={onLogo} data-testid="home-logo" aria-label="AntiStall: на первую страницу" title="На первую страницу" className="rounded-[12px] p-1 transition-colors hover:bg-paper">
+            <Logo />
+          </button>
+        ) : <Logo />}
         {/* на телефоне — аватар и уровень, имя и монеты — с планшета */}
-        <span className="flex shrink-0 items-center gap-2.5 rounded-full border-2 border-ink py-1 pl-1 pr-4">
+        <span className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full border-2 border-ink bg-white py-1 pl-1 pr-4 text-ink" data-testid="home-chip">
           <Avatar name={name || "?"} id={user?.id} look={user?.avatar} size={34} ring="#3B2422" />
           <span className="hidden max-w-[10rem] truncate text-lg font-extrabold sm:inline">{name}</span>
           <span className="whitespace-nowrap text-sm font-bold text-mute sm:text-base">ур. {level}<span className="hidden sm:inline"> · {coins} монет</span></span>
@@ -105,7 +112,7 @@ export function Home({ t, onReturn, onJoinScreen }: { t: Tomato; onReturn: () =>
             ))}
           </div>
           {section === "profile" && (
-            <div className="overflow-hidden rounded-[28px] bg-ink text-cream" style={DARK_VARS}>
+            <div className="overflow-hidden rounded-[28px] border-2 border-soft">
               <ProfilePanel t={t} />
             </div>
           )}

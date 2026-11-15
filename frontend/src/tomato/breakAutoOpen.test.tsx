@@ -157,18 +157,56 @@ describe("экраны по фазе комнаты", () => {
     expect($("stats-panel")).toBeNull();
   });
 
-  it("логотип в комнате — на главную без выхода: полоса «Вы в комнате» с фазой и таймером возвращает обратно", () => {
+  it("логотип в комнате — на лендинг без выхода: полоса «Вы в комнате» с фазой и таймером возвращает обратно", () => {
     show("focus", { user: { id: "u1", name: "Лотти", level: 2, coins: 12, login: null }, remainingMs: 600_000 }, "/room/K7QM2X");
     expect($("game-later")).not.toBeNull(); // экран фокуса
-    act(() => ($("go-home") as HTMLButtonElement).click());
-    expect($("home-screen")).not.toBeNull();
+    act(() => ($("go-landing") as HTMLButtonElement).click());
+    expect($("landing")).not.toBeNull();
+    expect($("home-screen")).toBeNull();
     expect($("game-later")).toBeNull();
+    // поверх тёмного фокуса лендинг всё равно светлый
+    expect($("tomato-app")!.className).not.toContain("bg-ink");
     const bar = $("room-return-bar")!.textContent ?? "";
     expect(bar).toContain("Комната Лотти");
     expect(bar).toContain("идёт фокус");
     expect(bar).toContain("10:00");
     act(() => ($("return-to-room") as HTMLButtonElement).click());
-    expect($("home-screen")).toBeNull();
+    expect($("landing")).toBeNull();
     expect($("game-later")).not.toBeNull();
+  });
+
+  it("из комнаты: лендинг → аватарка → профиль, логотип профиля → снова лендинг, полоса везде возвращает в комнату", () => {
+    show("break", { user: { id: "u1", name: "Лотти", level: 2, coins: 12, login: "lotti" }, remainingMs: 120_000 }, "/room/K7QM2X");
+    act(() => ($("go-landing") as HTMLButtonElement).click());
+    const chip = $("landing-profile") as HTMLButtonElement;
+    expect(chip.getAttribute("aria-label")).toContain("Лотти");
+    act(() => chip.click());
+    expect($("home-screen")).not.toBeNull();
+    expect($("room-return-bar")!.textContent).toContain("перерыв");
+    act(() => ($("home-logo") as HTMLButtonElement).click());
+    expect($("landing")).not.toBeNull();
+    act(() => ($("landing-profile") as HTMLButtonElement).click());
+    act(() => ($("return-to-room") as HTMLButtonElement).click());
+    expect($("home-screen")).toBeNull();
+    expect($("td-game")).not.toBeNull(); // снова в комнате на перерыве
+  });
+
+  it("без комнаты: вошедший видит аватарку на лендинге и попадает в профиль; логотип профиля ведёт на лендинг", () => {
+    show(null, { user: { id: "u1", name: "Лотти", level: 3, coins: 223, login: "lotti" } });
+    expect($("room-return-bar")).toBeNull();
+    const chip = $("landing-profile") as HTMLButtonElement;
+    expect(chip.textContent).toContain("ур. 3 · 223 монет");
+    act(() => chip.click());
+    expect($("home-screen")).not.toBeNull();
+    expect($("room-return-bar")).toBeNull();
+    act(() => ($("home-logo") as HTMLButtonElement).click());
+    expect($("landing")).not.toBeNull();
+  });
+
+  it("не вошедший видит лендинг как раньше: без аватарки и полосы комнаты", () => {
+    show(null);
+    expect($("landing")).not.toBeNull();
+    expect($("landing-profile")).toBeNull();
+    expect($("room-return-bar")).toBeNull();
   });
 });

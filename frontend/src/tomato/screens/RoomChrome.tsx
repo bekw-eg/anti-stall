@@ -82,16 +82,16 @@ export function SheetPanel({ t, sheet, onClose, top = 0 }: { t: Tomato; sheet: S
     return () => window.removeEventListener("keydown", onKey);
   }, [sheet, onClose]);
   if (!sheet || !t.snapshot) return null;
-  const dark = sheet === "profile";
+  const wide = sheet === "profile";
   const title = sheet === "map" ? "Карта команды" : sheet === "stats" ? "Прогресс" : sheet === "social" ? "Друзья" : "Профиль";
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 flex justify-end" style={{ top }} role="dialog" aria-label={title}>
       <button type="button" aria-label="Закрыть" tabIndex={-1} onClick={onClose} className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" />
-      {/* профиль — страница образа: тёмная, шире остальных панелей (две колонки как на референсе) */}
-      <section className={`relative flex h-full w-full flex-col border-l-2 border-ink sm:w-[min(640px,92vw)] ${dark ? "bg-ink text-cream lg:w-[min(1040px,84vw)]" : "bg-white text-ink lg:w-[min(880px,70vw)]"}`} style={dark ? DARK_VARS : LIGHT_VARS}>
-        <header className={`flex items-center justify-between gap-3 border-b-2 px-5 py-4 sm:px-6 ${dark ? "border-[#5A3833]" : "border-soft"}`}>
+      {/* все панели светлые (и профиль поверх тёмного фокуса); профиль шире — две колонки */}
+      <section className={`relative flex h-full w-full flex-col border-l-2 border-ink bg-white text-ink sm:w-[min(640px,92vw)] ${wide ? "lg:w-[min(1040px,84vw)]" : "lg:w-[min(880px,70vw)]"}`} style={LIGHT_VARS}>
+        <header className="flex items-center justify-between gap-3 border-b-2 border-soft px-5 py-4 sm:px-6">
           <h2 className="font-display text-2xl sm:text-3xl"><span className="relative top-0.5">{title}</span></h2>
-          <button ref={closeRef} type="button" onClick={onClose} aria-label="Закрыть панель" className={`flex h-11 w-11 items-center justify-center rounded-[14px] border-2 ${dark ? "border-[#6A4A45] text-cream hover:bg-[#5A3833]" : "border-ink bg-white as-shadow-sm"}`}><X size={20} /></button>
+          <button ref={closeRef} type="button" onClick={onClose} aria-label="Закрыть панель" className="flex h-11 w-11 items-center justify-center rounded-[14px] border-2 border-ink bg-white text-ink as-shadow-sm hover:bg-paper"><X size={20} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
           {sheet === "map" && <div><RoadMap road={t.snapshot.challenge} meId={t.snapshot.me?.userId} /></div>}

@@ -95,7 +95,7 @@ function AccountPanel({ t, onDone }: { t: Tomato; onDone: () => void }) {
   );
 }
 
-export function JoinScreen({ t, initialMode, initialCode = "", onBack }: { t: Tomato; initialMode: JoinMode; initialCode?: string; onBack: () => void }) {
+export function JoinScreen({ t, initialMode, initialCode = "", onBack, onLogo }: { t: Tomato; initialMode: JoinMode; initialCode?: string; onBack: () => void; onLogo?: () => void }) {
   // Гость (только имя, профиль в этом браузере) или полноценный аккаунт (логин и пароль)
   const [who, setWho] = useState<"guest" | "account">("guest");
   const registered = Boolean(t.user?.login);
@@ -125,7 +125,9 @@ export function JoinScreen({ t, initialMode, initialCode = "", onBack }: { t: To
         <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-xl py-2 text-lg font-bold sm:text-xl">
           <ArrowLeft size={24} strokeWidth={2.4} aria-hidden /> Назад
         </button>
-        <Logo />
+        {onLogo ? (
+          <button type="button" onClick={onLogo} aria-label="AntiStall: на первую страницу" title="На первую страницу" className="rounded-[12px] p-1 transition-colors hover:bg-paper"><Logo /></button>
+        ) : <Logo />}
       </header>
 
       <main className="mx-auto grid w-full max-w-[1200px] flex-1 items-center gap-10 px-4 pb-12 sm:px-8 lg:grid-cols-[minmax(0,560px)_minmax(0,400px)] lg:justify-between lg:gap-16 lg:pb-20">
