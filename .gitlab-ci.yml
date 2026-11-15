@@ -41,6 +41,8 @@ variables:
   # Порты на ВМ: основной стенд и демо-стенд для жюри (ускоренное время, отдельная БД)
   APP_PORT: "80"
   DEMO_PORT: "8081"
+  # логи в Sage (Spirit): Logs Collector группы; секрет SAGE_TOKEN задаётся в Spirit (masked), без него отправки нет
+  SAGE_LOGS_URL: "https://sage.spirit.t-education.com/api/hack-nqz-03/multiline/"
 
 # 0. Тесты в каждом MR и в master: backend (node --test), типы и тесты frontend (tsc + vitest).
 # Красные тесты останавливают пайплайн: сборка образа и деплой идут только после зелёных тестов.
@@ -160,7 +162,7 @@ deploy:vm:
       $SSH $VM "cd ~/app &&
         sudo dp auth service-acc --key-file $(basename $SPIRIT_DOCKER_SA_KEY) &&
         sudo dp auth configure-docker &&
-        APP_PORT=$APP_PORT DEMO_PORT=$DEMO_PORT bash deploy.sh '$IMAGE_NAME' '$DEPLOY_HOST' '${ENABLE_HTTPS:-1}'"
+        SAGE_LOGS_URL='${SAGE_LOGS_URL:-}' SAGE_TOKEN='${SAGE_TOKEN:-}' APP_PORT=$APP_PORT DEMO_PORT=$DEMO_PORT bash deploy.sh '$IMAGE_NAME' '$DEPLOY_HOST' '${ENABLE_HTTPS:-1}'"
   environment:
     name: production
     url: https://$DEPLOY_HOST
@@ -182,7 +184,19 @@ rollback:vm:
       $SSH $VM "cd ~/app &&
         sudo dp auth service-acc --key-file $(basename $SPIRIT_DOCKER_SA_KEY) &&
         sudo dp auth configure-docker &&
-        APP_PORT=$APP_PORT DEMO_PORT=$DEMO_PORT bash rollback.sh '$DEPLOY_HOST' '${ENABLE_HTTPS:-1}'"
+        SAGE_LOGS_URL='${SAGE_LOGS_URL:-}' SAGE_TOKEN='${SAGE_TOKEN:-}' APP_PORT=$APP_PORT DEMO_PORT=$DEMO_PORT bash rollback.sh '$DEPLOY_HOST' '${ENABLE_HTTPS:-1}'"
   environment:
     name: production
     url: https://$DEPLOY_HOST
+
+# 5. Sage (Spirit): регистрация метрик стенда — один раз вручную, когда в Spirit заданы SAGE_TOKEN (сервисный токен Sage)
+#    и при необходимости SAGE_LOGS_URL. Логи начинают уходить в Sage после ближайшего деплоя. См. docs/OBSERVABILITY.md
+sage:setup:
+  stage: deploy
+  image: $DEPLOY_IMG
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+  allow_failure: true
+  script:
+    - bash deploy/sage-setup.sh

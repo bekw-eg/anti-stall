@@ -19,6 +19,15 @@ CADDY_IMAGE="${CADDY_IMAGE:-caddy:2.8.4-alpine}"
 DC="sudo docker compose"
 
 write_env() {
+  write_env_mode "$1"
+  # логи в Sage: переменные приходят из CI (SAGE_TOKEN — секрет), файл .env закрыт от чужих глаз
+  if [ -n "${SAGE_TOKEN:-}" ] && [ -n "${SAGE_LOGS_URL:-}" ]; then
+    { echo "SAGE_LOGS_URL=$SAGE_LOGS_URL"; echo "SAGE_TOKEN=$SAGE_TOKEN"; } >> .env
+  fi
+  chmod 600 .env
+}
+
+write_env_mode() {
   if [ "$1" = https ]; then
     cat > .env <<EOF
 IMAGE_NAME=$IMAGE

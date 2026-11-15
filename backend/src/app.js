@@ -18,6 +18,7 @@ import { createFriends } from './services/friends.js';
 import { createUsersService } from './services/users.js';
 import { Hub } from './ws/hub.js';
 import { createLogger, createMetrics, routeLabel } from './observability.js';
+import { createSageShipper } from './sageLogs.js';
 import { VoiceRooms } from './ws/voice.js';
 
 /** Пути API и WebSocket никогда не перехватываются статикой. */
@@ -29,7 +30,10 @@ const isApiPath = (p) => p === '/api' || p.startsWith('/api/') || p === '/ws' ||
 export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
   const db = new Db(config.dbPath, { treasuryStart: config.economy.treasuryStart });
   // ---- наблюдаемость: JSON-логи, метрики Prometheus, счётчик ошибок (docs/OBSERVABILITY.md)
-  const log = createLogger({ enabled: config.requestLog });
+  // логи — в stdout (docker logs) и, если заданы SAGE_LOGS_URL и SAGE_TOKEN, в Sage (поиск, Grafana, алерты)
+  const sage = config.requestLog ? createSageShipper({ url: config.sageLogsUrl, token: config.sageToken, labels: { system: 'antistall', env: config.demoMode ? 'demo' : 'prod' } }) : null;
+  const log = createLogger({ enabled: config.requestLog, sink: sage });
+  if (sage) log('info', 'sage_logs_enabled', { url: config.sageLogsUrl });
   const metrics = createMetrics();
   const httpRequests = metrics.counter('antistall_http_requests_total', 'HTTP-запросы по маршруту и коду ответа');
   const httpDuration = metrics.histogram('antistall_http_request_duration_seconds', 'Время ответа HTTP по маршруту', [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5]);
@@ -226,6 +230,7 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
       return new Promise((resolve) => server.listen(port, host, () => resolve(server.address())));
     },
     async close() {
+      await sage?.close().catch(() => undefined);
       clearInterval(timer);
       clearInterval(frameTimer);
       hub.close();

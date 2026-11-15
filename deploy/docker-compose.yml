@@ -21,6 +21,9 @@ services:
       # TURN для голоса за NAT — см. backend/docs/VOICE.md
       TOMATO_TURN_URLS: ${TOMATO_TURN_URLS:-}
       TOMATO_TURN_SECRET: ${TOMATO_TURN_SECRET:-}
+      # логи в Sage (Spirit) — пусто = не отправлять (docs/OBSERVABILITY.md)
+      SAGE_LOGS_URL: ${SAGE_LOGS_URL:-}
+      SAGE_TOKEN: ${SAGE_TOKEN:-}
     volumes:
       - tomato-data:/data
 
@@ -38,6 +41,8 @@ services:
     environment:
       TOMATO_DEMO: "1"
       TOMATO_DB: /data/tomato-demo.db
+      SAGE_LOGS_URL: ${SAGE_LOGS_URL:-}
+      SAGE_TOKEN: ${SAGE_TOKEN:-}
     volumes:
       - tomato-demo-data:/data
 

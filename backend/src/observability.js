@@ -8,12 +8,14 @@
 
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
 
-export function createLogger({ enabled = true, minLevel = 'info', out = process.stdout, err = process.stderr } = {}) {
+/** sink — дополнительный приёмник событий (отправка в Sage); stdout пишется всегда, когда enabled. */
+export function createLogger({ enabled = true, minLevel = 'info', out = process.stdout, err = process.stderr, sink = null } = {}) {
   const min = LEVELS[minLevel] ?? LEVELS.info;
   return function log(level, msg, fields = {}) {
     if (!enabled || (LEVELS[level] ?? 0) < min) return;
-    const line = JSON.stringify({ t: new Date().toISOString(), level, msg, ...fields });
-    (level === 'error' || level === 'warn' ? err : out).write(line + '\n');
+    const event = { t: new Date().toISOString(), level, msg, ...fields };
+    (level === 'error' || level === 'warn' ? err : out).write(JSON.stringify(event) + '\n');
+    sink?.push(event);
   };
 }
 

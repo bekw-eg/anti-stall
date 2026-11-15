@@ -58,3 +58,25 @@
 - `client_error` — `kind`, `message`, `stack`, `page`, `ua`.
 
 Выключить логи запросов: `TOMATO_REQUEST_LOG=0` (ошибки пишутся всегда). Пример разбора: `sudo docker compose logs app --no-log-prefix | grep '^{' | jq 'select(.level=="error")'`.
+
+## Sage (Spirit): логи, метрики, Grafana, алерты
+
+Группа Sage — `hack-nqz-03` (квоты: логи 0,1 МБ/с, метрики 100 000, хранение 14 дней). Grafana Sage — организация `hack-nqz-03`.
+
+**Что нужно один раз:**
+1. Sage → аватар → «Создать сервисный токен»: идентификатор клиента `hack_antistall`, группа `hack-nqz-03`, права на загрузку логов и метрики.
+2. Spirit → CI/CD-переменные проекта: `SAGE_TOKEN` = этот токен (masked, protected). `SAGE_LOGS_URL` уже задан в `.gitlab-ci.yml`.
+3. Пайплайн master → ручная джоба **`sage:setup`**: создаёт в Sage окружения `prod`/`demo`, систему `antistall` и таргеты —
+   Sage сам забирает `https://<домен>/api/metrics` и `https://<домен>:8081/api/metrics` каждые 30 с.
+4. Ближайший деплой передаёт `SAGE_TOKEN` в контейнеры — логи (JSON, `system=antistall`, `env=prod|demo`) начинают уходить в Sage.
+
+**Проверка в Sage → Search:**
+- метрики: `pql {group="hack-nqz-03", system="antistall"} | stats count by __name__`
+- логи: `group="hack-nqz-03" system="antistall" env="prod" level="error"`
+
+**Дашборд** «AntiStall — стенд» (Grafana Sage, `uid: antistall-stand`; копия — `deploy/grafana/antistall-dashboard.json`):
+up, онлайн, комнаты в фокусе / на перерыве, доля 5xx, версия схемы, RPS по маршрутам, p95, ошибки по источнику,
+коды ответов, сессии, пользователи, награды, память, таблица ошибок из логов. Переключатель стенда `prod` / `demo`.
+
+**Алерты** (Sage → Alerts, тип MageQL): стенд не отвечает — `pql max(up{group="hack-nqz-03", system="antistall", env="prod"}) < 1`;
+много 5xx — доля 5xx > 0.05; ошибки таймера — `pql sum(increase(antistall_errors_total{group="hack-nqz-03", system="antistall", source="tick"}[5m])) > 0`.

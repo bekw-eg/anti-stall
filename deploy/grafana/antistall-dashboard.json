@@ -1,0 +1,589 @@
+{
+  "title": "AntiStall — стенд",
+  "uid": "antistall-stand",
+  "tags": [
+    "antistall",
+    "hack-nqz-03"
+  ],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "schemaVersion": 39,
+  "templating": {
+    "list": [
+      {
+        "name": "env",
+        "label": "Стенд",
+        "type": "custom",
+        "query": "prod,demo",
+        "current": {
+          "text": "prod",
+          "value": "prod"
+        },
+        "options": [
+          {
+            "text": "prod",
+            "value": "prod",
+            "selected": true
+          },
+          {
+            "text": "demo",
+            "value": "demo",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Стенд жив (up)",
+      "description": "1 — Sage забирает /api/metrics, 0 — стенд не отвечает",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql chart=max max(up{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"})",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Онлайн (WebSocket)",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql chart=sum sum(antistall_ws_connections{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"})",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Комнаты в фокусе",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql chart=sum sum(antistall_rooms{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\", phase=\"focus\"})",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Комнаты на перерыве",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql chart=sum sum(antistall_rooms{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\", phase=\"break\"})",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Доля 5xx",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql chart=sum sum(rate(antistall_http_requests_total{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\", status=~\"5..\"}[5m])) / sum(rate(antistall_http_requests_total{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"}[5m]))",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Версия схемы БД",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql chart=max max(antistall_schema_version{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"})",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Запросы в секунду по маршрутам",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql legend=\"{{route}}\" sum by (route) (rate(antistall_http_requests_total{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"}[5m]))",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Время ответа p95",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql chart=sum histogram_quantile(0.95, sum by (le) (rate(antistall_http_request_duration_seconds_bucket{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"}[5m])))",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Ошибки по источнику (за 15 мин)",
+      "description": "http — ответы 500, tick — таймер комнат, harvest — кадры игры, client — ошибки в браузере",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql legend=\"{{source}}\" sum by (source) (increase(antistall_errors_total{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"}[15m]))",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Коды ответов",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql legend=\"{{status}}\" sum by (status) (rate(antistall_http_requests_total{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"}[5m]))",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Фокус-сессии по статусам",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql legend=\"{{status}}\" sum by (status) (antistall_focus_sessions{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"})",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Пользователи: гости и аккаунты",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql legend=\"{{type}}\" sum by (type) (antistall_users{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"})",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Начисления наград по видам",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql legend=\"{{kind}}\" sum by (kind) (antistall_reward_transactions{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"})",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Память процесса",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "pql legend=\"RSS\" sum(process_resident_memory_bytes{group=\"hack-nqz-03\", system=\"antistall\", env=\"$env\"})",
+          "format": "time_series"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 15,
+      "type": "table",
+      "title": "Ошибки в логах (последние)",
+      "description": "Логи сервера из Sage: 5xx, ошибки таймера, ошибки браузера. reqId — тот же, что в заголовке X-Request-Id",
+      "datasource": {
+        "type": "tinkoff-grafana-mage-v2",
+        "uid": "P21BB2A4D622268FF"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 24,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "tinkoff-grafana-mage-v2",
+            "uid": "P21BB2A4D622268FF"
+          },
+          "expr": "group=\"hack-nqz-03\" system=\"antistall\" env=\"$env\" level=\"error\" OR level=\"warn\" | fields @timestamp, level, msg, route, status, reqId, error, message",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {}
+    }
+  ]
+}

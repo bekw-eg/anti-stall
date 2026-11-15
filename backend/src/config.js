@@ -22,6 +22,9 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
     metricsToken: env.TOMATO_METRICS_TOKEN || null,
     /** Приём ошибок из браузера (POST /api/client-errors): не больше N в минуту с одного адреса. */
     clientErrorsPerMinute: 20,
+    /** Логи в Sage (Spirit): адрес Logs Collector группы и сервисный токен. Оба пустые — отправки нет. */
+    sageLogsUrl: env.SAGE_LOGS_URL || null,
+    sageToken: env.SAGE_TOKEN || null,
 
     /**
      * Демо-режим для жюри: только по явному флагу сервера, см. docs/DEMO_MODE.md.
