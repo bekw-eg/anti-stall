@@ -2,7 +2,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const SCHEMA_VERSION = 5;
+/** Номер последней миграции (см. комментарии «// vN:» в migrateInTx). Поднимать вместе с новой миграцией. */
+const SCHEMA_VERSION = 8;
 
 /** Стартовый капитал казны (= config.economy.treasuryStart); нужен миграции v5 для уже существующих команд. */
 const DEFAULT_TREASURY_START = 30;
@@ -322,6 +323,8 @@ export class Db {
    * Повторный запуск ничего не меняет: каждый шаг сначала проверяет текущую форму таблицы.
    */
   migrate() {
+    const hasMeta = this.sql.prepare("SELECT 1 x FROM sqlite_master WHERE type = 'table' AND name = 'meta'").get();
+    const before = hasMeta ? this.sql.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()?.value ?? null : null;
     this.sql.exec('PRAGMA foreign_keys = OFF');
     try {
       this.sql.exec('BEGIN IMMEDIATE');
@@ -335,6 +338,9 @@ export class Db {
     } finally {
       this.sql.exec('PRAGMA foreign_keys = ON');
     }
+    // лог только при обновлении существующей БД (новая создаётся сразу в последней версии — без шума в тестах)
+    if (before !== null && before !== String(SCHEMA_VERSION)) console.log(`[tomato] БД: миграция схемы v${before} → v${SCHEMA_VERSION}`);
+    this.schemaVersion = SCHEMA_VERSION;
   }
 
   migrateInTx() {

@@ -52,6 +52,9 @@ test:
   script:
     - node --version
     - cd backend && npm ci --no-audit --no-fund && npm test
+    # новая БД создаётся миграциями с нуля и проходит проверку целостности и инвариантов экономики
+    - node -e "import('./src/db.js').then((m) => new m.Db('/tmp/ci-check.db').close())"
+    - node src/tools/db-check.js /tmp/ci-check.db
     - cd ../frontend && npm ci --no-audit --no-fund && npx tsc --noEmit -p tsconfig.app.json && npx vitest run
 
 # 1. Сборка ЕДИНОГО образа (frontend + backend: backend раздаёт собранный frontend, REST /api и WebSocket /ws
@@ -123,7 +126,7 @@ deploy:vm:
     - echo "🚀 Запускаем деплой образа $IMAGE_NAME на $DEPLOY_HOST (HTTPS через Caddy, если получится; иначе HTTP :$APP_PORT / :$DEMO_PORT)"
     # кладём на ВМ compose (app, demo, caddy), Caddyfile, скрипт деплоя и ключ сервис-аккаунта
     - $SSH $VM "mkdir -p ~/app"
-    - $SCP deploy/docker-compose.yml deploy/Caddyfile deploy/deploy.sh $SPIRIT_DOCKER_SA_KEY $VM:app/
+    - $SCP deploy/docker-compose.yml deploy/Caddyfile deploy/deploy.sh deploy/rollback.sh $SPIRIT_DOCKER_SA_KEY $VM:app/
     # на ВМ: входим в registry и запускаем deploy.sh — он выбирает HTTPS/HTTP, поднимает оба стенда,
     # проверяет /api/health и при неудаче HTTPS откатывается на HTTP (подробности — docs/DEPLOY.md).
     # ENABLE_HTTPS=0 в CI-переменных Spirit — принудительно остаться на HTTP.
@@ -133,6 +136,28 @@ deploy:vm:
         sudo dp auth service-acc --key-file $(basename $SPIRIT_DOCKER_SA_KEY) &&
         sudo dp auth configure-docker &&
         APP_PORT=$APP_PORT DEMO_PORT=$DEMO_PORT bash deploy.sh '$IMAGE_NAME' '$DEPLOY_HOST' '${ENABLE_HTTPS:-1}'"
+  environment:
+    name: production
+    url: https://$DEPLOY_HOST
+
+# 4. Откат одной кнопкой (вручную, только master): на ВМ поднимается предыдущий образ (~/app/previous_image)
+#    тем же deploy.sh — с бэкапом БД и проверкой health. Повторный запуск вернёт обратно. Подробности — docs/DEPLOY.md.
+rollback:vm:
+  stage: deploy
+  extends:
+    - .ssh_vm
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+  allow_failure: true
+  resource_group: production
+  script:
+    - $SCP deploy/deploy.sh deploy/rollback.sh $SPIRIT_DOCKER_SA_KEY $VM:app/
+    - |
+      $SSH $VM "cd ~/app &&
+        sudo dp auth service-acc --key-file $(basename $SPIRIT_DOCKER_SA_KEY) &&
+        sudo dp auth configure-docker &&
+        APP_PORT=$APP_PORT DEMO_PORT=$DEMO_PORT bash rollback.sh '$DEPLOY_HOST' '${ENABLE_HTTPS:-1}'"
   environment:
     name: production
     url: https://$DEPLOY_HOST

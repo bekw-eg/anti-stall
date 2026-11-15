@@ -59,12 +59,20 @@ if [ "$WANT_HTTPS" = "1" ]; then
   fi
 fi
 
-# 2. Новый образ приложения и запуск
+# 2. Бэкап БД обоих стендов перед обновлением (VACUUM INTO в том же томе, папка /data/backups, 5 последних).
+#    Старый образ без инструмента бэкапа — только предупреждение, деплой продолжается.
+for svc in app demo; do
+  if [ -n "$($DC ps -q --status running "$svc" 2>/dev/null)" ]; then
+    $DC exec -T "$svc" node src/tools/db-backup.js || echo "⚠️  Бэкап БД $svc не сделан (старый образ без src/tools/db-backup.js?)"
+  fi
+done
+
+# 3. Новый образ приложения и запуск
 write_env "$mode"
 $DC pull app demo
 if [ "$mode" = http ]; then start_http; else $DC up -d --no-build --remove-orphans; fi
 
-# 3. Проверка. В HTTPS-режиме — приложение изнутри и затем сертификат снаружи (до ~2 мин на выпуск);
+# 4. Проверка. В HTTPS-режиме — приложение изнутри и затем сертификат снаружи (до ~2 мин на выпуск);
 #    если HTTPS не заработал — откат на HTTP, чтобы стенд не пропал
 if [ "$mode" = https ]; then
   if ok http://127.0.0.1:8080/api/health 30 && ok http://127.0.0.1:8090/api/health 30 \
@@ -84,7 +92,14 @@ if [ "$mode" = http ]; then
   ok "http://127.0.0.1:$DEMO_PORT/api/health" 30
 fi
 
-# 4. Для отката: прошлый и текущий образ
+# Проверка БД после обновления (целостность, балансы = журналу наград, дубли начислений) — предупреждение, не откат
+for svc in app demo; do
+  if [ -n "$($DC ps -q --status running "$svc" 2>/dev/null)" ]; then
+    $DC exec -T "$svc" node src/tools/db-check.js >/dev/null && echo "✅ БД $svc в порядке" || echo "⚠️  db-check $svc нашёл нарушения: cd ~/app && sudo docker compose exec -T $svc node src/tools/db-check.js"
+  fi
+done
+
+# 5. Для отката: прошлый и текущий образ
 [ -f current_image ] && cp current_image previous_image || true
 echo "$IMAGE" > current_image
 

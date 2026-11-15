@@ -1,6 +1,6 @@
 /**
  * Проверка БД на исправность — только чтение, ничего не меняет.
- *   node src/tools/db-check.js <путь к .db>
+ *   node src/tools/db-check.js [путь к .db]   (по умолчанию — TOMATO_DB)
  * На ВМ (в контейнере):
  *   cd ~/app && sudo docker compose exec -T app  node src/tools/db-check.js /data/tomato.db
  *   cd ~/app && sudo docker compose exec -T demo node src/tools/db-check.js /data/tomato-demo.db
@@ -8,7 +8,7 @@
  */
 import { DatabaseSync } from 'node:sqlite';
 
-const path = process.argv[2];
+const path = process.argv[2] || process.env.TOMATO_DB;
 if (!path) { console.error('нужен путь к БД'); process.exit(2); }
 const db = new DatabaseSync(path, { readOnly: true });
 const count = (q) => db.prepare(q).get().c;

@@ -142,3 +142,26 @@ function deepMerge(base, extra) {
   }
   return base;
 }
+
+/**
+ * Проверка переменных окружения при старте: неверное значение — понятная ошибка и выход,
+ * а не тихая подмена значением по умолчанию. Возвращает список проблем (пустой — всё в порядке).
+ */
+export function checkEnv(env = process.env) {
+  const problems = [];
+  const oneOf = (name, values) => {
+    if (env[name] !== undefined && env[name] !== '' && !values.includes(env[name])) problems.push(`${name}=${env[name]}: допустимо ${values.join(' | ')}`);
+  };
+  if (env.PORT !== undefined && env.PORT !== '') {
+    const p = Number(env.PORT);
+    if (!Number.isInteger(p) || p < 1 || p > 65535) problems.push(`PORT=${env.PORT}: нужен номер порта 1–65535`);
+  }
+  oneOf('TOMATO_DEMO', ['0', '1']);
+  oneOf('TOMATO_BREAK_GAMES', ['td', 'harvest', 'alternate']);
+  if (env.TOMATO_VOICE_MAX_PEERS !== undefined && !(Number(env.TOMATO_VOICE_MAX_PEERS) >= 2)) problems.push(`TOMATO_VOICE_MAX_PEERS=${env.TOMATO_VOICE_MAX_PEERS}: нужно число ≥ 2`);
+  // TURN: адрес без способа входа не заработает — лучше упасть сразу, чем молча остаться без голоса через NAT
+  if (env.TOMATO_TURN_URLS && !env.TOMATO_TURN_SECRET && !(env.TOMATO_TURN_USERNAME && env.TOMATO_TURN_CREDENTIAL)) {
+    problems.push('TOMATO_TURN_URLS задан, но нет TOMATO_TURN_SECRET или пары TOMATO_TURN_USERNAME + TOMATO_TURN_CREDENTIAL');
+  }
+  return problems;
+}

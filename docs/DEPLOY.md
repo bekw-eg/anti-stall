@@ -49,29 +49,44 @@ REST `/api` и WebSocket `/ws` на одном порту) и поднимает
 3. Джоба `deploy:vm` в конце проверяет `/api/health` обоих стендов (в HTTPS-режиме — и сертификат) и пишет адреса:
    `https://<DEPLOY_HOST>` и `https://<DEPLOY_HOST>:8081` (или `http://…`, если пришлось остаться на HTTP).
 
-## 4. Данные, обновление, откат
+## 4. Данные, миграции, бэкапы и откат
 
 - Прогресс игроков хранится в томах `tomato-data` и `tomato-demo-data` и **переживает** обновление образа.
-- Миграции БД аддитивные и выполняются сами при старте (`backend/src/db.js`); старые данные не удаляются.
+- **Миграции** выполняются сами при старте (`backend/src/db.js`) в одной транзакции: ошибка — откат миграции, сервер не стартует, `deploy.sh` видит это по `/api/health`. Миграции только добавляют таблицы и колонки, данные не удаляются. Номер схемы — `meta.schema_version` (сейчас 8); при обновлении в логе `БД: миграция схемы vX → vY`.
+- **Бэкап перед каждым деплоем** делает `deploy.sh`: `node src/tools/db-backup.js` в контейнерах `app` и `demo` (снимок `VACUUM INTO`, без остановки) → том, папка `/data/backups`, хранятся 5 последних.
+- **Проверка БД после деплоя**: `node src/tools/db-check.js` (целостность, внешние ключи, балансы = журналу наград, дубли начислений, активные сессии). То же — в CI на новой БД.
 - Образы тегируются коротким SHA коммита. На ВМ в `~/app/current_image` — текущий образ, в `~/app/previous_image` — предыдущий.
 
-Откат на прошлую версию (на ВМ):
+**Откат кода — одной кнопкой**: в Spirit у пайплайна master запустить ручную джобу `rollback:vm`. Она поднимает образ из `previous_image` тем же `deploy.sh` (бэкап, health, HTTPS). Повторный запуск возвращает обратно. Без CI, на ВМ: `cd ~/app && bash rollback.sh <домен>`. БД при откате кода не трогается: старый код работает с новой схемой (миграции аддитивные).
+
+**Откат данных** (если обновление испортило данные):
 
 ```bash
 cd ~/app
-sed -i "s|^IMAGE_NAME=.*|IMAGE_NAME=$(cat previous_image)|" .env
-sudo docker compose up -d --no-build   # профили (demo, https) берутся из ~/app/.env
+sudo docker compose exec -T app ls /data/backups                       # выбрать снимок
+sudo docker compose stop app
+sudo docker compose run --rm --no-deps --entrypoint sh app -c 'cp /data/backups/<снимок>.db /data/tomato.db && rm -f /data/tomato.db-wal /data/tomato.db-shm'
+sudo docker compose start app
+sudo docker compose exec -T app node src/tools/db-check.js
 ```
 
-Или в Spirit перезапустить джобу `deploy:vm` у пайплайна нужного (старого) коммита master.
+Для демо — то же с `demo` и `/data/tomato-demo.db`.
 
-Бэкап базы перед рискованным обновлением:
+## Переменные окружения сервера
 
-```bash
-sudo docker run --rm -v app_tomato-data:/data -v "$PWD":/backup alpine tar czf /backup/tomato-data-$(date +%F-%H%M).tgz -C /data .
-```
+Пример — `deploy/.env.example`. Неверное значение — сервер не стартует и пишет, что не так (`checkEnv` в `backend/src/config.js`).
 
-(имя тома смотрите в `sudo docker volume ls`; обычно `app_tomato-data`).
+| Переменная | По умолчанию | Что делает |
+|---|---|---|
+| `PORT` | 8787 (в образе 3000) | порт HTTP и WebSocket |
+| `TOMATO_DB` | `backend/data/tomato.db` (в образе `/data/tomato.db`) | файл SQLite |
+| `TOMATO_DEMO` | `0` | `1` — демо-режим: ускоренное время, только песочные аккаунты |
+| `TOMATO_BREAK_GAMES` | `alternate` | `td` / `harvest` / `alternate` — игра на перерыве |
+| `TOMATO_STATIC_DIR` | в образе `/app/public` | папка собранного фронтенда |
+| `TOMATO_CORS_ORIGIN` | `*` | для фронтенда с другого домена |
+| `TOMATO_STUN_URLS` | публичный STUN | STUN для голоса |
+| `TOMATO_TURN_URLS` + `TOMATO_TURN_SECRET` или `TOMATO_TURN_USERNAME` + `TOMATO_TURN_CREDENTIAL` | нет | TURN для голоса через строгий NAT |
+| `TOMATO_VOICE_MAX_PEERS` | 8 | участников в голосе |
 
 ## 5. Диагностика
 
