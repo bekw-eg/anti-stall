@@ -85,6 +85,8 @@ export function createUsersService(ctx, game) {
   const TRANSFER_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   const normCode = (v) => String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   function transferCode(userId) {
+    // гость одноразовый: переносить на другое устройство можно только аккаунт с логином
+    if (!db.get('SELECT login FROM users WHERE id = ?', userId)?.login) throw E.forbidden('ACCOUNT_REQUIRED', 'Перенос — только для зарегистрированных: задайте логин и пароль');
     const t = clock.now();
     const raw = Array.from({ length: 9 }, () => TRANSFER_ALPHABET[randomInt(TRANSFER_ALPHABET.length)]).join('');
     db.run('DELETE FROM transfer_codes WHERE user_id = ? AND used_at IS NULL', userId);

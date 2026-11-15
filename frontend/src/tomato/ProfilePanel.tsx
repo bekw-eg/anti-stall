@@ -134,7 +134,7 @@ export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }
             <span><span className="font-extrabold">Получать шутки</span><span className={`block text-sm ${MUTED}`}>Шутки — часть игры на перерыве. Если выключить, вас нельзя выбрать целью и отправлять их тоже нельзя.</span></span>
           </label>
           <AccountCard t={t} name={progress.name} />
-          <TransferCard t={t} />
+          {t.user?.login && <TransferCard t={t} />}
           {onLeave && <LeaveButton onLeave={onLeave} />}
         </div>
       )}
@@ -161,7 +161,7 @@ function AccountCard({ t, name }: { t: Tomato; name: string }) {
   return (
     <section className={`${CARD} flex flex-col gap-3 p-4`} aria-label="Аккаунт" data-testid="account-card">
       <p className="flex items-center gap-2 font-extrabold"><KeyRound size={18} aria-hidden />{login0 ? <>Аккаунт: <span className="text-peach">{login0}</span></> : "Сохранить аккаунт"}</p>
-      <p className={`text-sm ${MUTED}`}>{login0 ? "Входите этим логином и паролем на любом устройстве. Здесь можно сменить пароль." : "Сейчас вы гость: профиль живёт в этом браузере. Задайте логин и пароль — и входите с любого устройства. Почта не нужна."}</p>
+      <p className={`text-sm ${MUTED}`}>{login0 ? "Входите этим логином и паролем на любом устройстве. Здесь можно сменить пароль." : "Сейчас вы гость: профиль одноразовый и исчезнет, когда закроете браузер. Задайте логин и пароль — прогресс, друзья и образ сохранятся, входите с любого устройства. Почта не нужна."}</p>
       <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row">
         {login0 ? (
           <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" placeholder="Текущий пароль" aria-label="Текущий пароль" className={input} />
@@ -186,7 +186,7 @@ function TransferCard({ t }: { t: Tomato }) {
   return (
     <section className={`${CARD} flex flex-col gap-3 p-4`} aria-label="Вход с другого устройства" data-testid="transfer-card">
       <p className="flex items-center gap-2 font-extrabold"><Smartphone size={18} aria-hidden />Вход с другого устройства</p>
-      <p className={`text-sm ${MUTED}`}>Аккаунт хранится в этом браузере. Чтобы открыть его на телефоне или другом компьютере, возьмите одноразовый код и введите его там на экране входа — «Перенести аккаунт». Друзья, уровень и образ останутся с вами.</p>
+      <p className={`text-sm ${MUTED}`}>Чтобы открыть аккаунт на телефоне или другом компьютере, возьмите одноразовый код и введите его там на экране входа — «Перенести аккаунт». Друзья, уровень и образ останутся с вами.</p>
       {code && left > 0 ? (
         <div className="flex flex-wrap items-center gap-3 rounded-[18px] border-2 border-peach bg-[#2A1817] px-4 py-3">
           <span className="font-display text-3xl tracking-[0.12em] text-cream" data-testid="transfer-code"><span className="relative top-1">{code.code}</span></span>

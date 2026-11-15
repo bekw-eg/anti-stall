@@ -15,6 +15,7 @@ export const normalizeCode = (v) => String(v ?? '').toUpperCase().replace(/[^A-Z
  *  - по коду друга (users.friend_code, 6 символов), который человек сам показывает.
  * Заявка → принять / отклонить; встречная заявка сразу делает друзьями. Друга можно позвать в свою комнату.
  * Всё проверяет сервер: себе нельзя, дважды нельзя, лимиты против спама.
+ * Друзья — только у зарегистрированных (логин и пароль): гость одноразовый и ничего не сохраняет.
  */
 export function createFriends(ctx, rooms) {
   const { db, clock, config } = ctx;
@@ -24,6 +25,9 @@ export function createFriends(ctx, rooms) {
   const rowOf = (a, b) => { const [x, y] = pair(a, b); return db.get('SELECT * FROM friendships WHERE user_a = ? AND user_b = ?', x, y); };
   const other = (row, me) => (row.user_a === me ? row.user_b : row.user_a);
   const userRow = (id) => db.get('SELECT * FROM users WHERE id = ?', id);
+  const requireRegistered = (user) => {
+    if (!userRow(user.id)?.login) throw E.forbidden('ACCOUNT_REQUIRED', 'Друзья — только для зарегистрированных: задайте логин и пароль в профиле');
+  };
 
   /** Код друга: выдаётся при первом обращении (6 символов, уникален). */
   function codeOf(userId) {
@@ -73,6 +77,7 @@ export function createFriends(ctx, rooms) {
   /** Заявка: по id человека из общей комнаты или по коду друга. Встречная заявка — сразу дружба. */
   function request(user, body) {
     return db.tx(() => {
+      requireRegistered(user);
       const b = reqObject(body);
       let target = null;
       if (b.code !== undefined) {
@@ -88,6 +93,7 @@ export function createFriends(ctx, rooms) {
         throw E.badRequest('INVALID_FIELD', 'Нужен userId или code', { field: 'userId' });
       }
       if (target.id === user.id) throw E.conflict('SELF_FRIEND', 'Это ваш собственный код');
+      if (!target.login) throw E.forbidden('TARGET_IS_GUEST', 'Это гость — добавить в друзья можно после его регистрации');
       if (Boolean(target.sandbox) !== Boolean(userRow(user.id).sandbox)) throw E.forbidden('SANDBOX_MISMATCH', 'Демо-аккаунты дружат только с демо-аккаунтами');
       const existing = rowOf(user.id, target.id);
       if (existing?.status === 'accepted') throw E.conflict('ALREADY_FRIENDS', 'Вы уже друзья');
@@ -113,6 +119,7 @@ export function createFriends(ctx, rooms) {
 
   function accept(user, fromId) {
     return db.tx(() => {
+      requireRegistered(user);
       const row = rowOf(user.id, fromId);
       if (!row || row.status !== 'pending' || row.requested_by === user.id) throw E.notFound('REQUEST_NOT_FOUND', 'Заявки нет');
       db.run("UPDATE friendships SET status = 'accepted', accepted_at = ? WHERE user_a = ? AND user_b = ?", clock.now(), row.user_a, row.user_b);
@@ -135,6 +142,7 @@ export function createFriends(ctx, rooms) {
   /** Позвать друга в свою комнату: он получает приглашение с кодом комнаты (не чаще раза в минуту). */
   function invite(user, friendId, body) {
     return db.tx(() => {
+      requireRegistered(user);
       const b = reqObject(body);
       const row = rowOf(user.id, friendId);
       if (!row || row.status !== 'accepted') throw E.forbidden('NOT_FRIENDS', 'Звать в комнату можно только друзей');

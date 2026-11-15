@@ -140,7 +140,7 @@ export function JoinScreen({ t, initialMode, initialCode = "", onBack }: { t: To
           </div>
           {!registered && (
             <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Как войти">
-              {([["guest", "Гость", "только имя"], ["account", "Аккаунт", "логин и пароль"]] as const).map(([id, label, sub]) => (
+              {([["guest", "Гость", "на один раз"], ["account", "Аккаунт", "сохраняет прогресс"]] as const).map(([id, label, sub]) => (
                 <button key={id} type="button" role="radio" aria-checked={who === id} onClick={() => setWho(id)} data-testid={`who-${id}`}
                   className={`flex flex-col items-start rounded-[18px] border-2 px-4 py-3 text-left transition-colors ${who === id ? "border-ink bg-lime as-shadow-sm" : "border-line bg-white hover:border-ink"}`}>
                   <span className="text-lg font-extrabold">{label}</span>

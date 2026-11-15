@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 import { boot, lobby } from './helpers.js';
 
+// друзья и перенос — только у зарегистрированных: задаём логин и пароль
+let n = 0;
+const reg = async (...us) => { for (const u of us) assert.equal((await u.post('/api/users/me/credentials', { login: `user${++n}`, password: 'password123' })).status, 200); };
+
 describe('друзья', () => {
   let w;
   before(async () => { w = await boot(); });
@@ -11,6 +15,7 @@ describe('друзья', () => {
   test('заявка из общей комнаты → принять; повтор и самодобавление запрещены; видно, где друг', async () => {
     const L = await lobby(w, ['Лотти', 'Аня']);
     const [lotti, anya] = L.users;
+    await reg(lotti, anya);
     const ws = w.ws(anya.token);
     await ws.connect();
 
@@ -41,6 +46,7 @@ describe('друзья', () => {
   test('незнакомца по id не добавить — только по коду друга; встречная заявка сразу делает друзьями', async () => {
     const vera = await w.user('Вера');
     const boris = await w.user('Боря');
+    await reg(vera, boris);
     assert.equal((await vera.post('/api/friends/requests', { userId: boris.id })).body.error.code, 'USER_NOT_FOUND');
     const code = (await list(boris)).code;
     assert.match(code, /^[A-Z2-9]{6}$/);
@@ -69,6 +75,7 @@ describe('друзья', () => {
     const L = await lobby(w, ['Мира', 'Кай']);
     const [mira, kai] = L.users;
     const stranger = await w.user('Гость');
+    await reg(mira, kai, stranger);
     await mira.post('/api/friends/requests', { userId: kai.id });
     await kai.post(`/api/friends/${mira.id}/accept`);
     // Кай вышел из комнаты — Мира зовёт его обратно
@@ -95,6 +102,7 @@ describe('перенос аккаунта на другое устройство
 
   test('одноразовый код даёт новому устройству вход в тот же аккаунт; старое устройство не выходит', async () => {
     const lotti = await w.user('Лотти');
+    await reg(lotti);
     const c = await lotti.post('/api/users/me/transfer-code');
     assert.equal(c.status, 201);
     assert.match(c.body.code, /^[A-Z2-9]{3}-[A-Z2-9]{3}-[A-Z2-9]{3}$/);
@@ -112,5 +120,18 @@ describe('перенос аккаунта на другое устройство
     assert.equal((await w.call('POST', '/api/users/transfer', { code: c1 })).status, 404);
     w.clock.advance(11 * 60_000);
     assert.equal((await w.call('POST', '/api/users/transfer', { code: c2 })).body.error.code, 'TRANSFER_CODE_INVALID');
+  });
+
+  test('гость одноразовый: ни друзей, ни переноса; гостя нельзя добавить', async () => {
+    const L = await lobby(w, ['Гость1', 'Зарег']);
+    const [guest, member] = L.users;
+    await reg(member);
+    assert.equal((await guest.post('/api/friends/requests', { userId: member.id })).body.error.code, 'ACCOUNT_REQUIRED');
+    assert.equal((await member.post('/api/friends/requests', { userId: guest.id })).body.error.code, 'TARGET_IS_GUEST');
+    assert.equal((await guest.post('/api/users/me/transfer-code')).body.error.code, 'ACCOUNT_REQUIRED');
+    // зарегистрировался — и всё стало можно
+    await reg(guest);
+    assert.equal((await guest.post('/api/friends/requests', { userId: member.id })).status, 201);
+    assert.equal((await guest.post('/api/users/me/transfer-code')).status, 201);
   });
 });

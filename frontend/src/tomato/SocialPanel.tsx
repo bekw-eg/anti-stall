@@ -145,6 +145,7 @@ function FriendButton({ t, userId, name }: { t: Tomato; userId: string; name: st
   const rel = t.relations[userId];
   const [busy, setBusy] = useState(false);
   const pill = "inline-flex shrink-0 items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[13px] font-extrabold";
+  if (!t.user?.login) return null; // гость не дружит — сначала аккаунт
   if (rel === "friend") return <span className={`${pill} border-olive bg-[#EEF0D2] text-olive`} data-friend={userId}><UserCheck size={14} aria-hidden />Друг</span>;
   if (rel === "outgoing") return <span className={`${pill} border-dashed border-line bg-white text-mute`} data-friend={userId}><Clock size={14} aria-hidden />Заявка отправлена</span>;
   const run = async () => { setBusy(true); await (rel === "incoming" ? t.friendAccept(userId) : t.friendAdd({ userId })); setBusy(false); };

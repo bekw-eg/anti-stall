@@ -20,7 +20,20 @@ function statusOf(f: Friend) {
   return "в сети";
 }
 
+/** Друзья — только у зарегистрированных: гость одноразовый, его связи не сохраняются. */
 export function FriendsTab({ t }: { t: Tomato }) {
+  if (!t.user?.login) {
+    return (
+      <div className="flex flex-col gap-2 rounded-[18px] border-2 border-dashed border-line p-4 text-sm" data-testid="friends-guest">
+        <p className="font-extrabold">Друзья — для аккаунтов</p>
+        <p className="text-mute">Вы зашли гостем: гость одноразовый и исчезнет, когда закроете браузер. Задайте логин и пароль в профиле — и добавляйте друзей, они сохранятся.</p>
+      </div>
+    );
+  }
+  return <FriendsList t={t} />;
+}
+
+function FriendsList({ t }: { t: Tomato }) {
   const f = t.friends;
   const myRoom = t.snapshot?.room ?? null;
   const [code, setCode] = useState("");

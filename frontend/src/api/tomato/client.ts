@@ -27,12 +27,16 @@ export class TomatoClient {
 
   constructor(opts: ClientOptions = {}) {
     this.baseUrl = (opts.baseUrl ?? "").replace(/\/$/, "");
-    this.token = typeof localStorage !== "undefined" ? safe(() => localStorage.getItem(TOKEN_KEY)) : null;
+    // аккаунт с логином — в localStorage (переживает закрытие браузера); гость — в sessionStorage (одноразовый)
+    this.token = safe(() => localStorage.getItem(TOKEN_KEY)) ?? safe(() => sessionStorage.getItem(TOKEN_KEY)) ?? null;
   }
 
-  setToken(token: string | null) {
+  /** persist: true — зарегистрированный аккаунт (хранится); false — гость, исчезает с закрытием браузера. */
+  setToken(token: string | null, persist = false) {
     this.token = token;
-    safe(() => (token ? localStorage.setItem(TOKEN_KEY, token) : localStorage.removeItem(TOKEN_KEY)));
+    safe(() => localStorage.removeItem(TOKEN_KEY));
+    safe(() => sessionStorage.removeItem(TOKEN_KEY));
+    if (token) safe(() => (persist ? localStorage : sessionStorage).setItem(TOKEN_KEY, token));
   }
 
   async request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -113,10 +117,14 @@ export class TomatoClient {
   friendInvite = (id: string, roomId: string) => this.request<{ ok: boolean }>("POST", `/api/friends/${id}/invite`, { roomId });
 
   // --- полноценный аккаунт: логин и пароль
-  setCredentials = (body: { login?: string; password: string; currentPassword?: string }) => this.request<Me>("POST", "/api/users/me/credentials", body);
+  async setCredentials(body: { login?: string; password: string; currentPassword?: string }): Promise<Me> {
+    const me = await this.request<Me>("POST", "/api/users/me/credentials", body);
+    this.setToken(this.token, true); // гость стал аккаунтом — теперь его можно сохранить
+    return me;
+  }
   async loginWithPassword(login: string, password: string): Promise<Me> {
     const { user, token } = await this.request<{ user: Me; token: string }>("POST", "/api/auth/login", { login, password });
-    this.setToken(token);
+    this.setToken(token, true);
     return user;
   }
 
@@ -124,7 +132,7 @@ export class TomatoClient {
   transferCode = () => this.request<{ code: string; expiresAt: number }>("POST", "/api/users/me/transfer-code");
   async redeemTransfer(code: string): Promise<Me> {
     const { user, token } = await this.request<{ user: Me; token: string }>("POST", "/api/users/transfer", { code });
-    this.setToken(token);
+    this.setToken(token, true);
     return user;
   }
 

@@ -11,8 +11,21 @@ function mockFetch(handler: (url: string, init: RequestInit) => { status: number
 }
 
 describe("TomatoClient (REST)", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => { localStorage.clear(); sessionStorage.clear(); });
   afterEach(() => vi.unstubAllGlobals());
+
+  it("гость — токен только на сессию браузера; после логина и пароля — сохраняется", async () => {
+    mockFetch((url) =>
+      url.endsWith("/api/users") ? { status: 201, body: { user: { id: "u1", name: "Лотти" }, token: "g".repeat(40) } } : { status: 200, body: { id: "u1", login: "lotti" } },
+    );
+    const c = new TomatoClient();
+    await c.register("Лотти");
+    expect(sessionStorage.getItem("tomato.token")).toBe("g".repeat(40));
+    expect(localStorage.getItem("tomato.token")).toBeNull();
+    await c.setCredentials({ login: "lotti", password: "password123" });
+    expect(localStorage.getItem("tomato.token")).toBe("g".repeat(40));
+    expect(sessionStorage.getItem("tomato.token")).toBeNull();
+  });
 
   it("регистрация сохраняет токен и дальше он уходит в Authorization", async () => {
     const fetchFn = mockFetch((url) =>
@@ -20,7 +33,7 @@ describe("TomatoClient (REST)", () => {
     );
     const c = new TomatoClient();
     await c.register("Лотти");
-    expect(localStorage.getItem("tomato.token")).toBe("t".repeat(40));
+    expect(sessionStorage.getItem("tomato.token")).toBe("t".repeat(40));
     await c.me();
     const headers = (fetchFn.mock.calls[1][1] as RequestInit).headers as Record<string, string>;
     expect(headers.Authorization).toBe(`Bearer ${"t".repeat(40)}`);

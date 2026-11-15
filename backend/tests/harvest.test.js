@@ -91,7 +91,7 @@ describe('Harvest: чередование с Tower Defense и проверки �
     at(w, round, g1.crossT - 1);
     assert.equal((await catchIt(lotti, g1)).body.error.code, 'TOO_EARLY');
     at(w, round, g1.crossT);
-    assert.equal((await catchIt(lotti, g1, g1.x + 90)).body.error.code, 'MISSED', 'корзина не под помидором');
+    assert.equal((await catchIt(lotti, g1, g1.x + (g1.x < HV.W / 2 ? 90 : -90))).body.error.code, 'MISSED', 'корзина не под помидором');
     const ok = await catchIt(lotti, g1);
     assert.equal(ok.status, 200);
     assert.equal(ok.body.score, 1);
