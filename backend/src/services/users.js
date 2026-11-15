@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { E } from '../errors.js';
 import { reqBool, reqObject, reqString } from '../validate.js';
 import { avatarOf, parseAvatar, unlockedOf } from '../avatar.js';
@@ -32,7 +32,10 @@ export function createUsersService(ctx, game) {
    */
   function authenticate(token) {
     if (typeof token !== 'string' || token.length < 20 || token.length > 100) return null;
-    const row = db.get('SELECT * FROM users WHERE token_hash = ?', hashToken(token));
+    const h = hashToken(token);
+    // основной токен (выдан при регистрации) или дополнительный — с другого устройства (перенос аккаунта)
+    const row = db.get('SELECT * FROM users WHERE token_hash = ?', h)
+      ?? db.get('SELECT u.* FROM user_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?', h);
     if (!row) return null;
     if (row.sandbox && !config.demoMode) return null;
     touch(row.id);
@@ -75,6 +78,35 @@ export function createUsersService(ctx, game) {
     return me(userId);
   }
 
+  // ------------------------------------------------------------------ перенос аккаунта на другое устройство
+  // Аккаунт гостевой: вход — это токен в браузере. Чтобы открыть тот же аккаунт на телефоне, на старом устройстве
+  // берут одноразовый код (живёт 10 минут), на новом вводят его — новое устройство получает свой токен.
+  // Код хранится только в виде хеша; у пользователя не больше одного активного кода.
+  const TRANSFER_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const normCode = (v) => String(v ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  function transferCode(userId) {
+    const t = clock.now();
+    const raw = Array.from({ length: 9 }, () => TRANSFER_ALPHABET[randomInt(TRANSFER_ALPHABET.length)]).join('');
+    db.run('DELETE FROM transfer_codes WHERE user_id = ? AND used_at IS NULL', userId);
+    db.run('INSERT INTO transfer_codes(code_hash, user_id, created_at, expires_at) VALUES (?,?,?,?)', hashToken(raw), userId, t, t + config.transfer.codeTtlMs);
+    return { code: `${raw.slice(0, 3)}-${raw.slice(3, 6)}-${raw.slice(6)}`, expiresAt: t + config.transfer.codeTtlMs };
+  }
+  function redeemTransfer(body) {
+    const b = reqObject(body);
+    const code = normCode(reqString(b.code, 'code', { min: 9, max: 20 }));
+    return db.tx(() => {
+      const t = clock.now();
+      const row = db.get('SELECT * FROM transfer_codes WHERE code_hash = ?', hashToken(code));
+      if (!row || row.used_at || row.expires_at <= t) throw E.notFound('TRANSFER_CODE_INVALID', 'Код не подошёл или устарел — возьмите новый на старом устройстве');
+      const user = db.get('SELECT * FROM users WHERE id = ?', row.user_id);
+      if (user.sandbox && !config.demoMode) throw E.forbidden('DEMO_DISABLED', 'Демо-режим выключен на сервере');
+      db.run('UPDATE transfer_codes SET used_at = ? WHERE code_hash = ?', t, row.code_hash);
+      const token = randomBytes(32).toString('base64url');
+      db.run('INSERT INTO user_tokens(token_hash, user_id, created_at) VALUES (?,?,?)', hashToken(token), user.id, t);
+      return { user: me(user.id), token };
+    });
+  }
+
   function sessions(userId, query) {
     const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);
     const offset = Math.max(Number(query.offset) || 0, 0);
@@ -92,5 +124,5 @@ export function createUsersService(ctx, game) {
     return db.all('SELECT id, key, kind, xp, coins, created_at AS createdAt FROM reward_transactions WHERE user_id = ? ORDER BY id DESC LIMIT ?', userId, limit);
   }
 
-  return { create, authenticate, touch, me, update, sessions, transactions, publicUser };
+  return { create, authenticate, touch, me, update, sessions, transactions, publicUser, transferCode, redeemTransfer };
 }

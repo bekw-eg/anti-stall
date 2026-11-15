@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import { ConnectionBanner, DemoBadge, Toasts } from "./Chrome";
 import { cycleLabel, formatTime } from "./format";
 import { PrankOverlay } from "./PrankOverlay";
+import { RoomInvites } from "./FriendsTab";
 import { BreakRoom } from "./screens/BreakRoom";
 import { EndEarly, FocusRoom } from "./screens/FocusRoom";
 import { JoinScreen, type JoinMode } from "./screens/JoinScreen";
@@ -70,6 +71,7 @@ export default function TomatoApp() {
       <div data-testid="tomato-app" className={`tomato-root min-h-[100dvh] font-sans ${dark ? "bg-ink text-cream" : "bg-white text-ink"}`} style={dark ? DARK_VARS : LIGHT_VARS}>
         <ConnectionBanner conn={t.conn} disconnectedFor={t.disconnectedFor} focusing={t.snapshot?.me?.status === "focusing"} graceSec={t.graceSec} />
         <Toasts toasts={t.toasts} />
+        <RoomInvites t={t} />
         {room && <PrankOverlay t={t} />}
 
         {!room ? (

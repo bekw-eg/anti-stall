@@ -1,5 +1,5 @@
 import type {
-  AvatarLook, HarvestView,
+  AvatarLook, FriendRelation, FriendsView, HarvestView,
   ChatMessage,
   Achievement, TdBuildResult, TdSendUnitResult, TdSpellResult, TdView, CreateRoomInput, MercType, SpellId, HealthInfo, IceConfig, Me, Progress, RegisterOptions, Roadmap, RoomSnapshot, RoomStats, ServerEvent, SocialAction, StudySession, StudyStats, Upgrade, VoicePeer,
 } from "./types";
@@ -102,6 +102,23 @@ export class TomatoClient {
   // --- голос (сигналинг — по WebSocket, см. TomatoSocket.sendRaw)
   voicePeers = (id: string) => this.request<{ roomId: string; peers: VoicePeer[]; maxPeers: number }>("GET", `/api/rooms/${id}/voice`);
   iceServers = () => this.request<IceConfig>("GET", "/api/voice/ice-servers");
+
+  // --- друзья: заявка по id (из общей комнаты) или по коду друга; позвать в свою комнату
+  friends = () => this.request<FriendsView>("GET", "/api/friends");
+  friendRelations = () => this.request<{ relations: Record<string, FriendRelation> }>("GET", "/api/friends/relations");
+  friendRequest = (target: { userId: string } | { code: string }) => this.request<{ status: "pending" | "accepted" }>("POST", "/api/friends/requests", target);
+  friendAccept = (id: string) => this.request<FriendsView>("POST", `/api/friends/${id}/accept`);
+  /** Отклонить входящую, отменить исходящую или удалить из друзей */
+  friendRemove = (id: string) => this.request<FriendsView>("POST", `/api/friends/${id}/remove`);
+  friendInvite = (id: string, roomId: string) => this.request<{ ok: boolean }>("POST", `/api/friends/${id}/invite`, { roomId });
+
+  // --- перенос аккаунта на другое устройство (одноразовый код, 10 минут)
+  transferCode = () => this.request<{ code: string; expiresAt: number }>("POST", "/api/users/me/transfer-code");
+  async redeemTransfer(code: string): Promise<Me> {
+    const { user, token } = await this.request<{ user: Me; token: string }>("POST", "/api/users/transfer", { code });
+    this.setToken(token);
+    return user;
+  }
 
   // --- Harvest (перерывы после чётных циклов): поимки и шутки проверяет сервер; позиция корзины — по WebSocket
   harvest = (id: string) => this.request<HarvestView>("GET", `/api/rooms/${id}/harvest`);

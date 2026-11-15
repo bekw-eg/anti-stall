@@ -36,6 +36,9 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
      */
     breakGames: ['td', 'harvest', 'alternate'].includes(env.TOMATO_BREAK_GAMES) ? env.TOMATO_BREAK_GAMES : 'alternate',
     harvestFrameMs: 100, //   как часто в комнату уходит кадр Harvest (корзины, счёт)
+    friends: { maxFriends: 200, requestsPerDay: 30, inviteCooldownMs: 60_000 },
+    // перенос аккаунта на другое устройство: одноразовый код живёт 10 минут
+    transfer: { codeTtlMs: 10 * 60_000 },
     broadcastTickMs: 1000, //  как часто в комнату уходит timer_tick (для сверки часов)
     wsPingMs: 5000,
 

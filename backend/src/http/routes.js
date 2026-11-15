@@ -4,7 +4,7 @@ import { reqInt, reqObject } from '../validate.js';
 import { Router } from './router.js';
 
 /** Привязка REST-маршрутов к сервисам. Здесь нет бизнес-логики: только разбор запроса. */
-export function buildRoutes({ config, users, rooms, game, social, td, voice, chat, clock, harvest }) {
+export function buildRoutes({ config, users, rooms, game, social, td, voice, chat, clock, harvest, friends }) {
   const r = new Router();
   const ok = (body, status = 200) => ({ status, body });
 
@@ -49,6 +49,18 @@ export function buildRoutes({ config, users, rooms, game, social, td, voice, cha
   });
   r.add('GET', '/api/users/me/transactions', ({ user, query }) => ok({ transactions: users.transactions(user.id, query) }));
   r.add('POST', '/api/heartbeat', ({ user }) => ok({ serverTime: clock.now(), userId: user.id }));
+
+  // ---- перенос аккаунта на другое устройство (код живёт 10 минут, одноразовый)
+  r.add('POST', '/api/users/me/transfer-code', ({ user }) => ok(users.transferCode(user.id), 201));
+  r.add('POST', '/api/users/transfer', ({ body }) => ok(users.redeemTransfer(body)), { auth: false });
+
+  // ---- друзья: заявки (по id из общей комнаты или по коду друга), принять, удалить, позвать в комнату
+  r.add('GET', '/api/friends', ({ user }) => ok(friends.list(user.id)));
+  r.add('GET', '/api/friends/relations', ({ user }) => ok({ relations: friends.relations(user.id) }));
+  r.add('POST', '/api/friends/requests', ({ user, body }) => ok(friends.request(user, body), 201));
+  r.add('POST', '/api/friends/:id/accept', ({ user, params }) => ok(friends.accept(user, params.id)));
+  r.add('POST', '/api/friends/:id/remove', ({ user, params }) => ok(friends.remove(user, params.id))); // отклонить, отменить или удалить
+  r.add('POST', '/api/friends/:id/invite', ({ user, params, body }) => ok(friends.invite(user, params.id, body), 201));
 
   // ---- комнаты
   r.add('POST', '/api/rooms', ({ user, body }) => ok(rooms.create(user, body), 201));

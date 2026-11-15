@@ -162,6 +162,23 @@
 (суточный потолок, монет нет); победа живой команды — шаг по карте, как победа в этапе TD; статистика открывает
 достижение «Урожайный год» и вещи образа «Шляпа» (победа) и «Бусы-черри» (5 золотых помидоров).
 
+### Друзья и перенос аккаунта
+Аккаунты гостевые (имя без почты), поэтому человека нельзя найти по имени — только из общей комнаты или по коду друга.
+
+| Метод | Путь | Тело | Ответ / проверки |
+|---|---|---|---|
+| GET | `/api/friends` | — | `{code, friends[{id, name, level, avatar, connection, focusing, room:{id, code, name, phase, cycleNo}\|null, since}], incoming[], outgoing[], limits}`; `code` — свой код друга (6 символов, выдаётся при первом запросе) |
+| GET | `/api/friends/relations` | — | `{relations: {userId: "friend"\|"outgoing"\|"incoming"}}` — для кнопки «В друзья» у людей комнаты |
+| POST | `/api/friends/requests` | `{userId}` или `{code}` | `201 {status:"pending"\|"accepted"}`. По `userId` — только тот, с кем вы были в одной комнате (`USER_NOT_FOUND`), по коду — любой (`FRIEND_CODE_NOT_FOUND`); встречная заявка сразу делает друзьями. Ошибки: `SELF_FRIEND`, `ALREADY_SENT`, `ALREADY_FRIENDS`, `FRIENDS_LIMIT` (200), `TOO_MANY_REQUESTS` (30 заявок в сутки, 429), `SANDBOX_MISMATCH` |
+| POST | `/api/friends/:id/accept` | — | список друзей; только получатель заявки (`REQUEST_NOT_FOUND`) |
+| POST | `/api/friends/:id/remove` | — | отклонить входящую, отменить исходящую или удалить из друзей (`FRIEND_NOT_FOUND`) |
+| POST | `/api/friends/:id/invite` | `{roomId}` | `201`; другу уходит `room_invite`. Только другу (`NOT_FRIENDS`), только в свою комнату, не чаще раза в минуту (`INVITE_COOLDOWN`, 429) |
+| POST | `/api/users/me/transfer-code` | — | `201 {code:"ABC-DEF-GHJ", expiresAt}` — одноразовый код на 10 минут (хранится хеш; новый код отменяет прежний) |
+| POST 🔓 | `/api/users/transfer` | `{code}` | `{user, token}` — новое устройство получает свой токен того же аккаунта; старое не выходит. `TRANSFER_CODE_INVALID` — неверный, использованный или просроченный |
+
+Личные события (scope user): `friend_request {userId, name, avatar}`, `friend_accepted {userId, name}`, `friend_removed {userId}`,
+`room_invite {from, fromName, roomId, roomCode, roomName, at}`.
+
 ### Снимок комнаты (`room_state`, ответ `GET /api/rooms/:id`)
 
 ```jsonc

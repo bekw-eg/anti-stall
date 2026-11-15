@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { CloudFog, Shield, Sparkles, Sticker } from "lucide-react";
+import { useEffect, useState } from "react";
+import { FriendsTab } from "./FriendsTab";
+import { Clock, CloudFog, Shield, Sparkles, Sticker, UserCheck, UserPlus } from "lucide-react";
 import type { Member } from "@/api/tomato";
 import { memberStatusLabel } from "./format";
 import { Avatar } from "./screens/ui";
@@ -36,6 +37,29 @@ function ActionButton({ type, target, t, icon, label }: { type: ActionType; targ
  * это игровая механика перерыва, в фокус она не попадает.
  */
 export function SocialPanel({ t }: { t: Tomato }) {
+  const [tab, setTab] = useState<"room" | "friends">("room");
+  const incoming = t.friends?.incoming.length ?? 0;
+  // свежий список друзей при открытии панели (онлайн-статусы меняются)
+  const { loadFriends } = t;
+  useEffect(() => { loadFriends(); }, [loadFriends]);
+  return (
+    <div className="flex min-h-full flex-col gap-4 bg-paper p-5 sm:p-6" data-testid="social-panel">
+      <div className="flex rounded-[18px] border-2 border-ink bg-white p-1" role="tablist" aria-label="Люди">
+        {([["room", `В комнате · ${t.snapshot!.members.length}`], ["friends", "Мои друзья"]] as const).map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} data-testid={`social-tab-${id}`}
+            className={`relative flex flex-1 items-center justify-center gap-2 rounded-[14px] px-3 py-2.5 text-[15px] font-extrabold transition-colors ${tab === id ? "bg-peach text-ink" : "text-mute hover:text-ink"}`}>
+            {label}
+            {id === "friends" && incoming > 0 && <span className="flex h-6 min-w-6 items-center justify-center rounded-full border-2 border-ink bg-rose px-1.5 text-xs font-extrabold text-white" aria-label={`Заявок: ${incoming}`}>{incoming}</span>}
+          </button>
+        ))}
+      </div>
+      {tab === "room" ? <RoomPeople t={t} /> : <FriendsTab t={t} />}
+    </div>
+  );
+}
+
+/** Вкладка «В комнате»: люди комнаты по командам, баффы и шутки на перерыве, кнопка «В друзья». */
+function RoomPeople({ t }: { t: Tomato }) {
   const snap = t.snapshot!;
   const me = snap.me;
   const onBreak = snap.room.phase === "break";
@@ -45,9 +69,9 @@ export function SocialPanel({ t }: { t: Tomato }) {
     : [{ key: "shared", title: "Комната", members: snap.members }];
 
   return (
-    <div className="flex min-h-full flex-col gap-4 bg-paper p-5 sm:p-6" data-testid="social-panel">
+    <>
       <div className="flex flex-col gap-3">
-        <h2 className="font-display text-2xl leading-none">Друзья · {snap.members.length}</h2>
+        <h2 className="font-display text-2xl leading-none">В комнате · {snap.members.length}</h2>
         <p className={`flex items-start gap-2 rounded-[16px] border-2 px-3 py-2 text-sm font-bold ${onBreak ? "border-ink bg-lime text-ink" : "border-dashed border-rose bg-white text-mute"}`} data-testid="social-phase-note">
           <Sparkles size={16} className="mt-0.5 shrink-0" aria-hidden />
           {onBreak
@@ -85,12 +109,13 @@ export function SocialPanel({ t }: { t: Tomato }) {
                           </p>
                         </div>
                       </div>
-                      {onBreak && !mine && (
-                        <div className="flex flex-wrap gap-2">
-                          {ally && <ActionButton type="boost" target={m} t={t} icon={<Sparkles size={14} />} label="Бонус к XP" />}
-                          {ally && <ActionButton type="shield" target={m} t={t} icon={<Shield size={14} />} label={`Щит · ${t.shieldCost}`} />}
-                          {(!teams || !ally) && <ActionButton type="fog" target={m} t={t} icon={<CloudFog size={14} />} label="Туман" />}
-                          {(!teams || !ally) && <ActionButton type="sticker" target={m} t={t} icon={<Sticker size={14} />} label="Липучка" />}
+                      {!mine && (
+                        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                          <FriendButton t={t} userId={m.userId} name={m.name} />
+                          {onBreak && ally && <ActionButton type="boost" target={m} t={t} icon={<Sparkles size={14} />} label="Бонус к XP" />}
+                          {onBreak && ally && <ActionButton type="shield" target={m} t={t} icon={<Shield size={14} />} label={`Щит · ${t.shieldCost}`} />}
+                          {onBreak && (!teams || !ally) && <ActionButton type="fog" target={m} t={t} icon={<CloudFog size={14} />} label="Туман" />}
+                          {onBreak && (!teams || !ally) && <ActionButton type="sticker" target={m} t={t} icon={<Sticker size={14} />} label="Липучка" />}
                         </div>
                       )}
                     </li>
@@ -107,6 +132,22 @@ export function SocialPanel({ t }: { t: Tomato }) {
         <li className="flex items-start gap-2 rounded-[16px] border-2 border-soft bg-white px-3 py-2"><Shield size={15} className="mt-0.5 shrink-0 text-olive" aria-hidden />Щит отражает одну шутку</li>
         <li className="flex items-start gap-2 rounded-[16px] border-2 border-soft bg-white px-3 py-2 xs:col-span-2"><CloudFog size={15} className="mt-0.5 shrink-0 text-rose" aria-hidden />{teams ? "Туман и липучка ослабляют башни соперника до конца перерыва." : "Шутки действуют до конца перерыва."} Не больше {t.prankRules.maxPerBreak} за перерыв.</li>
       </ul>
-    </div>
+    </>
+  );
+}
+
+/** «В друзья» у участника комнаты: отправить заявку, принять встречную или показать, что уже друзья. */
+function FriendButton({ t, userId, name }: { t: Tomato; userId: string; name: string }) {
+  const rel = t.relations[userId];
+  const [busy, setBusy] = useState(false);
+  const pill = "inline-flex shrink-0 items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[13px] font-extrabold";
+  if (rel === "friend") return <span className={`${pill} border-olive bg-[#EEF0D2] text-olive`} data-friend={userId}><UserCheck size={14} aria-hidden />Друг</span>;
+  if (rel === "outgoing") return <span className={`${pill} border-dashed border-line bg-white text-mute`} data-friend={userId}><Clock size={14} aria-hidden />Заявка отправлена</span>;
+  const run = async () => { setBusy(true); await (rel === "incoming" ? t.friendAccept(userId) : t.friendAdd({ userId })); setBusy(false); };
+  return (
+    <button type="button" disabled={busy} onClick={run} data-friend={userId} aria-label={rel === "incoming" ? `Принять заявку: ${name}` : `Добавить в друзья: ${name}`}
+      className={`${pill} border-ink bg-white text-ink shadow-[0_3px_0_#3B2422] hover:bg-blush active:translate-y-[2px] active:shadow-[0_1px_0_#3B2422] disabled:opacity-50`}>
+      <UserPlus size={14} aria-hidden />{rel === "incoming" ? "Принять в друзья" : "В друзья"}
+    </button>
   );
 }

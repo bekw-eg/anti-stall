@@ -260,6 +260,41 @@ CREATE TABLE IF NOT EXISTS harvest_players (
   PRIMARY KEY (round_id, user_id)
 );
 CREATE INDEX IF NOT EXISTS harvest_players_by_user ON harvest_players(user_id);
+
+-- Друзья. Пара хранится один раз: user_a < user_b; requested_by — кто отправил заявку.
+CREATE TABLE IF NOT EXISTS friendships (
+  user_a TEXT NOT NULL REFERENCES users(id),
+  user_b TEXT NOT NULL REFERENCES users(id),
+  status TEXT NOT NULL CHECK (status IN ('pending','accepted')),
+  requested_by TEXT NOT NULL REFERENCES users(id),
+  created_at INTEGER NOT NULL,
+  accepted_at INTEGER,
+  PRIMARY KEY (user_a, user_b),
+  CHECK (user_a < user_b)
+);
+CREATE INDEX IF NOT EXISTS friendships_by_b ON friendships(user_b);
+-- Приглашения друга в комнату (только для антиспама: не чаще раза в минуту одному другу).
+CREATE TABLE IF NOT EXISTS friend_invites (
+  from_id TEXT NOT NULL REFERENCES users(id),
+  to_id TEXT NOT NULL REFERENCES users(id),
+  room_id TEXT NOT NULL REFERENCES rooms(id),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS friend_invites_by_pair ON friend_invites(from_id, to_id, created_at);
+-- Дополнительные токены входа (перенос аккаунта на другое устройство). Хранятся только хеши.
+CREATE TABLE IF NOT EXISTS user_tokens (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at INTEGER NOT NULL
+);
+-- Одноразовые коды переноса: живут несколько минут, у пользователя не больше одного активного.
+CREATE TABLE IF NOT EXISTS transfer_codes (
+  code_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER
+);
 `;
 
 /**
@@ -323,6 +358,9 @@ export class Db {
     if (!columns('users').includes('sandbox')) this.sql.exec('ALTER TABLE users ADD COLUMN sandbox INTEGER NOT NULL DEFAULT 0');
     // v6: образ аксолотля (users.avatar, JSON); у существующих — NULL, то есть цвет по умолчанию
     if (!columns('users').includes('avatar')) this.sql.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
+    // v7: код друга (users.friend_code) — выдаётся при первом обращении, уникален
+    if (!columns('users').includes('friend_code')) this.sql.exec('ALTER TABLE users ADD COLUMN friend_code TEXT');
+    this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_friend_code ON users(friend_code) WHERE friend_code IS NOT NULL');
 
     // v5: казна команды; уже существующие команды получают стартовый капитал
     if (!columns('team_progress').includes('treasury_coins')) {

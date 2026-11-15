@@ -12,6 +12,38 @@ import { Avatar, Logo } from "./ui";
 
 export type JoinMode = "create" | "join";
 
+/**
+ * Перенос аккаунта на это устройство: код со старого устройства (Профиль → Настройки → «Получить код»).
+ * Отдельная мини-форма внутри основной: Enter в поле кода не отправляет форму входа.
+ */
+function TransferEntry({ t }: { t: Tomato }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ok = code.replace(/[^A-Za-z0-9]/g, "").length >= 9;
+  const go = async () => { if (!ok || busy) return; setBusy(true); await t.redeemTransfer(code); setBusy(false); };
+  if (!open) {
+    return (
+      <p className="text-base text-mute">
+        Профиль живёт в этом браузере. Играли на другом устройстве?{" "}
+        <button type="button" onClick={() => setOpen(true)} className="font-extrabold text-ink underline underline-offset-4 hover:text-rose" data-testid="open-transfer">Перенести аккаунт</button>
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2.5 rounded-[18px] border-2 border-line bg-paper p-4" data-testid="transfer-entry">
+      <span className="as-label">Код переноса</span>
+      <p className="-mt-1 text-sm text-mute">На старом устройстве: Профиль → Настройки → «Получить код». Код действует 10 минут.</p>
+      <div className="flex gap-2">
+        <input value={code} onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); go(); } }}
+          maxLength={14} autoCapitalize="characters" spellCheck={false} placeholder="ABC-DEF-GHJ" aria-label="Код переноса"
+          className="as-input min-w-0 flex-1 font-display tracking-[0.12em] placeholder:font-sans placeholder:tracking-normal" />
+        <button type="button" onClick={go} disabled={!ok || busy} className="as-btn as-btn-secondary as-btn-sm shrink-0 sm:min-h-[4rem]">{busy ? "…" : "Войти"}</button>
+      </div>
+    </div>
+  );
+}
+
 export function JoinScreen({ t, initialMode, initialCode = "", onBack }: { t: Tomato; initialMode: JoinMode; initialCode?: string; onBack: () => void }) {
   const [mode, setMode] = useState<JoinMode>(initialCode ? "join" : initialMode);
   const [code, setCode] = useState(initialCode);
@@ -82,7 +114,7 @@ export function JoinScreen({ t, initialMode, initialCode = "", onBack }: { t: To
           <button type="submit" className="as-btn as-btn-primary w-full" disabled={!nameOk || t.busy || (mode === "join" && !codeOk)}>
             {t.busy ? "Подождите…" : mode === "create" ? "Создать комнату" : "Войти в комнату"}
           </button>
-          {!t.demoMode && <p className="text-base text-mute">Гостевой профиль живёт в этом браузере. На другом устройстве начнёте с нуля.</p>}
+          <TransferEntry t={t} />
         </form>
 
         <aside className="hidden flex-col items-center gap-5 text-center lg:flex" aria-label="Ваш жетон">

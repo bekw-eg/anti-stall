@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TomatoApiError, TomatoClient, WS_CLOSE_UNAUTHORIZED } from "@/api/tomato";
-import type { AvatarLook, AvatarSkin, ChatMessage, HarvestLive, HarvestPrankEvent, HarvestView, Connection, CreateRoomInput, Me, MercType, RoomSnapshot, ServerEvent, SocialAction, SpellId, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
+import type { AvatarLook, AvatarSkin, ChatMessage, FriendRelation, FriendsView, RoomInvite, HarvestLive, HarvestPrankEvent, HarvestView, Connection, CreateRoomInput, Me, MercType, RoomSnapshot, ServerEvent, SocialAction, SpellId, TdStateEvent, TdView, TomatoSocket } from "@/api/tomato";
 import { apiErrorText, extractRoomCode } from "./format";
 import { SHIELD_COST } from "./socialRules";
 import { useNow } from "./useMedia";
@@ -202,6 +202,10 @@ export function useTomato(initialCode?: string) {
   const harvestFrame = useRef<HarvestLive | null>(null);
   const harvestUiAt = useRef(0);
   const [harvestFeed, setHarvestFeed] = useState<(HarvestPrankEvent & { id: number })[]>([]);
+  // Друзья: список с сервера, отношение к людям комнаты (для «В друзья») и приглашения в комнаты
+  const [friends, setFriends] = useState<FriendsView | null>(null);
+  const [relations, setRelations] = useState<Record<string, FriendRelation>>({});
+  const [roomInvites, setRoomInvites] = useState<(RoomInvite & { id: number })[]>([]);
   const [feed, setFeed] = useState<SocialAction[]>([]); // лента помощи и шуток комнаты
   const [chat, setChat] = useState<ChatMessage[]>([]); // текстовый чат комнаты (последние сообщения)
 
@@ -241,12 +245,21 @@ export function useTomato(initialCode?: string) {
     window.history.replaceState(null, "", "/");
   }, []);
 
+  const loadFriends = useCallback(async () => {
+    if (!client.token) return;
+    try {
+      const [f, r] = await Promise.all([client.friends(), client.friendRelations()]);
+      setFriends(f); setRelations(r.relations);
+    } catch { /* друзья — не критично: покажем при следующей загрузке */ }
+  }, []);
+
   const enterRoom = useCallback((s: RoomSnapshot) => {
+    loadFriends();
     applySnapshot(s);
     setRoomId(s.room.id);
     store.set(ROOM_KEY, s.room.id);
     window.history.replaceState(null, "", `/room/${s.room.code}`);
-  }, [applySnapshot]);
+  }, [applySnapshot, loadFriends]);
 
   /** Единая обработка ошибок: сеть, устаревший токен, ошибки домена. */
   const report = useCallback((e: unknown) => {
@@ -479,6 +492,20 @@ export function useTomato(initialCode?: string) {
         client.harvest(roomId).then((v) => { if (!alive) return; harvestFrame.current = v.live ?? null; setHarvest(v); }).catch(() => undefined);
         return;
       }
+      // Друзья: заявки и ответы — личные события пользователя; список перечитываем целиком
+      if (ev.type === "friend_request" || ev.type === "friend_accepted" || ev.type === "friend_removed") {
+        const d = ev.data as { userId: string; name?: string };
+        if (ev.type === "friend_request") push(`${d.name ?? "Кто-то"} хочет добавить вас в друзья`, "info");
+        if (ev.type === "friend_accepted") push(`${d.name ?? "Игрок"} теперь ваш друг`, "reward");
+        loadFriends();
+        return;
+      }
+      if (ev.type === "room_invite") {
+        const d = ev.data as RoomInvite;
+        if (d.roomId === snapRef.current?.room.id) return; // уже здесь
+        setRoomInvites((list) => [...list.filter((x) => x.roomId !== d.roomId).slice(-2), { ...d, id: Date.now() + Math.random() }]);
+        return;
+      }
       if (ev.type === "harvest_prank") {
         const d = ev.data as HarvestPrankEvent;
         setHarvestFeed((f) => [...f.slice(-4), { ...d, id: Date.now() + Math.random() }]);
@@ -524,7 +551,7 @@ export function useTomato(initialCode?: string) {
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [roomId, applySnapshot, leaveLocal, push]);
+  }, [roomId, applySnapshot, leaveLocal, push, loadFriends]);
 
   // Время вышло, а сервер фазу ещё не сменил (задержка сети) — не решаем сами, а запрашиваем состояние.
   useEffect(() => {
@@ -648,6 +675,30 @@ export function useTomato(initialCode?: string) {
   /** Позиция корзины — по WebSocket (сервер рассылает её остальным в кадрах). */
   const harvestMove = useCallback((x: number) => { socket?.sendRaw({ type: "harvest_move", roomId: rid, x: Math.round(x) }); }, [socket, rid]);
 
+  // ---------------------------------------------------------------- друзья
+  const friendAdd = useCallback(async (target: { userId: string } | { code: string }) => {
+    const r = await call(() => client.friendRequest(target));
+    if (r) { push(r.status === "accepted" ? "Теперь вы друзья" : "Заявка отправлена", "reward"); await loadFriends(); }
+    return Boolean(r);
+  }, [call, loadFriends, push]);
+  const friendAccept = useCallback(async (id: string) => { const v = await call(() => client.friendAccept(id)); if (v) await loadFriends(); return Boolean(v); }, [call, loadFriends]);
+  const friendRemove = useCallback(async (id: string) => { const v = await call(() => client.friendRemove(id)); if (v) await loadFriends(); return Boolean(v); }, [call, loadFriends]);
+  const friendInvite = useCallback(async (id: string, name: string) => {
+    const r = await call(() => client.friendInvite(id, rid));
+    if (r) push(`${name}: приглашение отправлено`, "reward");
+    return Boolean(r);
+  }, [call, push, rid]);
+  const dismissInvite = useCallback((id: number) => setRoomInvites((list) => list.filter((x) => x.id !== id)), []);
+  /** Перенос аккаунта: код со старого устройства → этот браузер входит в тот же аккаунт (страница перезагружается). */
+  const redeemTransfer = useCallback(async (code: string) => {
+    const u = await call(() => client.redeemTransfer(code));
+    if (!u) return false;
+    store.set(ROOM_KEY, null);
+    window.location.assign("/");
+    return true;
+  }, [call]);
+  const newTransferCode = useCallback(() => call(() => client.transferCode()), [call]);
+
   const loadTd = useCallback(async () => { if (!rid) return null; const v = await call(() => client.td(rid)); if (v) setTd(v); return v; }, [call, rid]);
   const tdJoin = useCallback(async () => { const v = await call(() => client.tdJoin(rid)); if (v) setTd(v); return v; }, [call, rid]);
   const tdStart = useCallback(async (stageId?: string) => { const v = await call(() => client.tdStart(rid, stageId)); if (v) setTd(v); return v; }, [call, rid]);
@@ -709,6 +760,7 @@ export function useTomato(initialCode?: string) {
 
   return {
     boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
+    friends, relations, roomInvites, loadFriends, friendAdd, friendAccept, friendRemove, friendInvite, dismissInvite, redeemTransfer, newTransferCode,
     call, push, td, tdFx, loadTd, harvest, harvestFrame, harvestFeed, loadHarvest, harvestCatch, harvestPrank, harvestMove, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, saveAvatar, avatarCatalog, chat, sendChat,
   };
 }

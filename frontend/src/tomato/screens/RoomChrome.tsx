@@ -20,11 +20,12 @@ export const DARK_VARS = { "--fg": "#FFF4EF", "--muted": "#D8BDB6", "--card": "r
 export type Sheet = "map" | "stats" | "social" | "profile" | null;
 
 /** Иконка-кнопка в шапке: на телефоне только значок, с sm — подпись. */
-function NavButton({ onClick, label, children, dark, testId, pressed }: { onClick: () => void; label: string; children: React.ReactNode; dark: boolean; testId?: string; pressed?: boolean }) {
+function NavButton({ onClick, label, children, dark, testId, pressed, badge = 0 }: { onClick: () => void; label: string; children: React.ReactNode; dark: boolean; testId?: string; pressed?: boolean; badge?: number }) {
   return (
-    <button type="button" onClick={onClick} aria-label={label} title={label} data-testid={testId} aria-pressed={pressed}
-      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-[12px] border-2 text-[15px] font-extrabold transition-colors sm:h-11 sm:w-auto sm:rounded-[14px] sm:px-3 ${dark ? `border-[#8A625C] text-cream hover:bg-cocoa ${pressed ? "bg-cocoa" : ""}` : `border-ink text-ink as-shadow-sm hover:bg-paper ${pressed ? "bg-lime" : "bg-white"}`}`}>
+    <button type="button" onClick={onClick} aria-label={badge ? `${label} · заявок: ${badge}` : label} title={label} data-testid={testId} aria-pressed={pressed}
+      className={`relative inline-flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-[12px] border-2 text-[15px] font-extrabold transition-colors sm:h-11 sm:w-auto sm:rounded-[14px] sm:px-3 ${dark ? `border-[#8A625C] text-cream hover:bg-cocoa ${pressed ? "bg-cocoa" : ""}` : `border-ink text-ink as-shadow-sm hover:bg-paper ${pressed ? "bg-lime" : "bg-white"}`}`}>
       {children}<span className="hidden 2xl:inline">{label}</span>
+      {badge > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-ink bg-rose px-1 text-[11px] font-extrabold leading-none text-white" aria-hidden>{badge}</span>}
     </button>
   );
 }
@@ -45,7 +46,7 @@ export function RoomNav({ t, dark = false, onOpen, active = null, stickers }: { 
           )}
         </span>
       )}
-      <NavButton dark={dark} pressed={active === "social"} onClick={() => onOpen("social")} label="Друзья" testId="open-social"><Users size={18} aria-hidden /></NavButton>
+      <NavButton dark={dark} pressed={active === "social"} onClick={() => onOpen("social")} label="Друзья" testId="open-social" badge={t.friends?.incoming.length ?? 0}><Users size={18} aria-hidden /></NavButton>
       <NavButton dark={dark} pressed={active === "map"} onClick={() => onOpen("map")} label="Карта" testId="open-map"><MapIcon size={18} aria-hidden /></NavButton>
       <NavButton dark={dark} pressed={active === "stats"} onClick={() => onOpen("stats")} label="Прогресс" testId="open-stats"><BarChart3 size={18} aria-hidden /></NavButton>
       <span className={`hidden items-center gap-1.5 sm:inline-flex ${dark ? "text-cream" : "text-ink"}`} title="Ваши монеты" aria-label={`Монеты: ${me?.coins ?? 0}`}>

@@ -365,8 +365,23 @@ export type ServerEventType =
   | "td_state" | "td_round_started" | "td_round_finished" | "td_tower_built" | "td_tower_upgraded" | "td_duel_result"
   | "td_unit_sent" | "td_spell_cast" | "td_rematch_started" | "roadmap_updated" | "node_reached" | "challenge_completed" | "help_applied" | "prank_applied"
   | "harvest_frame" | "harvest_started" | "harvest_finished" | "harvest_prank"
+  | "friend_request" | "friend_accepted" | "friend_removed" | "room_invite"
   | "voice_roster" | "voice_joined" | "voice_left" | "voice_peer_joined" | "voice_peer_left" | "voice_state" | "voice_signal" | "voice_kicked"
   | "heartbeat_ack" | "unsubscribed" | "error";
+
+// ---------------------------------------------------------------------------- Друзья
+export interface FriendRoom { id: string; code: string; name: string; phase: Phase; cycleNo: number }
+export interface Friend {
+  id: string; name: string; level: number; avatar: AvatarLook;
+  connection: Connection; focusing: boolean;
+  /** Активная комната друга (если он в сети) — можно зайти к нему */
+  room: FriendRoom | null;
+  since: number;
+}
+export interface FriendRequest { id: string; name: string; level?: number; avatar: AvatarLook; at: number }
+export interface FriendsView { code: string; friends: Friend[]; incoming: FriendRequest[]; outgoing: FriendRequest[]; limits: { maxFriends: number } }
+export type FriendRelation = "friend" | "outgoing" | "incoming";
+export interface RoomInvite { from: string; fromName: string; roomId: string; roomCode: string; roomName: string; at: number }
 
 // ---------------------------------------------------------------------------- Harvest
 export interface HarvestPlayer { id: string; name: string; bot: boolean; x: number | null; pts: number; caught: number; golden: number; rotten: number }

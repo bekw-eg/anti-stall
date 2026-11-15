@@ -12,6 +12,7 @@ import { createChatService } from './services/chat.js';
 import { createSocialService } from './services/social.js';
 import { createTd } from './services/td.js';
 import { createHarvest } from './services/harvest.js';
+import { createFriends } from './services/friends.js';
 import { createUsersService } from './services/users.js';
 import { Hub } from './ws/hub.js';
 import { VoiceRooms } from './ws/voice.js';
@@ -34,8 +35,9 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
   harvest.setRooms(rooms);
   const social = createSocialService(ctx, game, rooms);
   const chat = createChatService(ctx, rooms);
+  const friends = createFriends(ctx, rooms);
   const voice = new VoiceRooms({ config, clock, nameOf: (id) => db.get('SELECT name FROM users WHERE id = ?', id)?.name });
-  const router = buildRoutes({ config, users, rooms, game, social, td, harvest, voice, chat, db, clock });
+  const router = buildRoutes({ config, users, rooms, game, social, td, harvest, friends, voice, chat, db, clock });
 
   const cors = {
     'Access-Control-Allow-Origin': config.corsOrigin,
@@ -122,7 +124,7 @@ export function createApp({ config = loadConfig(), clock = systemClock } = {}) {
   let timer = null;
   let frameTimer = null;
   return {
-    config, clock, db, server, hub, services: { game, users, rooms, social, td, harvest, voice }, tick, harvestFrames,
+    config, clock, db, server, hub, services: { game, users, rooms, social, td, harvest, friends, voice }, tick, harvestFrames,
     startScheduler() {
       timer = setInterval(tick, config.tickMs);
       timer.unref?.();

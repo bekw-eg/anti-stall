@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { BarChart3, Check, Clock, Flame, History, Lock, LogOut, Palette, RotateCcw, Settings, Shirt, Sparkles, Target, Trophy } from "lucide-react";
+import { BarChart3, Check, Clock, Flame, History, KeyRound, Lock, LogOut, Palette, RotateCcw, Settings, Shirt, Smartphone, Sparkles, Target, Trophy } from "lucide-react";
 import { client } from "./useTomato";
 import type { Tomato } from "./useTomato";
 import type { AvatarLook, Progress, StudySession } from "@/api/tomato";
@@ -133,10 +133,36 @@ export function ProfilePanel({ t, onLeave }: { t: Tomato; onLeave?: () => void }
             />
             <span><span className="font-extrabold">Получать шутки</span><span className={`block text-sm ${MUTED}`}>Шутки — часть игры на перерыве. Если выключить, вас нельзя выбрать целью и отправлять их тоже нельзя.</span></span>
           </label>
+          <TransferCard t={t} />
           {onLeave && <LeaveButton onLeave={onLeave} />}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Вход с другого устройства: аккаунт гостевой (ключ в этом браузере), поэтому для телефона или второго компьютера
+ * выдаётся одноразовый код на 10 минут. На новом устройстве: экран входа → «Перенести аккаунт» → код.
+ */
+function TransferCard({ t }: { t: Tomato }) {
+  const [code, setCode] = useState<{ code: string; expiresAt: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const left = code ? Math.max(0, Math.ceil((code.expiresAt - t.serverNow()) / 60_000)) : 0;
+  return (
+    <section className={`${CARD} flex flex-col gap-3 p-4`} aria-label="Вход с другого устройства" data-testid="transfer-card">
+      <p className="flex items-center gap-2 font-extrabold"><Smartphone size={18} aria-hidden />Вход с другого устройства</p>
+      <p className={`text-sm ${MUTED}`}>Аккаунт хранится в этом браузере. Чтобы открыть его на телефоне или другом компьютере, возьмите одноразовый код и введите его там на экране входа — «Перенести аккаунт». Друзья, уровень и образ останутся с вами.</p>
+      {code && left > 0 ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-[18px] border-2 border-peach bg-[#2A1817] px-4 py-3">
+          <span className="font-display text-3xl tracking-[0.12em] text-cream" data-testid="transfer-code"><span className="relative top-1">{code.code}</span></span>
+          <span className={`text-sm font-bold ${MUTED}`}>действует ещё {left} мин, только один раз</span>
+        </div>
+      ) : (
+        <button type="button" disabled={busy} onClick={async () => { setBusy(true); const c = await t.newTransferCode(); if (c) setCode(c); setBusy(false); }}
+          className="as-btn as-btn-light as-btn-sm self-start"><KeyRound size={18} aria-hidden />Получить код</button>
+      )}
+    </section>
   );
 }
 
