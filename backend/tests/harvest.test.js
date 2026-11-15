@@ -167,6 +167,23 @@ describe('Harvest: чередование с Tower Defense и проверки �
     assert.equal((await anya.patch('/api/users/me', { avatar: { skin: 'pink', head: 'straw' } })).body.error.code, 'AVATAR_LOCKED');
   });
 
+  test('Красные без людей играют ботами, и их победа двигает Красных по карте (наград никому)', async () => {
+    const L = await lobby(w, ['Ира', 'Оля'], { teamMode: true });
+    for (const u of L.users) assert.equal((await u.post(L.path('/team'), { team: 'B' })).status, 200);
+    const [ira] = L.users;
+    const pointsOf = async (k) => (await ira.get(L.path('/roadmap'))).body.teams.find((t) => t.key === k).points;
+    await toHarvestBreak(w, L);
+    const v = (await ira.get(L.path('/harvest'))).body;
+    assert.equal(v.round.botTeam, 'A');
+    const before = await pointsOf('A');
+    w.clock.set(v.round.endsAt + 3000);
+    w.app.tick();
+    const fin = (await ira.get(L.path('/harvest'))).body.round;
+    assert.equal(fin.result.winner, 'A', 'Синие ничего не ловили — победили боты-Красные');
+    assert.equal(await pointsOf('A'), before + 1, 'победа ботов засчитана на карте');
+    assert.equal(await pointsOf('B'), 0);
+  });
+
   test('комната без команд играет против ботов-огородников; шутка по боту действует', async () => {
     const L = await lobby(w, ['Вера'], {});
     const [vera] = L.users;

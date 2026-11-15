@@ -160,9 +160,11 @@ export function createHarvest(ctx, game) {
     };
     const upd = db.run("UPDATE harvest_rounds SET status = 'finished', result = ?, finished_at = ?, state = ? WHERE id = ? AND status = 'running'", JSON.stringify(result), at, JSON.stringify(round.state), round.id);
     if (upd.changes === 0) return;
-    // Победа живой команды двигает её по карте, как победа в этапе TD (иначе при чередовании игр до крепости не дойти)
-    if (winner !== 'draw' && winner !== round.state.botTeam) {
-      const participants = round.state.participants.filter((uid) => teamOfUser(room, uid) === winner);
+    // Победа двигает команду по карте, как победа в этапе TD (иначе при чередовании игр до крепости не дойти).
+    // Победа ботов за пустую команду (Красные/Синие без людей) тоже засчитывается: её маркер идёт дальше, наград нет.
+    // «Огородники» общей комнаты ('bots') — не команда комнаты, на карте их нет.
+    if (winner !== 'draw' && winner !== 'bots') {
+      const participants = winner === round.state.botTeam ? [] : round.state.participants.filter((uid) => teamOfUser(room, uid) === winner);
       game.recordStageVictory(room, winner, game.currentStageOf(room.id, winner), participants);
     }
     db.emit({ scope: 'room', roomId: room.id, type: 'harvest_finished', data: { roundId: round.id, ...result } });
