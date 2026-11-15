@@ -57,6 +57,31 @@ test:
     - node src/tools/db-check.js /tmp/ci-check.db
     - cd ../frontend && npm ci --no-audit --no-fund && npx tsc --noEmit -p tsconfig.app.json && npx vitest run
 
+# 0б. Сквозные проверки в настоящем Chromium (e2e/): соцмеханики, статистика, присутствие и голос WebRTC
+# через интерфейс — несколько браузеров на реальном backend (демо-режим, временная БД) и Vite.
+# Пока allow_failure: проверяем, что в раннере ставится Chromium; когда стабильно зелёные — убрать.
+e2e:
+  stage: test
+  image: $NODE_IMAGE
+  extends:
+    - .rules-merge-or-master-or-parent
+  allow_failure: true
+  variables:
+    CHROME_PATH: /usr/bin/chromium
+  script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends chromium fonts-dejavu-core > /dev/null
+    - chromium --version
+    - cd backend && npm ci --no-audit --no-fund
+    - cd ../frontend && npm ci --no-audit --no-fund
+    - cd ../e2e && npm ci --no-audit --no-fund
+    - npm run social
+    - npm run voice
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - e2e/artifacts/
+
 # 1. Сборка ЕДИНОГО образа (frontend + backend: backend раздаёт собранный frontend, REST /api и WebSocket /ws
 # на одном порту) через Kaniko и публикация в registry. Раньше собирался только frontend — без backend стенд не работал.
 build:image:

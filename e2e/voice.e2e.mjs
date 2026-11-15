@@ -23,7 +23,7 @@ try {
     const code = await createRoom(users[0], env);
     for (const u of users.slice(1)) await joinRoom(u, env, code);
     for (const u of users) {
-      u.id = await u.page.evaluate(async () => (await (await fetch('/api/users/me', { headers: { Authorization: `Bearer ${localStorage.getItem('tomato.token')}` } })).json()).id);
+      u.id = await u.page.evaluate(async () => (await (await fetch('/api/users/me', { headers: { Authorization: `Bearer ${localStorage.getItem('tomato.token') ?? sessionStorage.getItem('tomato.token')}` } })).json()).id);
       await until(async () => (await u.page.locator('[aria-label="Участники"] li').count()) === 4, { msg: `${u.name}: не видит 4 участников` });
     }
   });
@@ -113,7 +113,7 @@ try {
     const g = await openUser(browser, env, 'Гость', { denyMic: true });
     const code = users[0].page.url().split('/room/')[1];
     await joinRoom(g, env, code);
-    g.id = await g.page.evaluate(async () => (await (await fetch('/api/users/me', { headers: { Authorization: `Bearer ${localStorage.getItem('tomato.token')}` } })).json()).id);
+    g.id = await g.page.evaluate(async () => (await (await fetch('/api/users/me', { headers: { Authorization: `Bearer ${localStorage.getItem('tomato.token') ?? sessionStorage.getItem('tomato.token')}` } })).json()).id);
     await g.page.getByTestId('voice-join').click();
     await until(async () => (await g.page.getByTestId('voice-status').textContent())?.includes('нет доступа к микрофону'), { msg: 'нет объяснения про микрофон' });
     await until(async () => {

@@ -84,8 +84,8 @@
 | # | Задача | Effort | Кто | Готово |
 |---|---|---|---|---|
 | 3.1 | (команда вручную) OpenAPI: `backend/docs/openapi.yaml` по `API.md` (55 эндпоинтов + WS-события), Swagger UI на `/api/docs` | high | | [ ] |
-| 3.2 | e2e в CI: отдельная джоба с Chrome (сейчас e2e social / voice запускаются вручную) | high | | [ ] |
-| 3.3 | Тестовые данные: команда/скрипт сида демо (комната, 3 игрока, история) — описать в README | low | | [ ] |
+| 3.2 | e2e в CI: отдельная джоба с Chrome (сейчас e2e social / voice запускаются вручную) | high | ra1d9r | [x] |
+| 3.3 | Тестовые данные: команда/скрипт сида демо (комната, 3 игрока, история) — описать в README | low | ra1d9r | [x] |
 | 3.4 | `db-check` в CI (на БД после тестов) и шагом после деплоя | low | ra1d9r | [x] |
 
 ## Этап 4 — продакт и защита (параллельно с 1–3)
@@ -117,6 +117,8 @@
 - 1.x, 3.4 — ветка `release/1-release-ready`: `checkEnv`, обработка сбоев, `SCHEMA_VERSION` = 8 и лог миграций, бэкап перед деплоем (`db-backup.js`), `db-check` после деплоя и в CI, джоба `rollback:vm` + `deploy/rollback.sh`, `docs/ARCHITECTURE.md`, переменные и восстановление данных в `docs/DEPLOY.md`.
 
 - 2.1–2.3 — ветка `release/2-observability`: JSON-логи запросов и WS с `X-Request-Id`, `GET /api/metrics` (Prometheus), ошибки браузера → `POST /api/client-errors` + ErrorBoundary, health с версией схемы; `docs/OBSERVABILITY.md` — метрики, PromQL для дашборда, предложения алертов.
+
+- 3.2–3.3 — ветка `release/3-quality`: e2e чинены под одноразовых гостей (токен в sessionStorage), локально social 10/10, voice 11/11; джоба `e2e` в CI (Chromium из apt, скриншоты в артефактах, пока allow_failure); `demo:seed` даёт аккаунтам логин и пароль `antistall-demo`.
 
 ## Решения
 1. Правило «фокус → цель» (этап 0.1): скорее вариант А, окончательно решает команда.

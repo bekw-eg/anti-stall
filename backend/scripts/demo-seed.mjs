@@ -4,6 +4,8 @@
  *   2) npm run demo:seed [-- --api http://localhost:8787]
  * Создаёт 4 песочных аккаунта (Лотти, Аня, Борис, Вика) и демо-комнату «фокус 25 с / перерыв 15 с» с хостом Лотти,
  * остальные входят в неё. Токены, id и код комнаты пишутся в data/demo-seed.json (файл в .gitignore).
+ * Каждый аккаунт получает логин и общий пароль: друзья и вход с другого устройства — только у зарегистрированных,
+ * гость одноразовый. В интерфейсе: «Войти» → «Аккаунт» → логин из таблицы и пароль PASSWORD.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -13,17 +15,28 @@ import { API, createPlayer, printTable, requireDemoServer } from './lib/client.m
 const OUT = fileURLToPath(new URL('../data/demo-seed.json', import.meta.url));
 const FOCUS = 25;
 const BREAK = 15;
+const PASSWORD = 'antistall-demo';
+const RUN = Math.random().toString(36).slice(2, 6); // логины уникальны при повторном запуске
 const PLAYERS = [
-  { name: 'Лотти', task: 'Математика: пределы' },
-  { name: 'Аня', task: 'Английский: эссе' },
-  { name: 'Борис', task: 'Физика: задачи' },
-  { name: 'Вика', task: 'История: конспект' },
+  { name: 'Лотти', login: 'lotti', task: 'Математика: пределы' },
+  { name: 'Аня', login: 'anya', task: 'Английский: эссе' },
+  { name: 'Борис', login: 'boris', task: 'Физика: задачи' },
+  { name: 'Вика', login: 'vika', task: 'История: конспект' },
 ];
 
 await requireDemoServer();
 
 const players = [];
-for (const p of PLAYERS) players.push({ ...p, api: await createPlayer(p.name, { sandbox: true }) });
+for (const p of PLAYERS) {
+  const api = await createPlayer(p.name, { sandbox: true });
+  const login = `${p.login}-${RUN}`;
+  const c = await api.post('/api/users/me/credentials', { login, password: PASSWORD });
+  if (c.status !== 200) {
+    console.error(`«${p.name}»: не удалось задать логин:`, c.status, JSON.stringify(c.body));
+    process.exit(1);
+  }
+  players.push({ ...p, login, api });
+}
 const [host, ...guests] = players;
 
 const created = await host.api.post('/api/rooms', { name: 'Демо: боталка к экзамену', demo: true, focusSeconds: FOCUS, breakSeconds: BREAK });
@@ -45,13 +58,15 @@ const seed = {
   api: API,
   createdAt: new Date().toISOString(),
   room: { id: room.id, code: room.code, name: room.name, focusSec: room.settings.focusSec, breakSec: room.settings.breakSec, hostId: host.api.id },
-  players: players.map((p) => ({ name: p.name, id: p.api.id, token: p.api.token, role: p === host ? 'host' : 'member', task: p.task, sandbox: true })),
+  password: PASSWORD,
+  players: players.map((p) => ({ name: p.name, login: p.login, id: p.api.id, token: p.api.token, role: p === host ? 'host' : 'member', task: p.task, sandbox: true })),
 };
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, JSON.stringify(seed, null, 2) + '\n');
 
 console.log(`\nДемо-комната «${room.name}»: код \x1b[1m${room.code}\x1b[0m, фокус ${FOCUS} с, перерыв ${BREAK} с (сервер ${API})\n`);
-printTable(['Игрок', 'Роль', 'id', 'Токен (Bearer)'], seed.players.map((p) => [p.name, p.role, p.id, p.token]));
+printTable(['Игрок', 'Логин', 'Роль', 'id', 'Токен (Bearer)'], seed.players.map((p) => [p.name, p.login, p.role, p.id, p.token]));
+console.log(`Пароль у всех: ${PASSWORD}`);
 console.log(`\nСохранено: ${OUT}`);
 console.log('Аккаунты песочные: работают только на демо-сервере и только в демо-комнатах.');
 console.log(`Боты в эту комнату: npm run demo:bots -- --room ${room.code} --bots 2`);

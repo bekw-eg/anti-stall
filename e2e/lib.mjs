@@ -100,7 +100,11 @@ export async function launchChrome() {
   return chromium.launch({
     executablePath,
     headless: process.env.HEADED !== '1',
-    args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--mute-audio'],
+    args: [
+      '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required', '--mute-audio',
+      // в CI Chromium запускается от root в контейнере: без этих флагов он не стартует / падает на малом /dev/shm
+      ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
+    ],
   });
 }
 
@@ -140,7 +144,8 @@ export async function joinRoom(u, env, code) {
   await u.page.getByTestId('voice-bar').waitFor({ timeout: 15_000 });
 }
 
-export const token = (u) => u.page.evaluate(() => localStorage.getItem('tomato.token'));
+// гость хранит токен в sessionStorage (одноразовый), аккаунт с логином — в localStorage
+export const token = (u) => u.page.evaluate(() => localStorage.getItem('tomato.token') ?? sessionStorage.getItem('tomato.token'));
 export async function api(env, u, method, path, body) {
   const t = await token(u);
   const res = await fetch(env.api + path, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${t}` }, body: body ? JSON.stringify(body) : undefined });
