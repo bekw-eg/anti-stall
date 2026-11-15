@@ -4,7 +4,7 @@ import { reqObject, reqString } from '../validate.js';
 /**
  * Текстовый чат комнаты. Правила (все проверяет сервер):
  *  - писать могут только участники комнаты; читать — тоже только участники;
- *  - во время фокуса чат только для чтения (учёба важнее) — 409 CHAT_FOCUS_LOCKED;
+ *  - чат открыт во всех фазах комнаты, в том числе на фокусе (можно спросить команду);
  *  - длина сообщения 1…maxLength символов, пробелы по краям обрезаются;
  *  - антиспам: не чаще одного сообщения в minIntervalMs и не больше perMinute в минуту;
  *  - сообщения хранятся в БД и приходят всей комнате событием chat_message по WebSocket.
@@ -23,7 +23,8 @@ export function createChatService(ctx, rooms) {
       `SELECT c.id, c.user_id, u.name, c.text, c.created_at FROM chat_messages c JOIN users u ON u.id = c.user_id
        WHERE c.room_id = ? ORDER BY c.id DESC LIMIT ?`, room.id, n,
     );
-    return { roomId: room.id, readOnly: room.phase === 'focus', messages: rows.reverse().map(view) };
+    // чат комнаты открыт всегда, в том числе на фокусе; readOnly оставлен для старых клиентов
+    return { roomId: room.id, readOnly: false, messages: rows.reverse().map(view) };
   }
 
   function send(user, roomKey, body) {
@@ -32,7 +33,6 @@ export function createChatService(ctx, rooms) {
     return db.tx(() => {
       const room = rooms.findRoom(roomKey);
       rooms.requireMember(room, user);
-      if (room.phase === 'focus') throw E.conflict('CHAT_FOCUS_LOCKED', 'Во время фокуса чат только для чтения — напишите на перерыве');
       if (room.phase === 'completed') throw E.conflict('ROOM_CLOSED', 'Комната закрыта');
       const t = clock.now();
       const last = db.get('SELECT created_at t FROM chat_messages WHERE room_id = ? AND user_id = ? ORDER BY id DESC LIMIT 1', room.id, user.id);

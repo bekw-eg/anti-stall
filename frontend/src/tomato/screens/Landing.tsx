@@ -93,7 +93,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
           <div className={wrap}>
             <Eyebrow>Как это работает</Eyebrow>
             <h2 className={h2}>25 учимся, 5 играем.</h2>
-            <p className={lead}>Пока идёт таймер, игра закрыта, а чат только для чтения. На перерыве всё открывается.</p>
+            <p className={lead}>Пока идёт таймер, игра закрыта, а чат комнаты открыт всегда. На перерыве открывается и игра.</p>
 
             <motion.div {...appear} className="mt-10 grid items-stretch gap-5 lg:grid-cols-[1fr_auto_1fr] lg:gap-6">
               <article className="as-card as-shadow flex flex-col gap-5 border-ink bg-ink p-6 text-cream sm:p-8">
@@ -102,7 +102,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
                 <div className="flex -space-x-2">{["Лотти", "Айгерим", "Тимур", "Сабина"].map((n) => <Avatar key={n} name={n} id={n} ring="#FFF4EF" />)}</div>
                 <ul className="flex flex-col gap-2.5">
                   <Bullet dark>Карта размыта и закрыта</Bullet>
-                  <Bullet dark>Чат только для чтения</Bullet>
+                  <Bullet dark>Чат открыт: можно спросить команду</Bullet>
                   <Bullet dark>Голос работает, микрофон можно выключить</Bullet>
                   <Bullet dark>Ушёл раньше времени, и цикл не засчитан</Bullet>
                 </ul>

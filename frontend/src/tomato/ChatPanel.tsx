@@ -20,7 +20,6 @@ export function ChatPanel({ t }: { t: Tomato }) {
   useNow(15_000);
   const snap = t.snapshot!;
   const meId = snap.me?.userId;
-  const readOnly = snap.room.phase === "focus";
   const teamOf = new Map(snap.members.map((m) => [m.userId, m.team]));
   const lookById = new Map(snap.members.map((m) => [m.userId, m.avatar]));
   const [text, setText] = useState("");
@@ -59,7 +58,7 @@ export function ChatPanel({ t }: { t: Tomato }) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const v = text.trim();
-    if (!v || readOnly || sending) return;
+    if (!v || sending) return;
     setSending(true);
     const ok = await t.sendChat(v);
     setSending(false);
@@ -70,14 +69,13 @@ export function ChatPanel({ t }: { t: Tomato }) {
     <div className="flex h-full flex-col gap-3 p-5 sm:p-6" data-testid="chat-panel">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-display text-xl">Чат комнаты</h2>
-        {readOnly && <p className="text-xs text-[var(--muted)]">Идёт фокус: писать можно на перерыве</p>}
       </div>
 
       <div className="relative flex min-h-0 flex-1 flex-col">
       <ol ref={listRef} onScroll={onScroll} tabIndex={0} data-testid="chat-list"
         className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pr-2 [scrollbar-color:var(--muted)_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--fg)]"
         aria-label="Сообщения" aria-live="polite">
-        {t.chat.length === 0 && <li className="text-sm text-[var(--muted)]">{readOnly ? "Пока тихо." : "Пока тихо. Напишите первым."}</li>}
+        {t.chat.length === 0 && <li className="text-sm text-[var(--muted)]">Пока тихо. Напишите первым.</li>}
         {t.chat.map((m) => {
           const mine = m.userId === meId;
           return (
@@ -106,12 +104,11 @@ export function ChatPanel({ t }: { t: Tomato }) {
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={MAX_LEN}
-            disabled={readOnly}
-            placeholder={readOnly ? "Чат откроется на перерыве" : "Напишите сообщение…"}
+            placeholder="Напишите сообщение…"
             className="w-full rounded-full border border-[var(--line)] bg-transparent px-4 py-2 text-sm text-[var(--fg)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--fg)] disabled:cursor-not-allowed disabled:opacity-60"
           />
         </label>
-        <button type="submit" disabled={readOnly || sending || !text.trim()} aria-label="Отправить" className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--fg)] text-[var(--field)] transition-opacity disabled:cursor-not-allowed disabled:opacity-40">
+        <button type="submit" disabled={sending || !text.trim()} aria-label="Отправить" className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--fg)] text-[var(--field)] transition-opacity disabled:cursor-not-allowed disabled:opacity-40">
           <Send size={15} />
         </button>
       </form>

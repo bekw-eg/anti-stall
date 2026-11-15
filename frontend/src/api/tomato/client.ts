@@ -99,7 +99,7 @@ export class TomatoClient {
     this.request("POST", `/api/rooms/${id}/social/help`, { targetUserId, type });
   prank = (id: string, targetUserId: string, type: "fog" | "sticker") =>
     this.request("POST", `/api/rooms/${id}/social/prank`, { targetUserId, type });
-  /** Текстовый чат комнаты: история и отправка (в фокусе сервер отвечает 409 CHAT_FOCUS_LOCKED) */
+  /** Текстовый чат комнаты: история и отправка (открыт во всех фазах комнаты) */
   chat = (id: string) => this.request<{ roomId: string; readOnly: boolean; messages: ChatMessage[] }>("GET", `/api/rooms/${id}/chat`);
   sendChat = (id: string, text: string) => this.request<ChatMessage>("POST", `/api/rooms/${id}/chat`, { text });
   socialFeed = (id: string) => this.request<{ actions: SocialAction[] }>("GET", `/api/rooms/${id}/social`);

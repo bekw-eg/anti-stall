@@ -25,15 +25,13 @@ describe('текстовый чат комнаты', () => {
     } finally { await w.close(); }
   });
 
-  test('в фокусе только чтение, на перерыве снова можно писать', async () => {
+  test('чат открыт во всех фазах: и на фокусе, и на перерыве', async () => {
     const w = await boot();
     try {
       const L = await lobby(w, ['Лотти', 'Аня']);
       await L.host.post(L.path('/start'));
-      const r = await send(L.host, L, 'отвлеку');
-      assert.equal(r.status, 409);
-      assert.equal(r.body.error.code, 'CHAT_FOCUS_LOCKED');
-      assert.equal((await history(L.host, L)).readOnly, true);
+      assert.equal((await send(L.host, L, 'на фокусе тоже пишем')).status, 201);
+      assert.equal((await history(L.rest[0], L)).readOnly, false);
       await w.advance(25 * 60_000 + 1000, L.users);
       assert.equal((await send(L.host, L, 'перерыв!')).status, 201);
     } finally { await w.close(); }
