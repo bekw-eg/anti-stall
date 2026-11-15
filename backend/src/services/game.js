@@ -127,6 +127,45 @@ export function createGame(ctx) {
     return summary;
   }
 
+  // ------------------------------------------------------------------ самооценка и командный бонус
+  /**
+   * Конец перерыва: каждому, кто получил награду за фокус этого цикла, — бонус опыта и монет
+   * = его награда за фокус × (средняя оценка его команды / 5) × ratingBonusShare.
+   * Не ответившие считаются как ratingDefault. База — уже начисленная награда, поэтому качество фокуса,
+   * доля при пропуске и суточный потолок учтены (сессия за потолком наград не получает и бонуса тоже).
+   * Ключ журнала rating:<cycleId>:<userId> — повторный вызов ничего не начислит.
+   */
+  function ratingBonus(room) {
+    if (!room.cycle_id) return [];
+    const done = db.all("SELECT * FROM focus_sessions WHERE room_id = ? AND cycle_id = ? AND status = 'completed' ORDER BY rowid", room.id, room.cycle_id);
+    const byTeam = new Map();
+    for (const s of done) {
+      const team = teamOfMember(room, s.user_id);
+      if (!byTeam.has(team)) byTeam.set(team, []);
+      byTeam.get(team).push(s);
+    }
+    const out = [];
+    for (const [team, list] of byTeam) {
+      const stars = list.map((s) => s.rating ?? eco.ratingDefault);
+      const avg = Math.round((stars.reduce((a, b) => a + b, 0) / stars.length) * 10) / 10;
+      const k = (avg / 5) * eco.ratingBonusShare;
+      const answered = list.filter((x) => x.rating !== null).length;
+      for (const s of list) {
+        if (!s.rewarded) continue;
+        const xp = Math.round(s.xp_awarded * k);
+        const coins = Math.round(s.coins_awarded * k);
+        if (xp + coins <= 0) continue;
+        const { granted } = grant(s.user_id, `rating:${room.cycle_id}:${s.user_id}`, 'rating_bonus', { xp, coins }, {
+          roomId: room.id, sessionId: s.id, team, avgRating: avg, rating: s.rating ?? null, answered, members: list.length,
+        });
+        if (!granted) continue;
+        db.run('UPDATE focus_sessions SET bonus_xp = ?, bonus_coins = ? WHERE id = ?', xp, coins, s.id);
+        out.push({ userId: s.user_id, team, xp, coins, avgRating: avg });
+      }
+    }
+    return out;
+  }
+
   // ------------------------------------------------------------------ команды и казна
   // A — «Красные», B — «Синие»: так команды различают по цвету во всём интерфейсе
   const teamName = (key) => (key === 'shared' ? 'Команда' : key === 'B' ? 'Синие' : 'Красные');
@@ -624,7 +663,7 @@ export function createGame(ctx) {
   const currentStageOf = (roomId, teamKey) => stageIdOfNode(ROADMAP.nodes[positionIdx(roomId, teamKey)].id);
 
   return {
-    levelInfo, grant, spend, completeSession, addTeamPoints, roadmapView, gameView, currentStageOf,
+    levelInfo, grant, spend, completeSession, ratingBonus, addTeamPoints, roadmapView, gameView, currentStageOf,
     ensureTeamProgress, ensureTeams, treasuryOf, spendTreasury, creditTreasury, recordStageVictory, teamOfMember,
     listUpgrades, purchaseUpgrade, upgradeLevel, checkAchievements, listAchievements, progress, effects, stats,
     studyStats, roomStats,

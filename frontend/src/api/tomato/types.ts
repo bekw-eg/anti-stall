@@ -23,7 +23,8 @@ export interface Member {
   contribution: number;
   /** Образ аксолотля (старый backend не присылает — тогда цвет из id) */
   avatar?: AvatarLook;
-  session: { id: string; status: "active" | "completed" | "aborted" | "abandoned"; rewarded: boolean } | null;
+  /** rating — самооценка ★1–5 (null — ещё не оценена; старый backend поле не присылает) */
+  session: { id: string; status: "active" | "completed" | "aborted" | "abandoned"; rewarded: boolean; rating?: number | null } | null;
 }
 
 export interface RoadmapNode {
@@ -224,6 +225,10 @@ export interface StudySession {
   rewarded: boolean;
   xp: number;
   coins: number;
+  /** Самооценка ★1–5 и командный бонус по ней (начислен в конце перерыва); старый backend не присылает */
+  rating?: number | null;
+  bonusXp?: number;
+  bonusCoins?: number;
 }
 
 /** GET /api/users/me/stats — личная статистика (всё считает сервер) */

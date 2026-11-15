@@ -60,6 +60,9 @@ export const DEFAULT_AVATAR_CATALOG: AvatarCatalog = {
 
 const teamLabel = (team?: string) => (team === "A" || team === "B" ? `${teamTitle(team)}: ` : "");
 
+/** Средняя оценка по-русски: 4,2 */
+export const formatStars = (v?: number) => (v ?? 0).toLocaleString("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
 /** Справочники игры для подписей событий (названия наёмников и заклинаний приходят с сервера) */
 type TdNames = Pick<TdView, "team" | "mercenaries" | "spells"> | null | undefined;
 const mercTitle = (td: TdNames, id?: string) => td?.mercenaries?.find((m) => m.id === id)?.title ?? "томата-наёмника";
@@ -74,11 +77,13 @@ export function describeEvent(ev: ServerEvent, myId?: string, td?: TdNames): { t
   const d = ev.data as {
     winner?: string; team?: string; draw?: boolean; kind?: string; xp?: number; coins?: number; levelUp?: boolean; level?: number; title?: string;
     rewarded?: boolean; status?: string; to?: string; blocked?: boolean; target?: string; type?: string; spell?: string; queued?: boolean; by?: string;
-    startedBy?: string; bonusTeam?: string | null; counterattackCoins?: number; skipped?: boolean;
+    startedBy?: string; bonusTeam?: string | null; counterattackCoins?: number; skipped?: boolean; avgRating?: number;
   };
   const info = (text: string | null, tone: Toast["tone"] = "info") => (text ? { text, tone } : null);
   switch (ev.type) {
-    case "reward_granted": return info(d.kind === "achievement" ? null : `+${d.xp} XP${d.coins ? ` · +${d.coins} монет` : ""}${d.levelUp ? ` · уровень ${d.level}` : ""}`, "reward");
+    case "reward_granted":
+      if (d.kind === "rating_bonus") return info(`Командный бонус +${d.xp} XP${d.coins ? ` · +${d.coins} монет` : ""} (средняя ${formatStars(d.avgRating)}★)${d.levelUp ? ` · уровень ${d.level}` : ""}`, "reward");
+      return info(d.kind === "achievement" ? null : `+${d.xp} XP${d.coins ? ` · +${d.coins} монет` : ""}${d.levelUp ? ` · уровень ${d.level}` : ""}`, "reward");
     case "achievement_unlocked": return info(`Достижение: ${d.title}`, "reward");
     case "phase_changed": return info(d.skipped ? "Хост пропустил фокус — начался перерыв" : null);
     case "session_completed": return info(d.skipped ? (d.rewarded ? null : "Фокус пропущен слишком рано — награды нет") : d.rewarded ? null : d.status === "completed" ? "Сессия завершена, дневной лимит наград исчерпан" : "Сессия прервана — без награды");
@@ -739,6 +744,7 @@ export function useTomato(initialCode?: string) {
   useEffect(() => { if (phase && phase !== "break" && tdRef.current?.enabled) loadTd(); }, [phase, loadTd]);
 
   const recordResult = useCallback((result: "done" | "partial" | "not_done") => call(() => client.recordResult(rid, result)), [call, rid]);
+  const rateSession = useCallback((stars: number) => call(() => client.rateSession(rid, stars)), [call, rid]);
 
   /** Отправить сообщение в чат комнаты; true — сервер принял (сообщение придёт и по WS, дубль отсекается по id). */
   const sendChat = useCallback(async (text: string) => {
@@ -785,7 +791,7 @@ export function useTomato(initialCode?: string) {
     boot, serverOk, demoMode, graceSec, shieldCost, boostPct, prankRules, limits, user, name, setName, snapshot, conn, busy, toasts, disconnectedFor, remainingMs, socket, feed, serverNow,
     loginAccount, registerAccount, changePassword, dismissToast,
     friends, relations, roomInvites, loadFriends, friendAdd, friendAccept, friendRemove, friendInvite, dismissInvite, redeemTransfer, newTransferCode,
-    call, push, td, tdFx, loadTd, harvest, harvestFrame, harvestFeed, loadHarvest, harvestCatch, harvestPrank, harvestMove, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, setPranksEnabled, saveAvatar, avatarCatalog, chat, sendChat,
+    call, push, td, tdFx, loadTd, harvest, harvestFrame, harvestFeed, loadHarvest, harvestCatch, harvestPrank, harvestMove, tdJoin, tdStart, tdBuild, tdUpgrade, tdSendUnit, tdCastSpell, createRoom, joinRoom, leaveRoom, startFocus, abortSession, skipFocus, skipBreak, setTask, setTeam, setReady, updateSettings, help, prank, recordResult, rateSession, setPranksEnabled, saveAvatar, avatarCatalog, chat, sendChat,
   };
 }
 export type Tomato = ReturnType<typeof useTomato>;

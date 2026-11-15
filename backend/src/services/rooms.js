@@ -166,6 +166,7 @@ export function createRoomsService(ctx, game, users, td, harvest = null) {
       const room = findRoom(idOrCode);
       requireHost(room, user);
       requirePhase(room, 'waiting', 'break');
+      if (room.phase === 'break') game.ratingBonus(room); // перерыв закрыт хостом — бонус всё равно положен
       td.closeRounds(room, clock.now());
       harvest?.closeRounds(room, clock.now());
       db.run("UPDATE rooms SET phase = 'completed', phase_ends_at = NULL, closed_at = ? WHERE id = ?", clock.now(), room.id);
@@ -273,6 +274,36 @@ export function createRoomsService(ctx, game, users, td, harvest = null) {
       if (sess.status === 'active') throw E.conflict('SESSION_ACTIVE', 'Сессия ещё идёт');
       db.run('UPDATE focus_sessions SET result = ?, result_note = ? WHERE id = ?', b.result, note, sess.id);
       return { sessionId: sess.id, result: b.result, note };
+    });
+  }
+
+  /**
+   * Самооценка «Как вы поработали?» ★1–5: только своя завершённая сессия текущего цикла комнаты,
+   * один раз и только до начала следующего фокуса. Влияет лишь на командный бонус в конце перерыва.
+   */
+  function rateSession(user, idOrCode, body) {
+    const b = reqObject(body);
+    if (!Number.isInteger(b.stars) || b.stars < 1 || b.stars > 5) throw E.badRequest('INVALID_FIELD', 'stars: целое от 1 до 5', { field: 'stars' });
+    return db.tx(() => {
+      advanceInTx(findRoom(idOrCode).id);
+      const room = findRoom(idOrCode);
+      requireMember(room, user);
+      if (b.sessionId !== undefined) {
+        const owner = db.get('SELECT user_id FROM focus_sessions WHERE id = ?', String(b.sessionId));
+        if (owner && owner.user_id !== user.id) throw E.forbidden('NOT_YOUR_SESSION', 'Оценить можно только свою сессию');
+      }
+      const sess = room.cycle_id
+        ? db.get('SELECT * FROM focus_sessions WHERE room_id = ? AND cycle_id = ? AND user_id = ?', room.id, room.cycle_id, user.id)
+        : null;
+      const closed = () => E.conflict('RATING_CLOSED', 'Оценить можно только последний фокус и только до начала следующего');
+      if (!sess || (b.sessionId !== undefined && sess.id !== String(b.sessionId))) throw closed();
+      if (sess.status === 'active') throw E.conflict('SESSION_ACTIVE', 'Сессия ещё идёт');
+      if (sess.status !== 'completed') throw E.conflict('SESSION_NOT_COMPLETED', 'Оценка — только для досиженного фокуса');
+      if (room.phase === 'focus') throw closed();
+      if (sess.rating !== null && sess.rating !== undefined) throw E.conflict('ALREADY_RATED', 'Сессия уже оценена', { rating: sess.rating });
+      db.run('UPDATE focus_sessions SET rating = ? WHERE id = ? AND rating IS NULL', b.stars, sess.id);
+      db.emit(stateEvent(room.id));
+      return { sessionId: sess.id, rating: b.stars };
     });
   }
 
@@ -422,6 +453,7 @@ export function createRoomsService(ctx, game, users, td, harvest = null) {
    * иначе комната ждёт хоста (можно продолжить сверх плана, если команда ещё не дошла до крепости).
    */
   function endBreak(room, at) {
+    game.ratingBonus(room); // командный бонус по средней самооценке — до следующего фокуса (ключ журнала не даст повтора)
     // Автостарт, только если план не выполнен и в комнате есть кто-то в сети (иначе пустые циклы «прокрутились» бы сами)
     const someoneHere = db.get('SELECT 1 x FROM room_members m JOIN users u ON u.id = m.user_id WHERE m.room_id = ? AND m.left_at IS NULL AND ? - u.last_seen_at <= ?', room.id, at, config.graceMs);
     // Перерыв, кончившийся «в прошлом» (сервер догоняет фазы после простоя), автостарт не даёт:
@@ -581,7 +613,7 @@ export function createRoomsService(ctx, game, users, td, harvest = null) {
         isReady: Boolean(m.is_ready),
         task: m.task_title, status: memberStatus(room, sess), connection: connectionState(m.last_seen_at, t),
         prankEnabled: Boolean(m.prank_enabled), contribution: contributions.get(m.user_id) ?? 0, avatar: avatarOf(m),
-        session: sess ? { id: sess.id, status: sess.status, rewarded: Boolean(sess.rewarded), quality: sess.quality ?? null } : null,
+        session: sess ? { id: sess.id, status: sess.status, rewarded: Boolean(sess.rewarded), quality: sess.quality ?? null, rating: sess.rating ?? null } : null,
       };
     });
 
@@ -626,6 +658,7 @@ export function createRoomsService(ctx, game, users, td, harvest = null) {
       if (mine.status === 'focusing') a.splice(i, 1);
     } else if (room.phase === 'break') {
       a.push('set_ready', 'help', 'prank', 'buy_upgrade', 'record_result');
+      if (mine.session?.status === 'completed' && mine.session.rating === null) a.push('rate_session');
       if (isHost) a.push('skip_break', 'close_room');
     }
     return a;
@@ -633,7 +666,7 @@ export function createRoomsService(ctx, game, users, td, harvest = null) {
 
   return {
     findRoom, requireMember, requirePhase, memberRow, loadRoom,
-    create, join, leave, close, updateSettings, setTask, setTeam, setReady, recordResult,
+    create, join, leave, close, updateSettings, setTask, setTeam, setReady, recordResult, rateSession,
     startFocus, abortSession, skipFocus, skipBreak, reportAttention, advance, runningRoomIds, recoverAfterRestart,
     snapshot, connectionState,
   };

@@ -404,9 +404,13 @@ function HistoryList({ sessions }: { sessions: StudySession[] }) {
                       <span className="min-w-0">
                         <span className="font-bold">Цикл {c.cycleNo}</span>
                         <span className={MUTED}> · {formatClock(c.startedAt)} · {formatDuration(c.status === "active" ? c.durationSec : workedSec(c))} · {cycleOutcome(c)}</span>
+                        {c.rating ? <span className="text-peach" aria-label={`оценка ${c.rating} из 5`}> · {"★".repeat(c.rating)}</span> : null}
                         {c.result && <span className={MUTED}> · {RESULT_LABEL[c.result]}</span>}
                       </span>
-                      <span className={`shrink-0 whitespace-nowrap font-bold ${c.rewarded ? "text-cream" : MUTED}`}>{c.rewarded ? `+${c.xp} XP · +${c.coins}` : "—"}</span>
+                      <span className={`shrink-0 whitespace-nowrap text-right font-bold ${c.rewarded ? "text-cream" : MUTED}`}>
+                        {c.rewarded ? `+${c.xp} XP · +${c.coins}` : "—"}
+                        {c.rewarded && c.bonusXp ? <span className="block text-[12px] font-normal text-peach">бонус команды +{c.bonusXp} XP</span> : null}
+                      </span>
                     </li>
                   ))}
                 </ol>

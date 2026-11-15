@@ -71,7 +71,8 @@
 | POST | `/api/rooms/:id/task` | участник, не в сессии | `{title}` — личная учебная задача |
 | POST | `/api/rooms/:id/start` | host, `waiting` | Запуск Focus. Ответ содержит `start.participants` и `start.skipped[]` (`offline`, `busy_elsewhere`, `sandbox_mismatch` — только старые данные). Демо-комната без демо-режима → `403 DEMO_DISABLED` |
 | POST | `/api/rooms/:id/session/abort` | участник, `focus` | Досрочно завершить **свою** сессию (без награды) |
-| POST | `/api/rooms/:id/session/result` | участник | `{result:"done"|"partial"|"not_done", note?, sessionId?}` — только история |
+| POST | `/api/rooms/:id/session/rating` | участник, после своего завершённого фокуса и до следующего | `{stars: 1..5, sessionId?}` — самооценка «Как вы поработали?». Один раз (`409 ALREADY_RATED`), только своя (`403 NOT_YOUR_SESSION`), только последний цикл (`409 RATING_CLOSED`). В конце перерыва — командный бонус XP и монет = награда за фокус × (средняя оценка команды / 5) × `economy.ratingBonusShare` (0.5); не ответившие = 3★; ключ журнала `rating:<cycleId>:<userId>`. В снимке — `me.session.rating`, действие `rate_session`; в истории — `rating`, `bonusXp`, `bonusCoins` |
+| POST | `/api/rooms/:id/session/result` | участник | `{result:"done"|"partial"|"not_done", note?, sessionId?}` — только история (клиент больше не спрашивает, заменено оценкой ★) |
 | POST | `/api/rooms/:id/skip-focus` | host, `focus` | Пропустить фокус для всех → сразу `break`. Награда × доля отработанного времени, шаг по карте не засчитывается |
 | POST | `/api/rooms/:id/skip-break` | host, `break` | Досрочно к `waiting` |
 | POST | `/api/rooms/:id/close` | host, `waiting|break` | Закрыть комнату |
@@ -271,7 +272,7 @@
 | type | data |
 |---|---|
 | `session_completed` | `{sessionId, roomId, status:"completed|aborted|abandoned", rewarded, xp, coins, capped?, boostPct?, reason?}` |
-| `reward_granted` | `{kind:"focus_session|achievement|team_node|team_challenge", key, xp, coins, balance, level, levelUp}` |
+| `reward_granted` | `{kind:"focus_session|rating_bonus|achievement|team_node|team_challenge", key, xp, coins, balance, level, levelUp}`; у `rating_bonus` ещё `avgRating, rating, answered, members, team` |
 | `balance_changed` | `{kind, coins, balance}` — траты (покупка, «Щит») |
 | `achievement_unlocked` | `{id, title, description, reward}` |
 

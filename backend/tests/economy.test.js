@@ -190,7 +190,8 @@ describe('игровая экономика и защита от накрутк�
       const sessions = (await L.host.get('/api/users/me/sessions')).body.sessions.filter((s) => s.status !== 'active');
       assert.deepEqual(sessions.map((s) => s.rewarded), [false, true, true]);
       assert.equal(sessions[0].endReason, 'daily_cap');
-      assert.equal((await L.host.progress()).xp, 200); // 2 награждённые сессии
+      // 2 награждённые сессии + командный бонус за каждую (никто не оценил → 3★: 100 × 0.6 × 0.5 = 30)
+      assert.equal((await L.host.progress()).xp, 200 + 2 * 30);
     } finally { await w2.close(); }
   });
 
@@ -206,7 +207,7 @@ describe('игровая экономика и защита от накрутк�
       w.app.db.tx(() => w.app.services.game.recordStageVictory(room, 'shared', stage, [L.host.id]));
     }
     const p = await L.host.progress();
-    assert.equal(p.xp, 600 + 3 * 25 + 150); // 6 сессий + 3 узла карты (по 25) + командная награда
+    assert.equal(p.xp, 600 + 6 * 30 + 3 * 25 + 150); // 6 сессий + бонус по оценке (3★ → 30) + 3 узла карты (по 25) + командная награда
     assert.ok(p.level >= 4);
     const ach = Object.fromEntries(p.achievements.map((a) => [a.id, a.unlocked]));
     assert.ok(ach.first_focus && ach.five_sessions && ach.team_player && ach.team_victory);

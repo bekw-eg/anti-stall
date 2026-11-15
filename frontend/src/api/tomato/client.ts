@@ -88,6 +88,8 @@ export class TomatoClient {
   abortSession = (id: string) => this.request<{ status: string }>("POST", `/api/rooms/${id}/session/abort`);
   /** Уход со вкладки / возврат во время фокуса: сервер учитывает это в качестве фокуса */
   reportAttention = (id: string, state: "away" | "back") => this.request<{ tracked: boolean }>("POST", `/api/rooms/${id}/session/attention`, { state });
+  /** Самооценка ★1–5 своей завершённой сессии (один раз, до следующего фокуса) — от неё зависит командный бонус */
+  rateSession = (id: string, stars: number) => this.request<{ sessionId: string; rating: number }>("POST", `/api/rooms/${id}/session/rating`, { stars });
   recordResult = (id: string, result: "done" | "partial" | "not_done", note?: string) =>
     this.request("POST", `/api/rooms/${id}/session/result`, { result, note });
   skipFocus = (id: string) => this.request<RoomSnapshot>("POST", `/api/rooms/${id}/skip-focus`);

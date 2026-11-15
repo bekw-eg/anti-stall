@@ -3,7 +3,6 @@
  * Сверху — дорога команды к цели, ниже — игра. Друзья — по кнопке в шапке. Чат — колонкой справа от игры
  * (на том же месте, что в лобби и на фокусе) от 1280 px; на узких экранах — облачко в углу, чтобы игре хватило места.
  */
-import { useState } from "react";
 import { Check, Flag, SkipForward } from "lucide-react";
 import { ChatBubble } from "../ChatBubble";
 import { CHAT_CARD_SIZE, ChatPanel } from "../ChatPanel";
@@ -11,6 +10,7 @@ import { Harvest } from "../Harvest";
 import { TowerDefense } from "../TowerDefense";
 import type { Tomato } from "../useTomato";
 import { LIGHT_VARS } from "./RoomChrome";
+import { SessionRating } from "./SessionRating";
 
 /** Полоска узлов карты из реальных данных сервера (полная карта — в панели «Карта»). */
 function RoadStrip({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }) {
@@ -47,10 +47,9 @@ export function BreakRoom({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }
   const me = snap.me;
   const actions = me?.allowedActions ?? [];
   const td = t.td;
-  // «Как прошла сессия?» — влияет только на историю, отмечается один раз за перерыв
-  const [sent, setSent] = useState<string | null>(null);
+  // «Как вы поработали?» ★1–5 — только тому, кто досидел фокус; после ответа остаются его звёзды до конца перерыва
   const sess = me?.session;
-  const askResult = Boolean(sess && sess.status !== "active" && sent !== snap.room.cycleId && actions.includes("record_result"));
+  const askResult = Boolean(sess && sess.status === "completed" && (actions.includes("rate_session") || sess.rating));
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-4 sm:px-8 lg:px-12" style={LIGHT_VARS}>
       <div className="flex flex-col gap-3">
@@ -58,18 +57,7 @@ export function BreakRoom({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }
         {/* «Я готов» на перерыве не нужен: следующий фокус по плану начнётся сам, а после плана готовность спросит лобби */}
         {(askResult || actions.includes("skip_break")) && (
           <section aria-label="После цикла" className="flex flex-wrap items-center justify-between gap-2 rounded-[20px] bg-paper px-3 py-2 sm:rounded-[28px] sm:px-5">
-            {askResult && (
-              // три ответа — одной строкой-переключателем (на телефоне подпись над ним), а не россыпью по разным строкам
-              <div className="flex w-full flex-col gap-1.5 text-[15px] sm:w-auto sm:flex-row sm:items-center sm:gap-3">
-                <span className="font-bold text-mute">Как прошла сессия?</span>
-                <div role="group" aria-label="Как прошла сессия" className="grid grid-cols-3 overflow-hidden rounded-full border-2 border-ink bg-white sm:inline-grid">
-                  {([["done", "Сделал"], ["partial", "Частично"], ["not_done", "Не успел"]] as const).map(([v, label], i) => (
-                    <button key={v} type="button" onClick={() => { t.recordResult(v); setSent(snap.room.cycleId); }}
-                      className={`whitespace-nowrap px-2 py-1.5 font-extrabold transition-colors hover:bg-petal sm:px-4 ${i ? "border-l-2 border-ink" : ""}`}>{label}</button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {askResult && <SessionRating key={snap.room.cycleId} rating={sess?.rating ?? null} onRate={t.rateSession} />}
             {actions.includes("skip_break") && (
               <button type="button" onClick={t.skipBreak} className="as-btn as-btn-secondary as-btn-sm"><SkipForward size={18} aria-hidden /> Пропустить перерыв</button>
             )}

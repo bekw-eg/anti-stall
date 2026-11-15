@@ -72,7 +72,7 @@ describe('песочница демо-режима: регистрация и а
     try {
       const row = w.app.db.get("SELECT sandbox, xp, coins FROM users WHERE id = 'u1'");
       assert.deepEqual({ ...row }, { sandbox: 0, xp: 300, coins: 40 }, 'данные сохранены, колонка добавлена');
-      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '9');
+      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '10');
     } finally { await w.close(); }
   });
 

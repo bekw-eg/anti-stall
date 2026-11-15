@@ -197,7 +197,7 @@ describe('командный режим Team A / Team B', () => {
     const w = await boot({ dbPath });
     try {
       assert.equal(w.app.db.get("SELECT mode FROM rooms WHERE id = 'r1'").mode, 'shared');
-      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '9');
+      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '10');
     } finally { await w.close(); }
   });
 });

@@ -177,7 +177,8 @@ export function createUsersService(ctx, game) {
     return db.all(
       `SELECT s.id, s.room_id AS roomId, r.name AS roomName, s.cycle_no AS cycleNo, s.task_title AS task, s.status, s.end_reason AS endReason,
               s.started_at AS startedAt, s.ended_at AS endedAt, s.scheduled_end_at AS scheduledEndAt, s.duration_sec AS durationSec,
-              s.result, s.result_note AS resultNote, s.rewarded, s.xp_awarded AS xp, s.coins_awarded AS coins
+              s.result, s.result_note AS resultNote, s.rewarded, s.xp_awarded AS xp, s.coins_awarded AS coins,
+              s.rating, s.bonus_xp AS bonusXp, s.bonus_coins AS bonusCoins
        FROM focus_sessions s JOIN rooms r ON r.id = s.room_id WHERE s.user_id = ? ORDER BY s.started_at DESC, s.rowid DESC LIMIT ? OFFSET ?`,
       userId, limit, offset,
     ).map((s) => ({ ...s, rewarded: Boolean(s.rewarded) }));

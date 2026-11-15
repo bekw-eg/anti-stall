@@ -21,7 +21,7 @@ describe('наблюдаемость', () => {
       assert.match(text, /antistall_rooms\{phase="waiting"\} 1/);
       assert.match(text, /antistall_users\{type="guest"\} 1/);
       assert.match(text, /antistall_ws_connections 0/);
-      assert.match(text, /antistall_schema_version 9/);
+      assert.match(text, /antistall_schema_version 10/);
     } finally { await w.close(); }
   });
 
@@ -34,7 +34,7 @@ describe('наблюдаемость', () => {
       assert.equal(b.headers.get('x-request-id'), 'proxy-req-12345');
       const h = await b.json();
       assert.equal(h.status, 'ok');
-      assert.equal(h.schemaVersion, 9);
+      assert.equal(h.schemaVersion, 10);
       assert.equal(typeof h.uptimeSec, 'number');
     } finally { await w.close(); }
   });

@@ -44,8 +44,8 @@ export function groupSessions(sessions: StudySession[]): SessionGroup[] {
     cur.endedAt = Math.max(cur.endedAt, s.endedAt ?? s.scheduledEndAt);
     if (s.rewarded) cur.counted += 1;
     if (s.status === "aborted" || s.status === "abandoned") cur.early += 1;
-    cur.xp += s.rewarded ? s.xp : 0;
-    cur.coins += s.rewarded ? s.coins : 0;
+    cur.xp += s.rewarded ? s.xp + (s.bonusXp ?? 0) : 0;
+    cur.coins += s.rewarded ? s.coins + (s.bonusCoins ?? 0) : 0;
     cur.focusSec += workedSec(s);
   }
   return groups.reverse();

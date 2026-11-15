@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 /** Номер последней миграции (см. комментарии «// vN:» в migrateInTx). Поднимать вместе с новой миграцией. */
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 /** Стартовый капитал казны (= config.economy.treasuryStart); нужен миграции v5 для уже существующих команд. */
 const DEFAULT_TREASURY_START = 30;
@@ -360,6 +360,10 @@ export class Db {
     if (!sessCols.includes('away_since')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN away_since INTEGER');
     if (!sessCols.includes('away_kind')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN away_kind TEXT');
     if (!sessCols.includes('quality')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN quality REAL');
+    // v10: самооценка работы ★1–5 после фокуса и командный бонус по средней оценке (начисляется в конце перерыва)
+    if (!sessCols.includes('rating')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN rating INTEGER CHECK (rating BETWEEN 1 AND 5)');
+    if (!sessCols.includes('bonus_xp')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN bonus_xp INTEGER NOT NULL DEFAULT 0');
+    if (!sessCols.includes('bonus_coins')) this.sql.exec('ALTER TABLE focus_sessions ADD COLUMN bonus_coins INTEGER NOT NULL DEFAULT 0');
     // v3: статус готовности участника комнаты (is_ready)
     if (!columns('room_members').includes('is_ready')) this.sql.exec('ALTER TABLE room_members ADD COLUMN is_ready INTEGER NOT NULL DEFAULT 0');
     // v4: песочные аккаунты демо-режима (users.sandbox); все существующие пользователи — обычные
