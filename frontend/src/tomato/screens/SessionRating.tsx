@@ -33,7 +33,7 @@ export function SessionRating({ rating, onRate }: { rating: number | null; onRat
             onMouseEnter={() => setHover(n)} onFocus={() => setHover(n)} onBlur={() => setHover(0)}
             // ответ виден сразу; сервер отказал (null) — звёзды снова доступны, ошибку покажет общий тост
             onClick={async () => { setPicked(n); if ((await onRate(n)) === null) setPicked(null); }}
-            className={`rounded-full p-1 transition-colors hover:bg-petal ${n <= shown ? "text-peach" : "text-line"}`}>
+            className={`as-star rounded-full p-1 hover:bg-petal ${n <= shown ? "text-peach" : "text-line"}`}>
             <Star size={26} aria-hidden fill={n <= shown ? "currentColor" : "none"} strokeWidth={2.2} />
           </button>
         ))}

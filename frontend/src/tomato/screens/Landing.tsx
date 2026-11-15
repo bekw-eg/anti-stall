@@ -55,7 +55,7 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo, banner, me = n
             {me && (
               // как жетон на главной: на телефоне — только аватар, с sm — имя, с md — уровень и монеты
               <button type="button" onClick={onProfile} data-testid="landing-profile" aria-label={`Профиль: ${me.name}, уровень ${me.level}`} title="Профиль"
-                className="flex min-w-0 shrink-0 items-center gap-2.5 rounded-full border-2 border-ink bg-white p-0.5 text-ink transition-colors hover:bg-paper sm:py-1 sm:pl-1 sm:pr-4">
+                className="flex min-w-0 shrink-0 items-center gap-2.5 as-tap rounded-full border-2 border-ink bg-white p-0.5 text-ink hover:bg-paper sm:py-1 sm:pl-1 sm:pr-4">
                 <Avatar name={me.name || "?"} id={me.id} look={me.look} size={36} ring="#3B2422" />
                 <span className="hidden max-w-[9rem] truncate text-lg font-extrabold sm:inline">{me.name}</span>
                 <span className="hidden whitespace-nowrap text-base font-bold text-mute md:inline">ур. {me.level} · {me.coins} монет</span>

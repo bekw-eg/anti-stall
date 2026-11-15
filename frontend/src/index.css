@@ -61,8 +61,11 @@ img { pointer-events: none; }
     overflow-x: hidden;
   }
 
-  button {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  /* Фокус с клавиатуры — контур (outline), а не ring: ring живёт в box-shadow и затирал бы жёсткую тень кнопок */
+  button, a, [role="button"] { @apply focus-visible:outline-none; }
+  button:focus-visible, a:focus-visible, [role="button"]:focus-visible {
+    outline: 3px solid hsl(var(--ring));
+    outline-offset: 3px;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -87,24 +90,73 @@ img { pointer-events: none; }
 
   /* Кнопки макета: Primary / Secondary / Light / Disabled */
   .as-btn {
-    @apply inline-flex min-h-[3.5rem] items-center justify-center gap-2 rounded-[20px] border-2 border-transparent px-7 text-center text-lg leading-tight transition-[transform,box-shadow,background-color] duration-100 sm:min-h-[4rem] sm:text-xl;
+    @apply inline-flex min-h-[3.5rem] items-center justify-center gap-2 rounded-[20px] border-2 border-transparent px-7 text-center text-lg leading-tight transition-[transform,box-shadow,background-color,color,border-color] duration-150 ease-out sm:min-h-[4rem] sm:text-xl;
     @apply font-display;
-    box-shadow: 0 6px 0 #3B2422;
+    --sh: 6px; --shp: 2px; --lift: 2px;
+    box-shadow: 0 var(--sh) 0 #3B2422;
   }
-  .as-btn:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 #3B2422; }
   .as-btn-primary { @apply bg-rose text-white hover:bg-[#946660]; }
   .as-btn-secondary { @apply border-ink bg-white text-ink hover:bg-paper; }
   .as-btn-light { @apply bg-peach text-ink hover:bg-[#E29A88]; }
   /* нажатая «Я готов»: лаймовая, с обводкой — состояние видно сразу */
   .as-btn-ready { @apply border-ink bg-lime text-ink hover:bg-[#CDD38E]; }
   .as-btn:disabled { @apply cursor-not-allowed border-transparent bg-[#EDE3E0] text-[#A08A86]; box-shadow: none; transform: none; }
-  .as-btn-sm { @apply min-h-[2.75rem] rounded-[14px] px-4 text-base sm:min-h-[3rem]; box-shadow: 0 4px 0 #3B2422; }
-  .as-btn-sm:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #3B2422; }
+  .as-btn-sm { @apply min-h-[2.75rem] rounded-[14px] px-4 text-base sm:min-h-[3rem]; --sh: 4px; --shp: 1px; box-shadow: 0 var(--sh) 0 #3B2422; }
 
   /* Карточки и поля */
   .as-card { @apply rounded-[24px] border-2 border-ink bg-white; }
   .as-shadow { box-shadow: 0 6px 0 #3B2422; }
   .as-shadow-sm { box-shadow: 0 4px 0 #3B2422; }
+
+  /* Иконочные кнопки с жёсткой тенью (шапка комнаты, «Закрыть» и т. п.): та же механика, но тоньше */
+  button.as-shadow, button.as-shadow-sm {
+    --sh: 6px; --shp: 2px; --lift: 1px;
+    transition: transform 150ms ease-out, box-shadow 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out;
+  }
+  button.as-shadow-sm { --sh: 4px; --shp: 1px; }
+  button.as-shadow-sm:not(.as-btn) { box-shadow: 0 var(--sh) 0 #3B2422; }
+
+  /* Лёгкий отклик для кнопок без тени: жетон профиля, тёмные кнопки шапки */
+  .as-tap { transition: transform 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out; }
+
+  /* Вкладки и радио-кнопки (профиль, режимы, выбор этапа TD, цели шутки) */
+  [role="tab"], [role="radio"] { transition: transform 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out; }
+
+  /* Звёзды оценки сессии */
+  .as-star { transition: transform 150ms ease-out, background-color 150ms ease-out, color 150ms ease-out; }
+
+  /* Движение — только если пользователь его не отключил. При reduce остаётся мгновенная смена цвета (hover:bg-*) */
+  @media (prefers-reduced-motion: no-preference) {
+    .as-btn:hover:not(:disabled):not([aria-disabled="true"]),
+    button.as-shadow:hover:not(:disabled):not([aria-disabled="true"]),
+    button.as-shadow-sm:hover:not(:disabled):not([aria-disabled="true"]) {
+      transform: translateY(calc(var(--lift) * -1));
+      box-shadow: 0 calc(var(--sh) + var(--lift)) 0 #3B2422;
+    }
+    .as-btn:active:not(:disabled):not([aria-disabled="true"]),
+    button.as-shadow:active:not(:disabled):not([aria-disabled="true"]),
+    button.as-shadow-sm:active:not(:disabled):not([aria-disabled="true"]) {
+      transform: translateY(calc(var(--sh) - var(--shp)));
+      box-shadow: 0 var(--shp) 0 #3B2422;
+    }
+    .as-tap:hover:not(:disabled):not([aria-disabled="true"]) { transform: translateY(-1px); }
+    .as-tap:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(1px) scale(0.97); }
+    [role="tab"]:hover:not(:disabled):not([aria-disabled="true"]),
+    [role="radio"]:hover:not(:disabled):not([aria-disabled="true"]) { transform: translateY(-1px); }
+    [role="tab"]:active:not(:disabled):not([aria-disabled="true"]),
+    [role="radio"]:active:not(:disabled):not([aria-disabled="true"]) { transform: translateY(1px) scale(0.97); }
+    .as-star:hover:not(:disabled):not([aria-disabled="true"]) { transform: scale(1.18); }
+    .as-star:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(0.9); }
+  }
+  /* reduce: без смещений; нажатие видно лишь по затемнению */
+  @media (prefers-reduced-motion: reduce) {
+    .as-btn:active:not(:disabled):not([aria-disabled="true"]),
+    button.as-shadow:active:not(:disabled):not([aria-disabled="true"]),
+    button.as-shadow-sm:active:not(:disabled):not([aria-disabled="true"]),
+    .as-tap:active:not(:disabled),
+    [role="tab"]:active:not(:disabled),
+    [role="radio"]:active:not(:disabled) { filter: brightness(0.93); }
+  }
   .as-label { @apply text-base font-bold text-ink sm:text-[17px]; }
   .as-input {
     @apply h-14 w-full min-w-0 rounded-[20px] border-2 border-line bg-white px-5 text-lg text-ink outline-none transition-colors placeholder:text-[#A08A86] focus:border-ink disabled:cursor-not-allowed disabled:bg-paper sm:h-16 sm:text-xl;

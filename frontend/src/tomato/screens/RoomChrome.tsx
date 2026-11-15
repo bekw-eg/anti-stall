@@ -23,7 +23,7 @@ export type Sheet = "map" | "stats" | "social" | "profile" | null;
 function NavButton({ onClick, label, children, dark, testId, pressed, badge = 0 }: { onClick: () => void; label: string; children: React.ReactNode; dark: boolean; testId?: string; pressed?: boolean; badge?: number }) {
   return (
     <button type="button" onClick={onClick} aria-label={badge ? `${label} · заявок: ${badge}` : label} title={label} data-testid={testId} aria-pressed={pressed}
-      className={`relative inline-flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-[12px] border-2 text-[15px] font-extrabold transition-colors sm:h-11 sm:w-auto sm:rounded-[14px] sm:px-3 ${dark ? `border-[#8A625C] text-cream hover:bg-cocoa ${pressed ? "bg-cocoa" : ""}` : `border-ink text-ink as-shadow-sm hover:bg-paper ${pressed ? "bg-lime" : "bg-white"}`}`}>
+      className={`relative inline-flex h-9 w-9 shrink-0 items-center justify-center gap-2 rounded-[12px] border-2 text-[15px] font-extrabold sm:h-11 sm:w-auto sm:rounded-[14px] sm:px-3 ${dark ? `as-tap border-[#8A625C] text-cream hover:bg-cocoa ${pressed ? "bg-cocoa" : ""}` : `border-ink text-ink as-shadow-sm hover:bg-paper ${pressed ? "bg-lime" : "bg-white"}`}`}>
       {children}<span className="hidden 2xl:inline">{label}</span>
       {badge > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-ink bg-rose px-1 text-[11px] font-extrabold leading-none text-white" aria-hidden>{badge}</span>}
     </button>
@@ -63,7 +63,7 @@ export function ProfileChip({ t, dark, onOpen, className = "" }: { t: Tomato; da
   const name = t.user?.name ?? t.name;
   return (
     <button type="button" onClick={onOpen} data-testid="open-profile" aria-label="Профиль и выход из комнаты"
-      className={`h-10 shrink-0 items-center gap-2 rounded-full border-2 p-0.5 sm:h-12 sm:py-1 sm:pl-1 sm:pr-4 ${dark ? "border-[#8A625C] text-cream" : "border-ink bg-white text-ink"} ${className || "inline-flex"}`}>
+      className={`as-tap h-10 shrink-0 items-center gap-2 rounded-full border-2 p-0.5 sm:h-12 sm:py-1 sm:pl-1 sm:pr-4 ${dark ? "border-[#8A625C] text-cream" : "border-ink bg-white text-ink"} ${className || "inline-flex"}`}>
       <Avatar name={name || "?"} id={me?.userId} look={me?.avatar ?? t.user?.avatar} size={32} ring={dark ? "#FFF4EF" : "#3B2422"} />
       <span className="hidden max-w-[9rem] truncate text-lg font-extrabold sm:inline">{name}</span>
       <span className={`hidden text-base md:inline ${dark ? "text-[#D8BDB6]" : "text-mute"}`}>ур. {me?.level ?? t.user?.level ?? 1}</span>
