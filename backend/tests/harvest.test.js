@@ -57,7 +57,8 @@ describe('Harvest: движок', () => {
 
 describe('Harvest: чередование с Tower Defense и проверки сервера', () => {
   let w;
-  before(async () => { w = await boot({ config: { breakGames: 'alternate' } }); });
+  // узлы карты здесь двигают только победы в игре (правило «N фокусов» проверяет roadmap.test.js)
+  before(async () => { w = await boot({ config: { breakGames: 'alternate', economy: { focusesPerStagePerMember: 100 } } }); });
   after(() => w.close());
 
   test('Красные против Синих: поимки проверяет сервер, шутки тратят заряд, итог — опыт, карта, вещи образа', async () => {

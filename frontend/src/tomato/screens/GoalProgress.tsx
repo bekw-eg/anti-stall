@@ -1,6 +1,7 @@
 /**
  * Прогресс общей цели на главном экране комнаты (кейс §7: «какой прогресс достигнут по общей цели»):
  * сколько этапов карты пройдено, что следующее и вклад игрока фокус-сессиями. Подробно — в панели «Карта».
+ * Следующий этап открывает победа в игре на перерыве ИЛИ N завершённых фокусов команды — оба пути видны здесь.
  */
 import { Flag, Trophy } from "lucide-react";
 import { TEAM_COLOR, teamTitle } from "../socialRules";
@@ -20,6 +21,9 @@ export function GoalProgress({ t, dark = false, compact = false }: { t: Tomato; 
     ? { box: "border-[#6A4A45] bg-[#46302D] text-cream", mute: "text-[#D8BDB6]", track: "border-[#6A4A45] bg-[#2A1817]" }
     : { box: "border-ink bg-white text-ink as-shadow-sm", mute: "text-mute", track: "border-ink bg-soft" };
   const done = road.completed || road.finished;
+  const ft = done ? null : road.focusToNext ?? null;
+  const left = ft ? Math.max(0, ft.need - ft.done) : 0;
+  const focusWord = left % 10 === 1 && left % 100 !== 11 ? "фокус" : left % 10 >= 2 && left % 10 <= 4 && (left % 100 < 10 || left % 100 >= 20) ? "фокуса" : "фокусов";
   const plural = mine % 10 === 1 && mine % 100 !== 11 ? "сессия" : mine % 10 >= 2 && mine % 10 <= 4 && (mine % 100 < 10 || mine % 100 >= 20) ? "сессии" : "сессий";
   // на фокусе — маленькая плашка: цифра, тонкая полоска и вклад, без лишнего текста
   if (compact) {
@@ -32,6 +36,7 @@ export function GoalProgress({ t, dark = false, compact = false }: { t: Tomato; 
         <div className={`h-2 overflow-hidden rounded-full border ${tone.track}`} role="progressbar" aria-label="Прогресс общей цели" aria-valuenow={road.points} aria-valuemin={0} aria-valuemax={road.goal}>
           <div className="h-full rounded-full" style={{ width: `${pct}%`, background: fill }} />
         </div>
+        {ft && <p className={`truncate text-xs font-bold ${tone.mute}`} data-testid="goal-focus-left">до этапа: ещё {left} {focusWord} или победа</p>}
         <p className={`truncate text-xs font-bold ${tone.mute}`}>вклад: {mine} {plural}</p>
       </section>
     );
@@ -52,6 +57,11 @@ export function GoalProgress({ t, dark = false, compact = false }: { t: Tomato; 
         {done ? "Крепость взята — цель достигнута" : road.next ? `Следующий этап — «${road.next.title}»` : "Последний этап — крепость"}
         {rival && <> · {teamTitle(rival.key)} {rival.points}/{road.goal}</>}
       </p>
+      {ft && (
+        <p className={`text-[13px] font-bold leading-snug ${tone.mute}`} data-testid="goal-focus-left">
+          Откроется победой в игре на перерыве или ещё <b className={dark ? "text-cream" : "text-ink"}>{left}</b> {focusWord} команды ({ft.done}/{ft.need})
+        </p>
+      )}
       <p className={`text-[13px] font-bold ${tone.mute}`}>
         Ваш вклад: <b className={dark ? "text-cream" : "text-ink"}>{mine}</b> {plural}
         {typeof road.focusPoints === "number" && <> · команда: {road.focusPoints}</>}

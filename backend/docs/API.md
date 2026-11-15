@@ -98,16 +98,19 @@
   "positionNodeId": "forest",                       // где команда сейчас
   "next":    { "nodeId","title","pointsNeeded" } | null,   // следующий этап
   "segment": { "from","to","progress": 0..1 } | null,      // доля пути до следующего узла
-  "teams":   [{ "key","name","points","positionNodeId","finished","completed" }],  // shared: одна; teams: A и B на одной карте
+  "focusToNext": { "done", "need" } | null,         // фокусы команды к следующему узлу (null — карта пройдена)
+  "teams":   [{ "key","name","points","positionNodeId","finished","completed","focusPoints","focusToNext","treasuryCoins" }],  // shared: одна; teams: A и B на одной карте
   "nodes":   [{ "id","title","x","y","type","requiredPoints","status":"completed|current|next|locked",
                 "reachedAt": ms|null, "reward": {"xp","coins"}|null, "progress": 0..1 }],
   "edges":   [["camp","forest"], …],
   "contributions": [{ "userId","name","points", "team" /* только в режиме teams */ }] }
 // В режиме teams верхний уровень (points, nodes[].status, next, segment…) — для команды зрителя, `teams[]` — для обеих.
 ```
-Правила: очко команде даёт каждая **награждённая** фокус-сессия; когда очки пересекают порог узла, сервер фиксирует
-`reachedAt` (таблица `team_nodes`), выдаёт участникам с вкладом этапную награду (+25 XP, +10 монет, ключ
-`node:<room>:<team>:<node>` — один раз) и шлёт `node_reached`. Финальный узел вместо этапной даёт командную награду.
+Правила: следующий узел открывает **победа в игре на перерыве** (TD / Harvest) **или N завершённых фокусов команды**
+с последнего узла: N = `economy.focusesPerStagePerMember` (2) × участники команды. В счёт идут только награждённые
+сессии (досрочный выход и пропуск фокуса хостом — нет); любой переход обнуляет счёт. Сервер фиксирует
+`reachedAt` (таблица `team_nodes`), выдаёт участникам этапную награду (+25 XP, +10 монет, ключ
+`node:<room>:<team>:<node>` — один раз) и шлёт `node_reached` с `via: "game" | "focus"`. Финальный узел вместо этапной даёт командную награду.
 Клиент не может ни добавить очки, ни сменить позицию: таких маршрутов нет.
 
 **Командный режим (`teamMode:true`).** Игроки автоматически делятся на A и B (новичок — в команду с меньшим числом игроков),

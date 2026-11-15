@@ -85,16 +85,16 @@ const VIEW_KEYS: (keyof TdView)[] = [
   "base", "towers", "round", "rival", "duel", "me", "treasuryCoins", "mercenaries", "spells", "mercCooldownSec",
 ];
 const ROADMAP_KEYS: (keyof Roadmap)[] = [
-  "roadmapId", "title", "mode", "teamKey", "points", "goal", "focusPoints", "treasuryCoins", "completed", "finished", "completedAt", "winner",
+  "roadmapId", "title", "mode", "teamKey", "points", "goal", "focusPoints", "focusToNext", "treasuryCoins", "completed", "finished", "completedAt", "winner",
   "reward", "positionNodeId", "next", "segment", "teams", "nodes", "edges", "contributions",
 ];
-const TEAM_KEYS: (keyof RoadmapTeam)[] = ["key", "name", "points", "positionNodeId", "finished", "completed", "focusPoints", "treasuryCoins"];
+const TEAM_KEYS: (keyof RoadmapTeam)[] = ["key", "name", "points", "positionNodeId", "finished", "completed", "focusPoints", "focusToNext", "treasuryCoins"];
 const NODE_KEYS: (keyof RoadmapNode)[] = ["id", "title", "x", "y", "requiredPoints", "type", "status", "challenge", "reachedAt", "reward", "progress"];
 const STAGE_KEYS: (keyof TdStage)[] = ["id", "title", "node", "nodeTitle", "unlocked", "reward", "waves", "enemies", "hpScale", "wins", "bestHpLeft"];
 const sorted = (k: string[]) => [...k].sort();
 
 describe("клиент ↔ backend: Road Map", () => {
-  it("карта приходит с сервера; фокус пополняет казну и очки вклада, а узел открывает только победа в TD; node_reached доходит по WS", async () => {
+  it("карта приходит с сервера; фокус пополняет казну, очки вклада и счёт к узлу (2 × участники), победа в TD открывает узел; node_reached доходит по WS", async () => {
     const lotti = await player("Карта-1");
     const anya = await player("Карта-2");
     const snap = await lotti.createRoom({ name: "Карта", focusMinutes: 25, breakMinutes: 5 });
@@ -126,7 +126,8 @@ describe("клиент ↔ backend: Road Map", () => {
     await lotti.startFocus(id);
     await advance(25 * 60_000 + 1000, [lotti, anya]); // обе сессии завершены
     const afterFocus = await lotti.roadmap(id);
-    expect(afterFocus.positionNodeId).toBe("camp"); // фокус больше не двигает карту
+    expect(afterFocus.positionNodeId).toBe("camp"); // один цикл двоих — 2 фокуса из 4 нужных: узел ещё закрыт
+    expect(afterFocus.focusToNext).toEqual({ done: 2, need: 4 });
     expect([afterFocus.points, afterFocus.focusPoints, afterFocus.treasuryCoins]).toEqual([0, 2, 70]); // 30 + 2 × 20 монет в казну
 
     await lotti.tdBuild(id, "s1", "arrow", req("road-build"));

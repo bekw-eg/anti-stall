@@ -70,6 +70,8 @@ export function loadConfig(env = process.env, overrides = {}, argv = []) {
       xpPerSession: 100,
       coinsPerSession: 20,
       teamPointsPerSession: 1,
+      // узел карты открывается победой в игре ИЛИ N завершёнными фокусами команды: N = множитель × участники команды
+      focusesPerStagePerMember: 2,
       minRewardFactor: 0, // награда линейно зависит от длины сессии: короткие фокусы не фармятся
       maxRewardFactor: 4, // выше 100 минут награда за одну сессию не растёт
       // Качество фокуса = доля времени, когда участник был во вкладке и в сети (считает сервер).

@@ -134,3 +134,56 @@ describe('Road Map: узлы открывают победы в Tower Defense', 
     await w.close();
   });
 });
+
+describe('Road Map: узел открывают и N завершённых фокусов команды (2 × участники)', () => {
+  test('двое, два цикла — узел открыт фокусами без игры; одного цикла мало; награда за узел обоим', async () => {
+    const w = await boot();
+    try {
+      const L = await lobby(w, ['Лотти', 'Аня']);
+      const events = [];
+      w.app.db.sink = (evs) => events.push(...evs);
+      await runFocus(w, L);
+      let road = await roadOf(L);
+      assert.deepEqual(road.focusToNext, { done: 2, need: 4 }, 'после первого цикла: 2 из 4');
+      assert.equal(road.points, 0, 'одного цикла мало');
+      await runBreak(w, L);
+      await runFocus(w, L);
+      road = await roadOf(L);
+      assert.equal(road.positionNodeId, 'forest', 'узел открыт фокусами');
+      assert.equal(road.points, 1);
+      assert.deepEqual(road.focusToNext, { done: 0, need: 4 }, 'к следующему узлу — заново');
+      const reached = events.filter((e) => e.type === 'node_reached');
+      assert.deepEqual(reached.map((e) => [e.data.nodeId, e.data.via]), [['forest', 'focus']]);
+      for (const u of L.users) assert.equal((await ledger(u)).filter((t) => t.kind === 'team_node').length, 1, `${u.name}: награда за узел`);
+    } finally { await w.close(); }
+  });
+
+  test('победа в игре открывает узел и обнуляет счёт фокусов', async () => {
+    const w = await boot();
+    try {
+      const L = await lobby(w, ['Лотти', 'Аня']);
+      await runFocus(w, L);
+      assert.deepEqual((await roadOf(L)).focusToNext, { done: 2, need: 4 });
+      assert.equal(win(w, L, 'shared', 'camp').reachedNodeId, 'forest');
+      const road = await roadOf(L);
+      assert.equal(road.positionNodeId, 'forest');
+      assert.deepEqual(road.focusToNext, { done: 0, need: 4 });
+    } finally { await w.close(); }
+  });
+
+  test('пропущенный хостом фокус и досрочный выход фокусами не считаются', async () => {
+    const w = await boot();
+    try {
+      const L = await lobby(w, ['Лотти', 'Аня']);
+      await L.host.post(L.path('/start'));
+      await w.advance(60_000, L.users);
+      await L.rest[0].post(L.path('/session/abort')); // Аня сдалась
+      await w.advance(25 * 60_000, L.users);
+      assert.deepEqual((await roadOf(L)).focusToNext, { done: 1, need: 4 }, 'засчитан только досидевший');
+      await runBreak(w, L);
+      await w.advance(10 * 60_000, L.users); // следующий фокус стартовал сам
+      assert.equal((await L.host.post(L.path('/skip-focus'))).body.room.phase, 'break');
+      assert.deepEqual((await roadOf(L)).focusToNext, { done: 1, need: 4 }, 'пропуск хостом не двигает цель');
+    } finally { await w.close(); }
+  });
+});

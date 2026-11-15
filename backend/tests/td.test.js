@@ -260,7 +260,7 @@ describe('Tower Defense: раунд, результат и награды', () =
   });
 
   test('поражение и истечение раунда ничего не забирают: башни, hpMax и узел остаются', async () => {
-    const w = await boot();
+    const w = await boot({ config: { economy: { focusesPerStagePerMember: 100 } } }); // узел могли бы открыть фокусы — здесь проверяется только игра
     try {
       const L = await onBreak(w, ['Лотти']);
       fund(w, L.host, 100);

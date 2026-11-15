@@ -49,7 +49,8 @@ describe('командный режим Team A / Team B', () => {
   });
 
   test('очки вклада, казна и узлы считаются раздельно по командам; у каждого зрителя «своя» команда на верхнем уровне', async () => {
-    const w = await boot();
+    // узлы здесь двигают только победы в игре (правило «N фокусов открывают узел» — в roadmap.test.js)
+    const w = await boot({ config: { economy: { focusesPerStagePerMember: 100 } } });
     try {
       const L = await teamsLobby(w, ['Лотти', 'Аня', 'Боря']); // A: Лотти, Боря; B: Аня
       const [lotti, anya, boris] = L.users;
@@ -196,7 +197,7 @@ describe('командный режим Team A / Team B', () => {
     const w = await boot({ dbPath });
     try {
       assert.equal(w.app.db.get("SELECT mode FROM rooms WHERE id = 'r1'").mode, 'shared');
-      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '8');
+      assert.equal(w.app.db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '9');
     } finally { await w.close(); }
   });
 });

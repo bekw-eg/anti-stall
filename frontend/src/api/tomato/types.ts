@@ -62,6 +62,8 @@ export interface RoadmapTeam {
   completed: boolean;
   /** очки вклада команды за фокус-сессии (новый сервер) */
   focusPoints?: number;
+  /** фокусы команды к следующему узлу: узел открывает победа в игре или эти фокусы (null — карта пройдена) */
+  focusToNext?: { done: number; need: number } | null;
   /** казна команды (новый сервер) */
   treasuryCoins?: number;
 }
@@ -73,11 +75,13 @@ export interface Roadmap {
   mode: "shared" | "teams";
   /** Команда зрителя: верхний уровень (points, nodes[].status, next…) описывает её */
   teamKey: string;
-  /** Прогресс по карте: число узлов, пройденных победами в TD (новые правила) */
+  /** Прогресс по карте: число пройденных узлов (победа в игре или N фокусов команды) */
   points: number;
   goal: number;
-  /** Очки вклада команды за фокус-сессии (новый сервер; карту они не двигают) */
+  /** Очки вклада команды за фокус-сессии (новый сервер) */
   focusPoints?: number;
+  /** Фокусы команды к следующему узлу (done из need); null — карта пройдена */
+  focusToNext?: { done: number; need: number } | null;
   /** Казна команды зрителя (новый сервер) */
   treasuryCoins?: number;
   completed: boolean;

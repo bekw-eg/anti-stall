@@ -178,7 +178,8 @@ describe('игровая экономика и защита от накрутк�
   });
 
   test('дневной лимит наград: лишние сессии завершаются, но не награждаются', async () => {
-    const w2 = await boot({ config: { economy: { dailyRewardedSessions: 2 } } });
+    // без узлов карты за фокусы: здесь проверяется только суточный потолок наград за сессии
+    const w2 = await boot({ config: { economy: { dailyRewardedSessions: 2, focusesPerStagePerMember: 100 } } });
     try {
       const L = await lobby(w2, ['Хост']);
       for (let i = 0; i < 3; i++) {

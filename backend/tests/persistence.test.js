@@ -115,7 +115,7 @@ describe('миграция схемы v4 → v5 (Tower Wars)', () => {
 
     let db = new Db(dbPath);
     const check = () => {
-      assert.equal(db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '8');
+      assert.equal(db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '9');
       assert.equal(db.get('PRAGMA foreign_keys').foreign_keys, 1, 'внешние ключи снова включены');
       assert.deepEqual(db.all('PRAGMA foreign_key_check'), []);
       // данные пользователей, комнат и командного прогресса на месте
@@ -196,7 +196,7 @@ describe('миграция схемы v4 → v5 (Tower Wars)', () => {
     assert.ok(cols('td_rounds').includes('round_no'));
     assert.ok(cols('td_duels').includes('round_no'));
     assert.match(db.get("SELECT sql FROM sqlite_master WHERE name = 'td_actions'").sql, /'send_unit','buff','debuff','rematch'/);
-    assert.equal(db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '8');
+    assert.equal(db.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '9');
     db.close();
   });
 });

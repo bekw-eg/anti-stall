@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 /** Номер последней миграции (см. комментарии «// vN:» в migrateInTx). Поднимать вместе с новой миграцией. */
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 /** Стартовый капитал казны (= config.economy.treasuryStart); нужен миграции v5 для уже существующих команд. */
 const DEFAULT_TREASURY_START = 30;
@@ -161,6 +161,8 @@ CREATE TABLE IF NOT EXISTS team_progress (
   completed_at INTEGER,
   treasury_coins INTEGER NOT NULL DEFAULT 0 CHECK (treasury_coins >= 0),
   finished_at INTEGER,
+  -- завершённые фокусы команды с последнего пройденного узла: N штук открывают следующий узел (как победа в игре)
+  focus_since_node INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (room_id, team_key)
 );
 -- Достигнутые узлы карты: фиксируются сервером при победе в этапе Tower Defense (PRIMARY KEY = один раз).
@@ -371,6 +373,8 @@ export class Db {
     if (!columns('users').includes('login')) this.sql.exec('ALTER TABLE users ADD COLUMN login TEXT');
     if (!columns('users').includes('password_hash')) this.sql.exec('ALTER TABLE users ADD COLUMN password_hash TEXT');
     this.sql.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_login ON users(login) WHERE login IS NOT NULL');
+    // v9: узел карты открывается и победой в игре, и N завершёнными фокусами команды — счётчик фокусов с последнего узла
+    if (!columns('team_progress').includes('focus_since_node')) this.sql.exec('ALTER TABLE team_progress ADD COLUMN focus_since_node INTEGER NOT NULL DEFAULT 0');
 
     // v5: казна команды; уже существующие команды получают стартовый капитал
     if (!columns('team_progress').includes('treasury_coins')) {
