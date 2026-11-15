@@ -39,7 +39,6 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
           <ul className="hidden items-center gap-8 text-[19px] font-bold lg:flex">
             <li><a className="hover:text-rose" href="#how">Как это работает</a></li>
             <li><a className="hover:text-rose" href="#game">Игра</a></li>
-            <li><a className="hover:text-rose" href="#fair">Честная игра</a></li>
           </ul>
           <div className="flex items-center gap-2 sm:gap-3">
             <button type="button" onClick={onJoin} className="as-btn as-btn-secondary as-btn-sm hidden sm:inline-flex">По коду</button>
@@ -187,28 +186,6 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
           </div>
         </section>
 
-        {/* ---------- Fair play ---------- */}
-        <section id="fair" className="scroll-mt-20 bg-ink py-14 text-cream sm:py-24">
-          <div className={wrap}>
-            <Eyebrow light>Честная игра</Eyebrow>
-            <h2 className={h2}>Цикл не подделать.</h2>
-            <p className="mt-3 max-w-2xl text-base text-[#D8BDB6] sm:text-lg sm:leading-snug">Награды что-то значат, только если их нельзя накрутить. Поэтому правила живут на сервере, а не в браузере.</p>
-            <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                ["Время считает сервер", "Таймер идёт на сервере, экран только показывает его."],
-                ["Полный цикл или ничего", "Награда приходит после полного фокуса. Закрыл вкладку, и цикл не засчитан."],
-                ["Одна комната за раз", "Один аккаунт не может вести два фокуса одновременно."],
-                ["Каждая трата проверяется", "Нельзя потратить больше, чем есть. Двойной клик не спишет дважды."],
-              ].map(([title, text]) => (
-                <li key={title} className="border-t-2 border-cocoa pt-5">
-                  <h3 className="font-display text-xl text-blush sm:text-2xl">{title}</h3>
-                  <p className="mt-2 text-sm text-[#E9D6D1] sm:text-base">{text}</p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
         {/* ---------- Progress ---------- */}
         <section className="py-10 sm:py-16">
           <div className={`${wrap} grid gap-10 lg:grid-cols-[1fr_1.1fr] lg:items-center`}>
@@ -255,7 +232,6 @@ export function Landing({ onStart, onJoin, ready, serverOk, demo }: { onStart: (
           <ul className="flex flex-wrap gap-x-6 gap-y-2 text-[17px] font-bold text-mute">
             <li><a href="#how" className="hover:text-ink">Как это работает</a></li>
             <li><a href="#game" className="hover:text-ink">Игра</a></li>
-            <li><a href="#fair" className="hover:text-ink">Честная игра</a></li>
           </ul>
           <p className="text-base text-mute">AntiStall · сделано на хакатоне</p>
         </div>

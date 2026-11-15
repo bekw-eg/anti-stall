@@ -7,6 +7,7 @@ import type { Tomato } from "./useTomato";
 /**
  * Чат комнаты на перерыве: облачко в углу с подписью «Чат» и счётчиком новых сообщений.
  * По нажатию справа выезжает окно чата; игра остаётся на месте.
+ * Только на экранах уже 1280 px: на широких чат стоит колонкой справа от игры, как на фокусе и в лобби.
  */
 export function ChatBubble({ t }: { t: Tomato }) {
   const [open, setOpen] = useState(false);
@@ -24,7 +25,7 @@ export function ChatBubble({ t }: { t: Tomato }) {
   }, [open]);
 
   return (
-    <div className="pointer-events-none fixed bottom-24 right-4 z-30 flex flex-col items-end gap-3 sm:bottom-28 sm:right-8 lg:right-12" style={LIGHT_VARS}>
+    <div className="pointer-events-none fixed bottom-24 right-4 z-30 flex flex-col items-end gap-3 sm:bottom-28 sm:right-8 lg:right-12 xl:hidden" style={LIGHT_VARS}>
       {open && (
         <section
           role="dialog"

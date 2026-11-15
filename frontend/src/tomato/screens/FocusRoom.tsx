@@ -8,7 +8,7 @@ import { Lock, PenLine, SkipForward } from "lucide-react";
 import { STATUS_LABEL, formatTime } from "../format";
 import type { Tomato } from "../useTomato";
 import { StickerBoard, StickerHint, type Stickers } from "./Stickers";
-import { ChatPanel } from "../ChatPanel";
+import { CHAT_CARD_SIZE, ChatPanel } from "../ChatPanel";
 import { MemberAvatar } from "./ui";
 
 /**
@@ -62,7 +62,7 @@ function HostSkip({ t, remaining }: { t: Tomato; remaining: number }) {
   if (step === 0) {
     return (
       <button type="button" data-testid="skip-focus" onClick={() => go(1)}
-        className="relative z-30 inline-flex items-center gap-2 rounded-full border-2 border-[#8A625C] px-4 py-1.5 text-sm font-bold text-[#D8BDB6] transition-colors hover:bg-cocoa hover:text-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-peach">
+        className="relative z-10 inline-flex items-center gap-2 rounded-full border-2 border-[#8A625C] px-4 py-1.5 text-sm font-bold text-[#D8BDB6] transition-colors hover:bg-cocoa hover:text-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-peach">
         <SkipForward size={16} aria-hidden /> Пропустить фокус для всех
       </button>
     );
@@ -70,7 +70,7 @@ function HostSkip({ t, remaining }: { t: Tomato; remaining: number }) {
   const last = step === 2;
   return (
     <div role="group" aria-live="polite" aria-label="Пропуск фокуса" data-testid="skip-focus-confirm"
-      className="relative z-30 flex w-full max-w-[460px] flex-col items-center gap-3 rounded-[20px] border-2 border-peach bg-cocoa px-5 py-4 text-center">
+      className="relative z-10 flex w-full max-w-[460px] flex-col items-center gap-3 rounded-[20px] border-2 border-peach bg-cocoa px-5 py-4 text-center">
       <p className="font-display text-lg leading-tight text-cream sm:text-xl"><span className="relative top-0.5">
         {last ? `Точно? Осталось ${formatTime(remaining)}` : "Пропустить фокус для всех?"}
       </span></p>
@@ -103,7 +103,8 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
 
   return (
     <div className="relative grid flex-1 gap-8 px-4 pb-6 pt-2 sm:px-8 lg:grid-cols-[200px_minmax(0,1fr)_minmax(240px,300px)] lg:gap-8 lg:px-12 xl:grid-cols-[220px_minmax(0,1fr)_minmax(260px,340px)]">
-      {/* стикеры — слой под таймером, только на фокусе и только в этой области */}
+      {/* Стикеры — всегда верхний слой экрана фокуса (z-25): поверх таймера, чата, подсказок и полосы голоса (z-20),
+          но под выезжающими панелями (z-30) и шапкой (z-40). Мешает — стикер можно сдвинуть или свернуть. */}
       {stickers && <StickerBoard board={stickers} />}
       {/* ---------- Участники ---------- */}
       <section aria-label="Участники" className="order-2 flex min-w-0 flex-col gap-3 lg:order-none lg:pt-24">
@@ -144,7 +145,7 @@ export function FocusRoom({ t, stickers }: { t: Tomato; stickers?: Stickers }) {
         <p data-testid="game-later" className="flex items-center gap-2 self-start rounded-full bg-cocoa px-3 py-1 text-[13px] font-bold text-[#F3E1DC]">
           <Lock size={14} aria-hidden />Игра откроется на перерыве
         </p>
-        <div className="flex min-h-[260px] flex-1 flex-col overflow-hidden rounded-[28px] border-2 border-[#8A625C] bg-[#4A2E2B] lg:min-h-[420px]">
+        <div className={`flex ${CHAT_CARD_SIZE} shrink-0 flex-col overflow-hidden rounded-[28px] border-2 border-[#8A625C] bg-[#4A2E2B]`}>
           <ChatPanel t={t} />
         </div>
       </aside>

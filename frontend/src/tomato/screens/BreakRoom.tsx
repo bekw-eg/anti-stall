@@ -1,10 +1,12 @@
 /**
  * 08 Room / Break (Figma, страница back): перерыв = время игры.
- * Сверху — дорога команды к цели, ниже — поле Tower Defense на всю ширину. Друзья — по кнопке в шапке, чат — облачко в углу.
+ * Сверху — дорога команды к цели, ниже — игра. Друзья — по кнопке в шапке. Чат — колонкой справа от игры
+ * (на том же месте, что в лобби и на фокусе) от 1280 px; на узких экранах — облачко в углу, чтобы игре хватило места.
  */
 import { useState } from "react";
 import { Check, Flag, SkipForward } from "lucide-react";
 import { ChatBubble } from "../ChatBubble";
+import { CHAT_CARD_SIZE, ChatPanel } from "../ChatPanel";
 import { Harvest } from "../Harvest";
 import { TowerDefense } from "../TowerDefense";
 import type { Tomato } from "../useTomato";
@@ -74,6 +76,8 @@ export function BreakRoom({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }
           </section>
         )}
       </div>
+      <div className="flex min-w-0 flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
+      <div className="min-w-0">
       {snap.room.breakGame === "harvest" ? (
         // чётный перерыв — Harvest (Tower Defense — на нечётных)
         <section aria-label="Harvest" className="as-card as-shadow overflow-hidden border-[2.5px] bg-lime">
@@ -90,6 +94,11 @@ export function BreakRoom({ t, onOpenMap }: { t: Tomato; onOpenMap: () => void }
         </div>
       </section>
       )}
+      </div>
+      <aside aria-label="Чат комнаты" className={`as-card as-shadow hidden ${CHAT_CARD_SIZE} flex-col overflow-hidden border-[2.5px] bg-white xl:sticky xl:top-28 xl:flex`}>
+        <ChatPanel t={t} />
+      </aside>
+      </div>
       <ChatBubble t={t} />
     </div>
   );

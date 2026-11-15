@@ -201,7 +201,7 @@ export function StickerHint({ board }: { board: Stickers }) {
   const close = () => { setShow(false); try { localStorage.setItem(HINT_KEY, "1"); } catch { /* приватный режим */ } };
   const has = board.items.length > 0;
   return (
-    <div role="note" data-testid="sticker-hint" className="relative z-30 flex w-full max-w-[620px] items-start gap-2.5 rounded-[16px] border-2 border-[#8A625C] bg-cocoa/80 px-3 py-2 text-left text-sm text-cream sm:text-[15px]">
+    <div role="note" data-testid="sticker-hint" className="relative z-10 flex w-full max-w-[620px] items-start gap-2.5 rounded-[16px] border-2 border-[#8A625C] bg-cocoa/80 px-3 py-2 text-left text-sm text-cream sm:text-[15px]">
       <StickyNote size={18} className="mt-0.5 shrink-0 text-peach" aria-hidden />
       <p className="min-w-0 flex-1 leading-snug">
         {has
@@ -234,7 +234,7 @@ export function StickerBoard({ board }: { board: Stickers }) {
     return () => ro.disconnect();
   }, []);
   return (
-    <div ref={ref} className="pointer-events-none absolute inset-0 z-20 overflow-hidden" data-testid="sticker-board" hidden={board.hidden || !board.items.length}>
+    <div ref={ref} className="pointer-events-none absolute inset-0 z-[25] overflow-hidden" data-testid="sticker-board" hidden={board.hidden || !board.items.length}>
       {area && area.w > 0 && board.items.map((s) => <StickerNote key={s.id} s={s} board={board} area={area} active={active === s.id} onActivate={() => setActive(s.id)} />)}
     </div>
   );

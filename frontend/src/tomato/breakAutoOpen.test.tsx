@@ -19,7 +19,7 @@ vi.mock("./TowerDefense", () => ({ TowerDefense: () => <div data-testid="td-game
 vi.mock("./VoiceBar", () => ({ VoiceBar: () => null }));
 vi.mock("./PrankOverlay", () => ({ PrankOverlay: () => null }));
 vi.mock("./SocialPanel", () => ({ SocialPanel: () => null }));
-vi.mock("./ChatPanel", () => ({ ChatPanel: () => <div data-testid="chat" /> }));
+vi.mock("./ChatPanel", () => ({ ChatPanel: () => <div data-testid="chat" />, CHAT_CARD_SIZE: "" }));
 vi.mock("./StatsPanel", () => ({ StatsPanel: () => <div data-testid="stats-panel" /> }));
 vi.mock("./ProfilePanel", () => ({ ProfilePanel: () => null }));
 vi.mock("./RoadMap", () => ({ RoadMap: () => <div data-testid="road-map" /> }));

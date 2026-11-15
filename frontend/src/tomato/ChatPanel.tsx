@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Send } from "lucide-react";
+import { ArrowDown, Send } from "lucide-react";
 import { formatAgo } from "./format";
 import { Avatar } from "./screens/ui";
 import { TEAM_COLOR } from "./socialRules";
@@ -7,6 +7,10 @@ import { useNow } from "./useMedia";
 import type { Tomato } from "./useTomato";
 
 const MAX_LEN = 300;
+/** Одинаковая высота окна чата везде (лобби, фокус, перерыв): лента прокручивается внутри, страница не растёт. */
+export const CHAT_CARD_SIZE = "h-[min(540px,66dvh)] min-h-[300px]";
+/** «У дна» — допуск в пикселях, чтобы прокрутка вниз не срывалась на долях пикселя. */
+const NEAR_BOTTOM = 48;
 
 /**
  * Текстовый чат комнаты. В фокусе — только чтение (учёба важнее), на перерыве и в ожидании можно писать.
@@ -22,10 +26,35 @@ export function ChatPanel({ t }: { t: Tomato }) {
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const listRef = useRef<HTMLOListElement>(null);
+  const atBottom = useRef(true);
+  const seenCount = useRef(t.chat.length);
+  const [unseen, setUnseen] = useState(0);
   const now = t.serverNow();
 
-  // Новое сообщение — прокручиваем вниз
-  useEffect(() => { listRef.current?.scrollTo({ top: listRef.current.scrollHeight }); }, [t.chat.length]);
+  const toBottom = () => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    atBottom.current = true;
+    setUnseen(0);
+  };
+  // при открытии — сразу к последним сообщениям
+  useEffect(() => { toBottom(); }, []);
+  // Новое сообщение: если читатель внизу (или написал сам) — прокручиваем; если листает историю — не дёргаем,
+  // а показываем кнопку «Новые»
+  useEffect(() => {
+    const added = t.chat.length - seenCount.current;
+    seenCount.current = t.chat.length;
+    if (added <= 0) return;
+    const last = t.chat[t.chat.length - 1];
+    if (atBottom.current || last?.userId === meId) toBottom();
+    else setUnseen((n) => n + added);
+  }, [t.chat.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM;
+    if (atBottom.current && unseen) setUnseen(0);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +73,10 @@ export function ChatPanel({ t }: { t: Tomato }) {
         {readOnly && <p className="text-xs text-[var(--muted)]">Идёт фокус: писать можно на перерыве</p>}
       </div>
 
-      <ol ref={listRef} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1" aria-label="Сообщения" aria-live="polite">
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      <ol ref={listRef} onScroll={onScroll} tabIndex={0} data-testid="chat-list"
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pr-2 [scrollbar-color:var(--muted)_transparent] [scrollbar-gutter:stable] [scrollbar-width:thin] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--fg)]"
+        aria-label="Сообщения" aria-live="polite">
         {t.chat.length === 0 && <li className="text-sm text-[var(--muted)]">{readOnly ? "Пока тихо." : "Пока тихо. Напишите первым."}</li>}
         {t.chat.map((m) => {
           const mine = m.userId === meId;
@@ -59,6 +91,13 @@ export function ChatPanel({ t }: { t: Tomato }) {
           );
         })}
       </ol>
+      {unseen > 0 && (
+        <button type="button" onClick={() => toBottom()} data-testid="chat-new"
+          className="absolute bottom-2 left-1/2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[var(--fg)] px-3 py-1.5 text-xs font-bold text-[var(--field)] shadow-md">
+          <ArrowDown size={14} aria-hidden />Новые · {unseen}
+        </button>
+      )}
+      </div>
 
       <form onSubmit={submit} className="flex items-center gap-2">
         <label className="min-w-0 flex-1">

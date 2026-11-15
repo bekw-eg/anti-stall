@@ -5,7 +5,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Check, Clock, Minus, Plus } from "lucide-react";
-import { ChatPanel } from "../ChatPanel";
+import { CHAT_CARD_SIZE, ChatPanel } from "../ChatPanel";
 import { formatTime, readiness } from "../format";
 import type { Tomato } from "../useTomato";
 import { DEFAULT_LIMITS } from "../useTomato";
@@ -211,7 +211,7 @@ export function Lobby({ t }: { t: Tomato }) {
         <Invite code={room.code} />
         <GoalProgress t={t} />
         <Members t={t} />
-        <div className="flex min-h-[340px] flex-1 flex-col overflow-hidden rounded-[22px] border-2 border-line bg-white">
+        <div className={`flex ${CHAT_CARD_SIZE} shrink-0 flex-col overflow-hidden rounded-[22px] border-2 border-line bg-white`}>
           <ChatPanel t={t} />
         </div>
       </aside>
