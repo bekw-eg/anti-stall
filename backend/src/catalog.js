@@ -11,11 +11,11 @@ export function levelForXp(xp) {
 // ---- Улучшения (тратят Tomato Coins). Эффекты применяются на сервере и отдаются в /game
 export const UPGRADES = {
   base_walls: {
-    id: 'base_walls', title: 'Крепкие стены', description: '+25 к здоровью базы команды за уровень',
+    id: 'base_walls', title: 'Крепкие стены', description: '+25 HP базе команды за каждый ваш уровень. Уровни всех в команде складываются',
     maxLevel: 5, minLevel: 1, baseCost: 30, effect: { kind: 'baseHp', perLevel: 25 },
   },
   tower_power: {
-    id: 'tower_power', title: 'Усиленные башни', description: '+10% к урону башен за уровень',
+    id: 'tower_power', title: 'Усиленные башни', description: '+10% к урону башен команды за каждый ваш уровень. Уровни всех в команде складываются (до ×2)',
     maxLevel: 5, minLevel: 2, baseCost: 50, effect: { kind: 'towerDamagePct', perLevel: 10 },
   },
   team_aura: {
